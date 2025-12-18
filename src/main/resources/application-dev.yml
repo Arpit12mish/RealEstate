@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: sfs
+  
+  profiles:
+    active: dev
+
+    mail:
+    host: smtp.gmail.com
+    port: 587
+    username: your-email@gmail.com
+    password: your-app-password
+    properties: 
+      mail: 
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+    profiles:
+        active: dev
+
+# Email SMTP Configuration (Optional but needed for EmailService) - done abone
+# ============================
+# SPRING MAIL CONFIGURATION - done above
+# ============================
+
+# postgres database
+  datasource:
+    url: jdbc:postgresql://localhost:5433/sfs_db
+    username: sfs_user
+    password: sfs_user@2025
+    driver-class-name: org.postgresql.Driver
+
+# JPA / Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: update
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+
+# ============================
+# HIBERNATE SQL LOGGING
+# ============================
+logging: 
+  level: 
+    org: 
+      hibernate:
+        SQL: DEBUG
+        type:
+          descriptor:
+            sql: 
+              BasicBinder: TRACE
+
+
+# ============================
+# JWT CONFIGURATION
+# ============================
+jwt: 
+  secret: 1c861b0ea3dcdfbad078d532b2d7e19bf58a48db8bdbf785dfeb39aed44cb6a8
+  expiration:
+    ms: 86400000     # 24 hours = 24 * 60 * 60 * 1000
+
+
+# ============================
+# TWILIO CONFIGURATION
+# ============================
+
+twilio:
+  accountSid: ACc68ff1a4841824f2c12a3300f3ebd610
+  authToken: 9f4e335d8c1cc0cafd6dfd1529f1c83f
+  verifyServiceSid: VA3d01ac2627c8d36f04407f967f04a3d6
+  phoneNumber: +918368046868
+
+
+server: 
+  address: 0.0.0.0
+  port: 8080
