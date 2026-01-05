@@ -79,6 +79,9 @@ elasticsearch:
   api-key: 
     ${ELASTIC_API_KEY:NlBNOEVac0Ixbm1TTWxRbEtWV1c6bzk1XzJIcTBGNTdoU3FTX2c3U0hSUQ==}
 
+search:
+  elasticsearch:
+    enabled: false
 
   autoconfigure:
     exclude:

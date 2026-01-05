@@ -63,4 +63,7 @@ public class BusinessResponse {
 
     private Boolean sponsored;
     private Integer sponsoredPriority;
+
+    private Long favoriteCount;  // total favorites across all users
+    private Boolean isFavorite;  // current user has favorited this business
 }

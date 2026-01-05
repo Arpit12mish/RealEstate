@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.brandPitara.sfs.enums.OnboardingStatus;
 import com.brandPitara.sfs.enums.Role;
 
 import jakarta.persistence.CascadeType;
@@ -61,4 +62,11 @@ public class User {
 
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt; // last successful OTP-based login
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "onboarding_status", nullable = false, length = 40)
+    private OnboardingStatus onboardingStatus = OnboardingStatus.ROLE_PENDING;
+
+    @Column(name = "role_selected_at")
+    private OffsetDateTime roleSelectedAt;
 }

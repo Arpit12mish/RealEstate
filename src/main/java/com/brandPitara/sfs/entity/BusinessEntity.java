@@ -55,12 +55,15 @@ public class BusinessEntity extends BaseEntity {
     private CategoryEntity category;
 
     @Column(name = "avg_rating", nullable = false)
+    @Builder.Default
     private Double avgRating = 0.0;
 
     @Column(name = "total_ratings", nullable = false)
+    @Builder.Default
     private Integer totalRatings = 0;
 
     @Column(name = "is_active", nullable = false)
+    @Builder.Default
     private Boolean active = true;
 
     // NEW FIELDS FOR CARD
@@ -78,9 +81,11 @@ public class BusinessEntity extends BaseEntity {
     private String highlightBadge;   // "Best selling panasonic TV"
 
     @Column(name = "is_top_rated", nullable = false)
+    @Builder.Default
     private Boolean topRated = false;
 
     @Column(name = "is_near_and_fast", nullable = false)
+    @Builder.Default
     private Boolean nearAndFast = false;
     
     // 🔥 SPONSORED FIELDS
@@ -89,12 +94,11 @@ public class BusinessEntity extends BaseEntity {
      * If true, this business can be boosted in listings.
      */
     @Column(nullable = false)
+    @Builder.Default
     private Boolean sponsored = false;
 
-    /**
-     * Higher = higher position among sponsored.
-     */
     @Column(name = "sponsored_priority", nullable = false)
+    @Builder.Default
     private Integer sponsoredPriority = 0;
 
     /**
@@ -105,4 +109,9 @@ public class BusinessEntity extends BaseEntity {
 
     @Column(name = "sponsored_end")
     private OffsetDateTime sponsoredEnd;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_user_id")
+    private User owner;
+
 }

@@ -19,6 +19,7 @@ import com.brandPitara.sfs.entity.RefreshToken;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.service.AppUserDetailsService;
 import com.brandPitara.sfs.service.LoginHistoryService;
+import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.RefreshTokenService;
 import com.brandPitara.sfs.service.UserService;
@@ -42,6 +43,7 @@ public class AuthController {
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
     private final LoginHistoryService loginHistoryService;
+    private final OnboardingService onboardingService ;
 
     // 1️⃣ Request OTP  TODO: add rate limiting per phone/IP here
     @PostMapping("/request-otp")
@@ -101,6 +103,10 @@ public class AuthController {
         payload.put("refreshToken", refreshToken.getToken());
         payload.put("user", response);
         payload.put("isNewUser", isNewUser); // or track separately if needed
+        // add onboarding payload so frontend can route
+        payload.put("onboardingStatus", user.getOnboardingStatus().name());
+        payload.put("role", user.getRole().name());
+        payload.put("session", onboardingService.getSession(user.getId()));
 
         return ResponseEntity.ok(payload);
     }
@@ -117,7 +123,7 @@ public class AuthController {
         }
 
         User user = rt.getUser();
-        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
+        UserDetails userDetails = userDetailsService.loadUserByUsername(user.getPhoneNumber());
 
         loginHistoryService.recordLogin(
             user, "REFRESH", true, rt.getDeviceId(), rt.getFcmToken(), httpRequest

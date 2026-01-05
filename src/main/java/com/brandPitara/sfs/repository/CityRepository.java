@@ -7,12 +7,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CityRepository extends JpaRepository<CityEntity, Long> {
-
     Optional<CityEntity> findByNameIgnoreCaseAndStateIgnoreCase(String name, String state);
-
     // search by name
     List<CityEntity> findByNameContainingIgnoreCaseOrderByNameAsc(String name);
-
     // default list if no search text
     List<CityEntity> findTop50ByOrderByNameAsc();
 }

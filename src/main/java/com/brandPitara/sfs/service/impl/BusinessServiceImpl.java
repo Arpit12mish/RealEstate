@@ -8,11 +8,14 @@ import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.entity.BusinessEventEntity;
 import com.brandPitara.sfs.entity.CategoryEntity;
 import com.brandPitara.sfs.entity.CityEntity;
+import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.repository.BusinessEventRepository;
 import com.brandPitara.sfs.repository.BusinessRepository;
 import com.brandPitara.sfs.repository.CategoryRepository;
 import com.brandPitara.sfs.repository.CityRepository;
+import com.brandPitara.sfs.repository.FavoriteRepository;
+import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.search.BusinessSearchService;
 import com.brandPitara.sfs.service.BusinessService;
 import com.brandPitara.sfs.service.mapper.BusinessMapper;
@@ -22,6 +25,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.brandPitara.sfs.repository.FavoriteRepository;
+import com.brandPitara.sfs.repository.UserRepository;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.util.*;
+
 
 import java.time.Instant;
 
@@ -34,6 +44,9 @@ public class BusinessServiceImpl implements BusinessService {
     private final CityRepository cityRepository;
     private final CategoryRepository categoryRepository;
     private final BusinessEventRepository businessEventRepository;
+    private final FavoriteRepository favoriteRepository;
+    private final UserRepository userRepository;
+
 
     // 👉 Elasticsearch Search + Indexing
     private final BusinessSearchService businessSearchService;
@@ -98,8 +111,12 @@ public class BusinessServiceImpl implements BusinessService {
     public BusinessResponse getBusiness(Long id) {
         BusinessEntity entity = businessRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Business not found: " + id));
+        BusinessResponse response = BusinessMapper.toResponse(entity);
 
-        return BusinessMapper.toResponse(entity);
+        // ✅ favoriteCount always, isFavorite only if authenticated (else false)
+        enrichFavorites(List.of(response));
+
+        return response;
     }
 
     // ============================================================
@@ -146,14 +163,23 @@ public class BusinessServiceImpl implements BusinessService {
                     .findByCity_IdAndActiveTrue(cityId, pageable);
         }
 
+        List<BusinessEntity> entities = page.getContent();
+
+        List<BusinessResponse> responses = entities.stream()
+                .map(BusinessMapper::toResponse)
+                .toList();
+
+        enrichFavorites(responses); // ✅ adds favoriteCount + isFavorite
+
         return PageResponse.<BusinessResponse>builder()
-                .content(page.getContent().stream().map(BusinessMapper::toResponse).toList())
+                .content(responses)
                 .page(pageable.getPageNumber())
                 .size(pageable.getPageSize())
                 .totalElements(page.getTotalElements())
                 .totalPages(page.getTotalPages())
                 .last(page.isLast())
                 .build();
+
     }
 
     // ============================================================
@@ -219,4 +245,57 @@ public class BusinessServiceImpl implements BusinessService {
 
         businessEventRepository.save(event);
     }
+
+    private void enrichFavorites(List<BusinessResponse> responses) {
+        if (responses == null || responses.isEmpty()) return;
+
+        List<Long> businessIds = responses.stream()
+                .map(BusinessResponse::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (businessIds.isEmpty()) return;
+
+        // ✅ favoriteCount (batch)
+        Map<Long, Long> countMap = new HashMap<>();
+        List<Object[]> rows = favoriteRepository.countByBusinessIds(businessIds);
+        for (Object[] row : rows) {
+                Long businessId = (Long) row[0];
+                Long cnt = (Long) row[1];
+                countMap.put(businessId, cnt);
+        }
+
+        // ✅ isFavorite (batch, only if authenticated)
+        Optional<Long> currentUserIdOpt = getCurrentUserIdOptional();
+        Set<Long> favoritedIds = new HashSet<>();
+        if (currentUserIdOpt.isPresent()) {
+                favoritedIds.addAll(
+                        favoriteRepository.findFavoritedBusinessIds(currentUserIdOpt.get(), businessIds)
+                );
+        }
+
+        // Apply to each response
+        for (BusinessResponse br : responses) {
+                Long bid = br.getId();
+                br.setFavoriteCount(countMap.getOrDefault(bid, 0L));
+                br.setIsFavorite(currentUserIdOpt.isPresent() && favoritedIds.contains(bid));
+        }
+        }
+
+        private Optional<Long> getCurrentUserIdOptional() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) return Optional.empty();
+
+        // When no JWT, Spring may set anonymous auth depending on config
+        String name = auth.getName();
+        if (name == null || name.isBlank() || "anonymousUser".equalsIgnoreCase(name)) {
+                return Optional.empty();
+        }
+
+        // your JWT subject is phoneNumber
+        return userRepository.findByPhoneNumber(name).map(User::getId);
+        }
+
 }
+

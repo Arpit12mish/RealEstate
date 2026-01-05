@@ -3,6 +3,7 @@ package com.brandPitara.sfs.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -41,6 +42,8 @@ public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
                 // 🔓 Auth-related APIs
                 .requestMatchers("/api/auth/**").permitAll()
+
+                .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
 
                 // 🔓 PUBLIC: business listing & details (GET only)
                 .requestMatchers(org.springframework.http.HttpMethod.GET, 

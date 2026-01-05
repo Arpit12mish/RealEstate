@@ -1,0 +1,38 @@
+package com.brandPitara.sfs.request.controller;
+
+import com.brandPitara.sfs.request.dto.ServiceRequestCreateRequest;
+import com.brandPitara.sfs.request.dto.ServiceRequestResponse;
+import com.brandPitara.sfs.request.enums.ServiceRequestStatus;
+import com.brandPitara.sfs.request.service.ServiceRequestService;
+import com.brandPitara.sfs.security.CurrentUserService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/customer/requests")
+@RequiredArgsConstructor
+public class CustomerServiceRequestController {
+
+    private final ServiceRequestService serviceRequestService;
+    private final CurrentUserService currentUserService;
+
+    @PostMapping
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public ServiceRequestResponse create(@Valid @RequestBody ServiceRequestCreateRequest request) {
+        return serviceRequestService.create(currentUserService.requireUserId(), request);
+    }
+
+    @GetMapping
+    @PreAuthorize("hasRole('CUSTOMER')")
+    public Page<ServiceRequestResponse> myRequests(
+            @RequestParam(required = false) ServiceRequestStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, Math.min(size, 50), Sort.by(Sort.Direction.DESC, "createdAt"));
+        return serviceRequestService.myRequests(currentUserService.requireUserId(), status, pageable);
+    }
+}

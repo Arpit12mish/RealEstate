@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.entity.User;
+import com.brandPitara.sfs.enums.OnboardingStatus;
 import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.UserService;
@@ -43,6 +44,7 @@ public class UserServiceImpl implements UserService {
                     user.setPhoneNumber(phoneNumber);
                     user.setVerified(true);
                     user.setRole(Role.CUSTOMER);
+                    user.setOnboardingStatus(OnboardingStatus.ROLE_PENDING);
                     user.setLastLoginAt(OffsetDateTime.now());
                     // createdAt is set automatically via @CreationTimestamp
 

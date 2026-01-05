@@ -1,68 +1,83 @@
 package com.brandPitara.sfs.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.BindException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.OffsetDateTime;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<ApiError> handleNotFound(NotFoundException ex, HttpServletRequest request) {
-        return buildError(HttpStatus.NOT_FOUND, ex.getMessage(), request.getRequestURI());
-    }
-
-    @ExceptionHandler({ MethodArgumentNotValidException.class, BindException.class })
-    public ResponseEntity<ApiError> handleValidation(Exception ex, HttpServletRequest request) {
-        String msg;
-
-        if (ex instanceof MethodArgumentNotValidException manv) {
-            msg = manv.getBindingResult().getFieldErrors().stream()
-                    .map(fe -> fe.getField() + " " + fe.getDefaultMessage())
-                    .collect(Collectors.joining(", "));
-        } else if (ex instanceof BindException be) {
-            msg = be.getBindingResult().getFieldErrors().stream()
-                    .map(fe -> fe.getField() + " " + fe.getDefaultMessage())
-                    .collect(Collectors.joining(", "));
-        } else {
-            msg = "Validation error";
-        }
-
-        return buildError(HttpStatus.BAD_REQUEST, msg, request.getRequestURI());
-    }
-
-    @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiError> handleConstraintViolation(ConstraintViolationException ex,
-                                                              HttpServletRequest request) {
-        String msg = ex.getConstraintViolations().stream()
-                .map(v -> v.getPropertyPath() + " " + v.getMessage())
-                .collect(Collectors.joining(", "));
-        return buildError(HttpStatus.BAD_REQUEST, msg, request.getRequestURI());
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest request) {
-        // TODO: log ex with stack trace
-        return buildError(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error", request.getRequestURI());
-    }
-
-    private ResponseEntity<ApiError> buildError(HttpStatus status, String message, String path) {
-        ApiError error = ApiError.builder()
+    private ResponseEntity<ApiError> build(HttpStatus status, String message, HttpServletRequest req) {
+        ApiError body = ApiError.builder()
                 .timestamp(OffsetDateTime.now())
                 .status(status.value())
                 .error(status.getReasonPhrase())
                 .message(message)
-                .path(path)
+                .path(req.getRequestURI())
                 .build();
 
-        return new ResponseEntity<>(error, status);
+        return ResponseEntity.status(status).body(body);
+    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(NotFoundException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiError> handleForbidden(ForbiddenException ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), req);
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException ex, HttpServletRequest req) {
+        Map<String, String> errors = new HashMap<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            errors.put(fe.getField(), fe.getDefaultMessage());
+        }
+
+        ApiError body = ApiError.builder()
+                .timestamp(OffsetDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error(HttpStatus.BAD_REQUEST.getReasonPhrase())
+                .message("Validation failed")
+                .path(req.getRequestURI())
+                .validationErrors(errors)
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleConstraint(DataIntegrityViolationException ex, HttpServletRequest req) {
+        // Optional: you can inspect ex.getMostSpecificCause().getMessage() for better messages
+        return build(HttpStatus.CONFLICT, "Constraint violation", req);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN, "Access denied", req);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiError> handleAuth(AuthenticationException ex, HttpServletRequest req) {
+        return build(HttpStatus.UNAUTHORIZED, "Unauthorized", req);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest req) {
+        // For production: don't leak exception message
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", req);
     }
 }
