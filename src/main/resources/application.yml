@@ -92,3 +92,12 @@ search:
 server: 
   address: 0.0.0.0
   port: 8080
+
+
+app:
+  media:
+    s3:
+      bucket: sfs-s3bucket
+      region: ap-south-1
+      publicBaseUrl: ""          # later: CloudFront url like https://dxxxxx.cloudfront.net
+      presignExpirySeconds: 300  # 5 minutes

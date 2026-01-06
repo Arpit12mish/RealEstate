@@ -1,0 +1,2 @@
+ALTER TABLE provider_media
+ADD COLUMN IF NOT EXISTS storage_key VARCHAR(500);

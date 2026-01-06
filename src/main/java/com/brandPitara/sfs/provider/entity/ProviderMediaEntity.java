@@ -22,6 +22,10 @@ public class ProviderMediaEntity extends BaseEntity {
     @Column(name = "media_type", nullable = false, length = 20)
     private ProviderMediaType mediaType;
 
+    @Column(name = "storage_key", length = 500)
+    private String storageKey;
+
+
     @Column(nullable = false, columnDefinition = "text")
     private String url;
 

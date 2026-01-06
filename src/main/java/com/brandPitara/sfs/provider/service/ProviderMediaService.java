@@ -7,9 +7,12 @@ public interface ProviderMediaService {
 
     ProviderMediaListResponse getMyMedia(Long currentUserId);
 
-    ProviderMediaResponse upsertMyProfilePhoto(Long currentUserId, String url, String thumbnailUrl);
-
     ProviderMediaResponse addMyGalleryImage(Long currentUserId, String url, String thumbnailUrl, int sortOrder);
 
     void deleteMyMedia(Long currentUserId, Long mediaId);
+
+    ProviderMediaResponse upsertMyProfilePhoto(Long currentUserId, String url, String thumbnailUrl, String storageKey);
+
+    ProviderMediaResponse addMyGalleryImage(Long currentUserId, String url, String thumbnailUrl, String storageKey, int sortOrder);
+
 }
