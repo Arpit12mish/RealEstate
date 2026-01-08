@@ -101,3 +101,8 @@ app:
       region: ap-south-1
       publicBaseUrl: ""          # later: CloudFront url like https://dxxxxx.cloudfront.net
       presignExpirySeconds: 300  # 5 minutes
+
+aws:
+  credentials:
+    access-key: AKIAUAIMLDUQDSSEXLNG
+    secret-key: 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

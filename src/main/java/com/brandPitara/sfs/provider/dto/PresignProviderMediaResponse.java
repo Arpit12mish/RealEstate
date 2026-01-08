@@ -3,6 +3,6 @@ package com.brandPitara.sfs.provider.dto;
 public record PresignProviderMediaResponse(
         String uploadUrl,
         String publicUrl,
-        String key,
+        String storageKey,
         int expiresInSeconds
 ) {}
