@@ -43,15 +43,31 @@ public class CurrentUserService {
         return requireUser().getId();
     }
 
-    private String normalizePhone(String phone) {
-        // Example normalization: "+91 98765-43210" -> "9876543210"
-        String digits = phone.replaceAll("\\D", "");
+    private String normalizePhone(String input) {
+        if (input == null) return null;
 
-        // If you store Indian numbers without country code:
-        if (digits.length() == 12 && digits.startsWith("91")) {
-            return digits.substring(2);
-        }
+        String trimmed = input.trim();
+        // keep + if present, remove other non-digits
+        String digits = trimmed.replaceAll("[^0-9]", "");
 
+        // Cases:
+        // 10 digits -> +91XXXXXXXXXX
+        if (digits.length() == 10) return "+91" + digits;
+
+        // 12 digits starting with 91 -> +91XXXXXXXXXX
+        if (digits.length() == 12 && digits.startsWith("91")) return "+91" + digits.substring(2);
+
+        // 11 digits starting with 0 -> +91XXXXXXXXXX
+        if (digits.length() == 11 && digits.startsWith("0")) return "+91" + digits.substring(1);
+
+        // Already looks like country-coded but no '+'
+        if (digits.length() > 10 && digits.startsWith("91")) return "+91" + digits.substring(2);
+
+        // fallback: if original had + and digits look like full number, rebuild
+        if (trimmed.startsWith("+")) return "+" + digits;
+
+        // last resort: return as-is digits (but ideally should never reach here)
         return digits;
     }
+
 }

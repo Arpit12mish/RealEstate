@@ -21,6 +21,7 @@ public class AppUserDetailsService implements UserDetailsService {
 
         @Override
         public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
+                
 
                 // identifier can be phone OR email (backward compatible)
                 User user = userRepository.findByPhoneNumber(identifier)
