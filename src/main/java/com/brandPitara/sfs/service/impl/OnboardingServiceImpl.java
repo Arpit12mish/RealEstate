@@ -2,8 +2,10 @@ package com.brandPitara.sfs.service.impl;
 
 
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.mapper.OnboardingRoleMapper;
 import com.brandPitara.sfs.provider.repository.ProviderProfileRepository;
 import com.brandPitara.sfs.entity.User;
+import com.brandPitara.sfs.enums.OnboardingRole;
 import com.brandPitara.sfs.enums.OnboardingStatus;
 import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.dto.onboarding.SessionResponse;
@@ -21,17 +23,22 @@ public class OnboardingServiceImpl implements OnboardingService {
 
     private final UserRepository userRepository;
     private final ProviderProfileRepository providerProfileRepository;
-
+    private final OnboardingRoleMapper onboardingRoleMapper;
+    
     @Override
     @Transactional
-    public SessionResponse chooseRole(Long userId, Role role) {
+    public SessionResponse chooseRole(Long userId, OnboardingRole onboardingRole) {
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User not found"));
 
-        if (role == Role.ROLE_ADMIN) {
-            // block normal users from selecting admin
-            throw new IllegalArgumentException("Invalid role selection");
-        }
+        // Optional: prevent changing role after first selection
+        // (remove this block if you want to allow updates)
+        // if (user.getRoleSelectedAt() != null) {
+        //     throw new IllegalStateException("Role already selected");
+        // }
+
+        Role role = onboardingRoleMapper.toSystemRole(onboardingRole);
 
         user.setRole(role);
         user.setRoleSelectedAt(OffsetDateTime.now());
@@ -39,12 +46,15 @@ public class OnboardingServiceImpl implements OnboardingService {
         // onboarding status transition
         if (role == Role.CUSTOMER) {
             user.setOnboardingStatus(OnboardingStatus.CUSTOMER_READY);
-        } else if (role == Role.WORKER || role == Role.BRAND) {
+        } else if (role == Role.WORKER || role == Role.BRAND || role == Role.BUILDER) {
             user.setOnboardingStatus(OnboardingStatus.PROVIDER_PROFILE_PENDING);
+        } else {
+            // safety fallback (should never happen because onboardingRole cannot map to ADMIN)
+            throw new IllegalArgumentException("Invalid role selection");
         }
 
         userRepository.save(user);
-        return getSession(userId); // return nextAction
+        return getSession(userId);
     }
 
     @Override

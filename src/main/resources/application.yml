@@ -1,3 +1,123 @@
+# spring:
+#   application:
+#     name: sfs
+#     mail:
+#     host: smtp.gmail.com
+#     port: 587
+#     username: your-email@gmail.com
+#     password: your-app-password
+#     properties: 
+#       mail: 
+#         smtp:
+#           auth: true
+#           starttls:
+#             enable: true
+#   flyway:
+#     enabled: true
+
+
+
+# # Email SMTP Configuration (Optional but needed for EmailService) - done abone
+# # ============================
+# # SPRING MAIL CONFIGURATION - done above
+# # ============================
+
+# # postgres database
+#   datasource:
+#     url: jdbc:postgresql://localhost:5435/sfs_db
+#     username: sfs_user
+#     password: bp@sfs2025
+#     driver-class-name: org.postgresql.Driver
+
+# # JPA / Hibernate
+#   jpa:
+#     hibernate:
+#       ddl-auto: update
+#     database-platform: org.hibernate.dialect.PostgreSQLDialect
+#     show-sql: false
+#     properties:
+#       hibernate:
+#         format_sql: true
+
+
+# # ============================
+# # HIBERNATE SQL LOGGING
+# # ============================
+# logging:
+#   level:
+#     root: INFO
+#     org.springframework.web: DEBUG
+#     org.springframework.security: DEBUG
+#     org.hibernate.SQL: DEBUG
+#     org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+#     com.brandPitara: DEBUG   # your base package
+
+
+
+# # ============================
+# # JWT CONFIGURATION
+# # ============================
+# jwt: 
+#   secret: 1c861b0ea3dcdfbad078d532b2d7e19bf58a48db8bdbf785dfeb39aed44cb6a8
+#   expiration:
+#     ms: 86400000     # 24 hours = 24 * 60 * 60 * 1000
+
+
+# # ============================
+# # TWILIO CONFIGURATION
+# # ============================
+
+# twilio:
+#   accountSid: ACc68ff1a4841824f2c12a3300f3ebd610
+#   authToken: 9f4e335d8c1cc0cafd6dfd1529f1c83f
+#   verifyServiceSid: VA3d01ac2627c8d36f04407f967f04a3d6
+#   phoneNumber: +918368046868
+
+# # ============================
+# # ElasticSearch CONFIGURATION
+# # ============================
+
+# elasticsearch:
+#   url: 
+#     https://my-elasticsearch-project-b09773.es.asia-south1.gcp.elastic.cloud:443
+#   api-key: 
+#     ${ELASTIC_API_KEY:NlBNOEVac0Ixbm1TTWxRbEtWV1c6bzk1XzJIcTBGNTdoU3FTX2c3U0hSUQ==}
+
+# search:
+#   elasticsearch:
+#     enabled: false
+
+#   autoconfigure:
+#     exclude:
+#       - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+#       - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+
+
+# server: 
+#   address: 0.0.0.0
+#   port: 8080
+#   web:
+#     error:
+#       include-message: always
+#       include-binding-errors: always
+#       include-stacktrace: always
+
+
+# app:
+#   media:
+#     s3:
+#       bucket: sfs-s3bucket
+#       region: ap-south-1
+#       publicBaseUrl: ""          # later: CloudFront url like https://dxxxxx.cloudfront.net
+#       presignExpirySeconds: 300  # 5 minutes
+
+# aws:
+#   credentials:
+#     access-key: AKIAUAIMLDUQDSSEXLNG
+#     secret-key: 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
+
+
+
 spring:
   application:
     name: sfs
@@ -48,6 +168,12 @@ logging:
           descriptor:
             sql: 
               BasicBinder: TRACE
+    com:
+      brandPitara:
+        sfs: DEBUG
+      springframework:
+        web: INFO
+
 
 
 # ============================
@@ -91,7 +217,12 @@ search:
 
 server: 
   address: 0.0.0.0
-  port: 8080
+  port: 8081
+  error: 
+    include:
+      message: always
+      binding-errors: always
+      stacktrace: always
 
 
 app:
