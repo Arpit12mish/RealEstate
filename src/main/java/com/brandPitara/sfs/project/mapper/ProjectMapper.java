@@ -2,6 +2,9 @@ package com.brandPitara.sfs.project.mapper;
 
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
+
+import java.util.List;
 
 public class ProjectMapper {
 
@@ -35,5 +38,20 @@ public class ProjectMapper {
         .published(Boolean.TRUE.equals(e.getPublished()))
         .priority(e.getPriority() != null ? e.getPriority() : 0)
         .build();
+  }
+
+  // ✅ NEW: enrich response with cover/brochure without breaking existing calls
+  public static ProjectResponse toResponse(ProjectEntity entity, List<ProjectMediaEntity> media) {
+    ProjectResponse res = toResponse(entity);
+
+    var picked = ProjectMediaPicker.pick(media);
+
+    res.setCoverMediaUrl(picked.coverMediaUrl());
+    res.setCoverMediaType(picked.coverMediaType());
+    res.setBrochureUrl(picked.brochureUrl());
+    res.setHasImages(picked.hasImages());
+    res.setHasVideo(picked.hasVideo());
+
+    return res;
   }
 }

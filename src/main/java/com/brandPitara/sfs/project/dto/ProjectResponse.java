@@ -40,4 +40,10 @@ public class ProjectResponse {
   private boolean active;
   private boolean published;
   private int priority;
+
+  private String coverMediaUrl;     // image/thumbnail for card
+  private String coverMediaType;    // IMAGE/VIDEO etc (optional but helpful)
+  private String brochureUrl;       // PDF url if exists
+  private boolean hasVideo;         // optional UX indicator
+  private boolean hasImages;
 }

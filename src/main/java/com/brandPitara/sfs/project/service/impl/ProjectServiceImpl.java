@@ -8,6 +8,7 @@ import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
+import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class ProjectServiceImpl implements ProjectService {
 
   private final ProjectRepository projectRepository;
   private final ContentVersionService contentVersionService;
+  private final ProjectMediaRepository projectMediaRepository;
 
   @jakarta.persistence.PersistenceContext
   private jakarta.persistence.EntityManager em;
@@ -157,9 +159,29 @@ public class ProjectServiceImpl implements ProjectService {
   @Override
   @Transactional(readOnly = true)
   public Page<ProjectResponse> publicListByBuilder(Long builderId, Pageable pageable) {
-    return projectRepository.findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable)
-        .map(ProjectMapper::toResponse);
+
+    Page<ProjectEntity> page = projectRepository
+        .findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
+
+    var projectIds = page.getContent().stream()
+        .map(ProjectEntity::getId)
+        .toList();
+
+    java.util.Map<Long, java.util.List<com.brandPitara.sfs.project.entity.ProjectMediaEntity>> mediaMap =
+        java.util.Collections.emptyMap();
+
+    if (!projectIds.isEmpty()) {
+      var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
+      mediaMap = mediaList.stream().collect(
+          java.util.stream.Collectors.groupingBy(m -> m.getProject().getId())
+      );
+    }
+
+    final var finalMediaMap = mediaMap;
+
+    return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
   }
+
 
   @Override
   @Transactional(readOnly = true)
