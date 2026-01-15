@@ -179,7 +179,12 @@ public class ProjectServiceImpl implements ProjectService {
 
     final var finalMediaMap = mediaMap;
 
-    return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
+    // return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
+    return page.map(p -> ProjectMapper.toResponse(
+    p,
+    finalMediaMap.getOrDefault(p.getId(), java.util.List.of())
+));
+
   }
 
 

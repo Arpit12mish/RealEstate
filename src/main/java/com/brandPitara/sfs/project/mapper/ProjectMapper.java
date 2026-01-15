@@ -44,7 +44,7 @@ public class ProjectMapper {
   public static ProjectResponse toResponse(ProjectEntity entity, List<ProjectMediaEntity> media) {
     ProjectResponse res = toResponse(entity);
 
-    var picked = ProjectMediaPicker.pick(media);
+    var picked = ProjectMediaPicker.pick(media, true); // will throw if inconsistent, false: dont break
 
     res.setCoverMediaUrl(picked.coverMediaUrl());
     res.setCoverMediaType(picked.coverMediaType());
