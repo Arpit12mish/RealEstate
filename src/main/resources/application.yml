@@ -140,9 +140,9 @@ spring:
 
 # postgres database
   datasource:
-    url: jdbc:postgresql://localhost:5433/sfs_db
+    url: jdbc:postgresql://localhost:5432/sfs_db
     username: sfs_user
-    password: sfs_user@2025
+    password: bp@sfs2025
     driver-class-name: org.postgresql.Driver
 
 # JPA / Hibernate
@@ -217,7 +217,7 @@ search:
 
 server: 
   address: 0.0.0.0
-  port: 8082
+  port: 8081
   error: 
     include:
       message: always

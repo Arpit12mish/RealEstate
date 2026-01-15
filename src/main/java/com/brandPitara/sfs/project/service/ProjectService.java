@@ -16,4 +16,6 @@ public interface ProjectService {
 
   Page<ProjectResponse> publicListByBuilder(Long builderId, Pageable pageable);
   ProjectResponse publicGet(Long projectId);
+  Page<ProjectResponse> publicFeatured(Long builderId, Pageable pageable);
+
 }

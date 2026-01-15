@@ -9,7 +9,7 @@ insert into users (
 select
   '8877712345',
   '$2a$12$3oNOdUf.kLFXjrafgJ8SjekgUZ4JG0hYyrvgtD/U1TLGwVJnSx2uK',
-  'ADMIN',
+  'CUSTOMER',
   'CUSTOMER_READY',
   true,
   now()

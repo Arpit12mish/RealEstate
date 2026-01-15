@@ -7,6 +7,7 @@ import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -197,7 +198,11 @@ public class ProjectServiceImpl implements ProjectService {
     if (!Boolean.TRUE.equals(entity.getPublished()) || !Boolean.TRUE.equals(entity.getActive())) {
       throw new NotFoundException("Project not found: " + projectId);
     }
-    return ProjectMapper.toResponse(entity);
+    // ✅ Fetch media for this project
+    var media = projectMediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId);
+
+    // ✅ Enriched response (cover/brochure flags)
+    return ProjectMapper.toResponse(entity, media);
   }
 
   // helpers
@@ -214,4 +219,27 @@ public class ProjectServiceImpl implements ProjectService {
   private java.util.Set<com.brandPitara.sfs.project.enums.PropertyType> entityDefaultTypes() {
     return new java.util.HashSet<>();
   }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Page<ProjectResponse> publicFeatured(Long builderId, Pageable pageable) {
+
+    Page<ProjectEntity> page = (builderId == null)
+        ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
+        : projectRepository.findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
+
+    var projectIds = page.getContent().stream().map(ProjectEntity::getId).toList();
+
+    java.util.Map<Long, java.util.List<ProjectMediaEntity>> mediaMap = java.util.Collections.emptyMap();
+
+    if (!projectIds.isEmpty()) {
+      var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
+      mediaMap = mediaList.stream()
+          .collect(java.util.stream.Collectors.groupingBy(m -> m.getProject().getId()));
+    }
+
+    final var finalMediaMap = mediaMap;
+    return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
+  }
+
 }

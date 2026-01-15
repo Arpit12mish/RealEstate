@@ -5,7 +5,9 @@ import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.service.ProjectMediaService;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
@@ -25,5 +27,20 @@ public class ProjectPublicController {
   @GetMapping("/{projectId}/media")
   public List<ProjectMediaResponse> media(@PathVariable Long projectId) {
     return projectMediaService.publicList(projectId);
+  }
+
+  @GetMapping("/feature")
+  public Page<ProjectResponse> featured(
+      @RequestParam(required = false) Long builderId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "10") int size
+  ) {
+    Pageable pageable = PageRequest.of(
+        page,
+        Math.min(size, 20),
+        Sort.by("priority").ascending().and(Sort.by("id").descending())
+    );
+
+    return projectService.publicFeatured(builderId, pageable);
   }
 }
