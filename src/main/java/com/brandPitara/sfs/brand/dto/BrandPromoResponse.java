@@ -1,19 +1,14 @@
 package com.brandPitara.sfs.brand.dto;
 
+
 import com.brandPitara.sfs.brand.enums.PromoMediaType;
 
 import lombok.*;
 
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
-public class BrandResponse {
+public class BrandPromoResponse {
   private Long id;
-  private String name;
-  private String logoUrl;
-  private String description;
-  private boolean active;
-  private boolean published;
-  private int priority;
   private boolean promoEnabled;
   private PromoMediaType promoMediaType;
   private String promoMediaUrl;

@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.brand.service;
 
+import com.brandPitara.sfs.brand.dto.BrandDetailPageResponse;
+import com.brandPitara.sfs.brand.dto.BrandPromoResponse;
 import com.brandPitara.sfs.brand.dto.BrandResponse;
 import com.brandPitara.sfs.brand.dto.BrandUpsertRequest;
 import org.springframework.data.domain.Page;
@@ -22,4 +24,11 @@ public interface BrandService {
 
   // Public
   Page<BrandResponse> listPublished(Pageable pageable);
+
+  // Public promo
+  BrandPromoResponse getPromo(Long id);
+
+  BrandDetailPageResponse getBrandPage(Long brandId, Long cityId);
+
+
 }

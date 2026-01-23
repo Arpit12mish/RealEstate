@@ -14,4 +14,5 @@ public interface DistributorRepository extends JpaRepository<DistributorEntity, 
   Page<DistributorEntity> findByDeletedFalse(Pageable pageable);
 
   Page<DistributorEntity> findByCityIdAndActiveTrueAndDeletedFalse(Long cityId, Pageable pageable);
+  
 }

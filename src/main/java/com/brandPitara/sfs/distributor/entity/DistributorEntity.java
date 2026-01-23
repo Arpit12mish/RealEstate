@@ -26,6 +26,10 @@ public class DistributorEntity extends BaseEntity {
   @Column(length = 200)
   private String email;
 
+  @Column(name = "logo_url", columnDefinition = "text")
+  private String logoUrl;
+
+
   @Column(name = "address_line1", length = 255)
   private String addressLine1;
 

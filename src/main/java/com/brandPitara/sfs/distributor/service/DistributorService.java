@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.distributor.service;
 
+import com.brandPitara.sfs.distributor.dto.DistributorCardResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorProfileResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorUpsertRequest;
@@ -16,7 +17,7 @@ public interface DistributorService {
   Page<DistributorResponse> adminList(Long cityId, Boolean active, Pageable pageable);
 
   // Public
-  Page<DistributorResponse> publicListByBrand(Long brandId, Long cityId, Pageable pageable);
+  Page<DistributorCardResponse> publicListByBrand(Long brandId, Long cityId, Pageable pageable);
   DistributorResponse publicGetDistributor(Long distributorId);
   DistributorProfileResponse publicGetProfile(Long distributorId);
 

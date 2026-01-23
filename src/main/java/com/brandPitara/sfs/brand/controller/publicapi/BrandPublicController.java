@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.brand.controller.publicapi;
 
+import com.brandPitara.sfs.brand.dto.BrandDetailPageResponse;
+import com.brandPitara.sfs.brand.dto.BrandPromoResponse;
 import com.brandPitara.sfs.brand.dto.BrandResponse;
 import com.brandPitara.sfs.brand.service.BrandService;
 import lombok.RequiredArgsConstructor;
@@ -40,4 +42,19 @@ public class BrandPublicController {
 
     return brandService.listPublished(pageable);
   }
+
+  @GetMapping("/{id}/promo")
+  public BrandPromoResponse getPromo(@PathVariable Long id) {
+    return brandService.getPromo(id);
+  }
+
+  @GetMapping("/{id}/page")
+  public BrandDetailPageResponse getBrandPage(
+      @PathVariable Long id,
+      @RequestParam(required = false) Long cityId
+  ) {
+    return brandService.getBrandPage(id, cityId);
+  }
+
+
 }

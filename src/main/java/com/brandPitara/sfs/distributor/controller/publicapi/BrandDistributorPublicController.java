@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.distributor.controller.publicapi;
 
+import com.brandPitara.sfs.distributor.dto.DistributorCardResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorResponse;
 import com.brandPitara.sfs.distributor.service.DistributorService;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +15,7 @@ public class BrandDistributorPublicController {
   private final DistributorService distributorService;
 
   @GetMapping("/{brandId}/distributors")
-  public Page<DistributorResponse> listBrandDistributors(
+  public Page<DistributorCardResponse> listBrandDistributors(
       @PathVariable Long brandId,
       @RequestParam(required = false) Long cityId,
       @RequestParam(defaultValue = "0") int page,

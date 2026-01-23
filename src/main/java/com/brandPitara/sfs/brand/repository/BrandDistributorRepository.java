@@ -36,4 +36,34 @@ public interface BrandDistributorRepository extends JpaRepository<BrandDistribut
     order by bd.priority asc, b.priority asc, b.name asc
   """)
   List<BrandDistributorEntity> findPublicBrandMappingsForDistributor(@Param("distributorId") Long distributorId);
+
+@Query("""
+select new com.brandPitara.sfs.distributor.dto.DistributorCardResponse(
+  d.id,
+  d.name,
+  d.phone,
+  d.whatsapp,
+  d.cityId,
+  coalesce(bd.priority, 0),
+  bd.offerTitle,
+  bd.offerBannerUrl,
+  bd.validTill
+)
+from BrandDistributorEntity bd
+join bd.distributor d
+where bd.brand.id = :brandId
+  and bd.deleted = false
+  and bd.active = true
+  and d.deleted = false
+  and d.active = true
+  and (:cityId is null or d.cityId = :cityId)
+order by bd.priority asc, bd.id asc
+""")
+Page<com.brandPitara.sfs.distributor.dto.DistributorCardResponse> findPublicDistributorCardsByBrand(
+    @Param("brandId") Long brandId,
+    @Param("cityId") Long cityId,
+    Pageable pageable
+);
+
+
 }

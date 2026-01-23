@@ -5,6 +5,7 @@ import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.repository.BrandDistributorRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.distributor.dto.DistributorBrandCard;
+import com.brandPitara.sfs.distributor.dto.DistributorCardResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorMediaResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorProfileResponse;
 import com.brandPitara.sfs.distributor.dto.DistributorResponse;
@@ -139,23 +140,30 @@ public class DistributorServiceImpl implements DistributorService {
 
   // ---------------- PUBLIC ----------------
 
+  // @Override
+  // @Transactional(readOnly = true)
+  // public Page<DistributorResponse> publicListByBrand(Long brandId, Long cityId, Pageable pageable) {
+  //   // This returns distributors mapped to brand where mapping is active, not deleted
+  //   Page<BrandDistributorEntity> mappingPage =
+  //       brandDistributorRepository.findByBrandIdAndActiveTrueAndDeletedFalseOrderByPriorityAsc(brandId, pageable);
+
+  //   var filtered = mappingPage.getContent().stream()
+  //       .filter(m -> m.getDistributor() != null)
+  //       .filter(m -> Boolean.TRUE.equals(m.getDistributor().getActive()))
+  //       .filter(m -> Boolean.FALSE.equals(m.getDistributor().getDeleted()))
+  //       .filter(m -> cityId == null || cityId.equals(m.getDistributor().getCityId()))
+  //       .map(m -> toResponse(m.getDistributor()))
+  //       .toList();
+
+  //   return new PageImpl<>(filtered, pageable, mappingPage.getTotalElements());
+  // }
+
   @Override
   @Transactional(readOnly = true)
-  public Page<DistributorResponse> publicListByBrand(Long brandId, Long cityId, Pageable pageable) {
-    // This returns distributors mapped to brand where mapping is active, not deleted
-    Page<BrandDistributorEntity> mappingPage =
-        brandDistributorRepository.findByBrandIdAndActiveTrueAndDeletedFalseOrderByPriorityAsc(brandId, pageable);
-
-    var filtered = mappingPage.getContent().stream()
-        .filter(m -> m.getDistributor() != null)
-        .filter(m -> Boolean.TRUE.equals(m.getDistributor().getActive()))
-        .filter(m -> Boolean.FALSE.equals(m.getDistributor().getDeleted()))
-        .filter(m -> cityId == null || cityId.equals(m.getDistributor().getCityId()))
-        .map(m -> toResponse(m.getDistributor()))
-        .toList();
-
-    return new PageImpl<>(filtered, pageable, mappingPage.getTotalElements());
+  public Page<DistributorCardResponse> publicListByBrand(Long brandId, Long cityId, Pageable pageable) {
+    return brandDistributorRepository.findPublicDistributorCardsByBrand(brandId, cityId, pageable);
   }
+
 
   @Override
   @Transactional(readOnly = true)

@@ -3,6 +3,7 @@ package com.brandPitara.sfs.brand.entity;
 import com.brandPitara.sfs.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
+import com.brandPitara.sfs.brand.enums.PromoMediaType;
 
 @Entity
 @Table(name = "brand")
@@ -26,6 +27,18 @@ public class BrandEntity extends BaseEntity {
   @Column(columnDefinition = "text")
   private String description;
 
+  // ✅ NEW (promo animation)
+  @Enumerated(EnumType.STRING)
+  @Column(name = "promo_media_type", length = 20)
+  private PromoMediaType promoMediaType; // GIF / LOTTIE
+
+  @Column(name = "promo_media_url", columnDefinition = "text")
+  private String promoMediaUrl;
+
+  @Column(name = "promo_enabled", nullable = false)
+  @Builder.Default
+  private Boolean promoEnabled = false;
+
   @Column(nullable = false)
   @Builder.Default
   private Boolean active = true;
@@ -41,4 +54,5 @@ public class BrandEntity extends BaseEntity {
   @Column(nullable = false)
   @Builder.Default
   private Boolean deleted = false;
+
 }
