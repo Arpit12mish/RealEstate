@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface PromoBannerService {
     List<PromoBannerResponse> getBannersForCategory(Long categoryId);
+    List<PromoBannerResponse> getBannersForCategoryAndSlot(Long categoryId, String slotKey, Integer maxItems);
 }

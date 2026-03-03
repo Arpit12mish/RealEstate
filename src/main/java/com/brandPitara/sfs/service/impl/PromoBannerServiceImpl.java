@@ -23,7 +23,6 @@ public class PromoBannerServiceImpl implements PromoBannerService {
     @Override
     public List<PromoBannerResponse> getBannersForCategory(Long categoryId) {
 
-        // Ensure category exists (nice error if wrong id)
         var category = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
 
@@ -34,9 +33,28 @@ public class PromoBannerServiceImpl implements PromoBannerService {
                 .toList();
     }
 
+    @Override
+    public List<PromoBannerResponse> getBannersForCategoryAndSlot(Long categoryId, String slotKey, Integer maxItems) {
+
+        var category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
+
+        String safeSlot = (slotKey == null || slotKey.isBlank()) ? "HERO" : slotKey.trim();
+        int limit = (maxItems == null || maxItems < 1) ? 10 : Math.min(maxItems, 25);
+
+        List<PromoBannerEntity> list = promoBannerRepository
+                .findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(categoryId, safeSlot);
+
+        if (list.size() > limit) list = list.subList(0, limit);
+
+        return list.stream()
+                .map(b -> toResponse(b, category.getName(), category.getSlug()))
+                .toList();
+    }
+
     private PromoBannerResponse toResponse(PromoBannerEntity b,
-                                           String categoryName,
-                                           String categorySlug) {
+                                          String categoryName,
+                                          String categorySlug) {
         return PromoBannerResponse.builder()
                 .id(b.getId())
                 .categoryId(b.getCategory().getId())

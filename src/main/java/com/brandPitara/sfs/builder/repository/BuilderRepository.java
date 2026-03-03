@@ -1,10 +1,12 @@
 package com.brandPitara.sfs.builder.repository;
 
+import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,4 +27,6 @@ public interface BuilderRepository extends JpaRepository<BuilderEntity, Long> {
   List<BuilderEntity> findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc();
 
   List<BuilderEntity> findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(Long cityId);
+  List<BuilderEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(Collection<Long> ids);
+  List<BuilderEntity> findByIdInAndActiveTrueAndDeletedFalse(Collection<Long> ids);
 }

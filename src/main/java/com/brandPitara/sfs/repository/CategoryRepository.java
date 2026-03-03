@@ -19,4 +19,5 @@ public interface CategoryRepository extends JpaRepository<CategoryEntity, Long> 
 
     // new: only active children by parent
     List<CategoryEntity> findByParentIdAndActiveTrueOrderByPriorityAsc(Long parentId);
+    List<CategoryEntity> findByActiveTrueOrderByPriorityAscIdAsc();
 }

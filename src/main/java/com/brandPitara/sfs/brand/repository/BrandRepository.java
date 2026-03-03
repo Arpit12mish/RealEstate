@@ -1,10 +1,14 @@
 package com.brandPitara.sfs.brand.repository;
 
 import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.builder.entity.BuilderEntity;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface BrandRepository extends JpaRepository<BrandEntity, Long> {
@@ -20,4 +24,10 @@ public interface BrandRepository extends JpaRepository<BrandEntity, Long> {
   Page<BrandEntity> findByPublishedAndActiveAndDeletedFalse(boolean published, boolean active, Pageable pageable);
 
   Page<BrandEntity> findByPublishedTrueAndActiveTrueAndDeletedFalse(Pageable pageable);
+  List<BrandEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(Collection<Long> ids);
+
+  Page<BrandEntity> findByCategory_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(
+      Long categoryId,
+      Pageable pageable
+  );
 }

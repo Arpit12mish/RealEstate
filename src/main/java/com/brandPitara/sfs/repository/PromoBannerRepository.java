@@ -8,13 +8,17 @@ import java.util.List;
 
 public interface PromoBannerRepository extends JpaRepository<PromoBannerEntity, Long> {
 
-    // Active banners for a category, ordered by priority
     List<PromoBannerEntity> findByCategory_IdAndActiveTrueOrderByPriorityAsc(Long categoryId);
 
-    // If you want date-aware banners (optional)
     List<PromoBannerEntity> findByCategory_IdAndActiveTrueAndStartAtLessThanEqualAndEndAtGreaterThanEqualOrderByPriorityAsc(
             Long categoryId,
             OffsetDateTime now1,
             OffsetDateTime now2
+    );
+
+    // ✅ FIXED (ActiveTrue)
+    List<PromoBannerEntity> findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(
+            Long categoryId,
+            String slotKey
     );
 }

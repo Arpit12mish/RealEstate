@@ -148,7 +148,7 @@ spring:
 # JPA / Hibernate
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     show-sql: false
     properties:

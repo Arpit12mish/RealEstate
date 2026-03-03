@@ -3,6 +3,8 @@ package com.brandPitara.sfs.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 @Entity
 @Table(name = "promo_banner")
 @Getter
@@ -38,9 +40,14 @@ public class PromoBannerEntity extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private Boolean active = true;
 
+    // ✅ NEW: used for placements (HERO/MID/BOTTOM/SEARCH_TOP etc.)
+    @Column(name = "slot_key", nullable = false, length = 20)
+    @Builder.Default
+    private String slotKey = "HERO";
+
     @Column(name = "start_at")
-    private java.time.OffsetDateTime startAt;
+    private OffsetDateTime startAt;
 
     @Column(name = "end_at")
-    private java.time.OffsetDateTime endAt;
+    private OffsetDateTime endAt;
 }

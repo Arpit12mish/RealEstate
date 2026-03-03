@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.brand.entity;
 
 import com.brandPitara.sfs.entity.BaseEntity;
+import com.brandPitara.sfs.entity.CategoryEntity;
+
 import jakarta.persistence.*;
 import lombok.*;
 import com.brandPitara.sfs.brand.enums.PromoMediaType;
@@ -54,5 +56,9 @@ public class BrandEntity extends BaseEntity {
   @Column(nullable = false)
   @Builder.Default
   private Boolean deleted = false;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "category_id")
+  private CategoryEntity category;
 
 }
