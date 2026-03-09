@@ -18,6 +18,7 @@ import com.brandPitara.sfs.dto.SendOtpRequest;
 import com.brandPitara.sfs.entity.RefreshToken;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.service.AppUserDetailsService;
+import com.brandPitara.sfs.service.GuestSessionService;
 import com.brandPitara.sfs.service.LoginHistoryService;
 import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.service.OtpService;
@@ -44,6 +45,7 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final LoginHistoryService loginHistoryService;
     private final OnboardingService onboardingService ;
+    private final GuestSessionService guestSessionService;
 
     // 1️⃣ Request OTP  TODO: add rate limiting per phone/IP here
     @PostMapping("/request-otp")
@@ -57,6 +59,8 @@ public class AuthController {
     @PostMapping("/verify-otp")
     public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpRequest request, HttpServletRequest httpRequest) {
 
+        System.out.println("VERIFY OTP deviceId = " + request.getDeviceId());
+        System.out.println("VERIFY OTP phone = " + request.getPhoneNumber());
         boolean ok = otpService.verifyOtp(request.getPhoneNumber(), request.getCode());
 
         if (!ok) {
@@ -71,6 +75,7 @@ public class AuthController {
 
         User user = loginResult.getUser();
         boolean isNewUser = loginResult.isNewUser();
+        guestSessionService.linkGuestSessionToUser(request.getDeviceId(), user);
 
         loginHistoryService.recordLogin(user, "OTP", true, request.getDeviceId(), request.getFcmToken(), httpRequest);
 

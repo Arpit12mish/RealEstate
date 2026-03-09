@@ -30,11 +30,22 @@ public class JwtTokenUtil {
 
     public String generateToken(UserDetails userDetails, Long userId, String phoneNumber, String role) {
         Map<String, Object> claims = new HashMap<>();
+        claims.put("principalType", "USER");
         claims.put("userId", userId);
         claims.put("phone", phoneNumber);
         claims.put("role", role);
 
-        return createToken(claims, phoneNumber); // ✅ subject = phone
+        return createToken(claims, phoneNumber);
+    }
+
+    public String generateGuestToken(Long guestSessionId, String installationId) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("principalType", "GUEST");
+        claims.put("guestSessionId", guestSessionId);
+        claims.put("installationId", installationId);
+        claims.put("role", "GUEST");
+
+        return createToken(claims, installationId);
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
@@ -51,7 +62,35 @@ public class JwtTokenUtil {
     }
 
     public String getUsernameFromToken(String token) {
-        return getClaimFromToken(token, Claims::getSubject); // ✅ returns phone now
+        return getClaimFromToken(token, Claims::getSubject);
+    }
+
+    public String getPrincipalTypeFromToken(String token) {
+        return getClaimFromToken(token, claims -> claims.get("principalType", String.class));
+    }
+
+    public String getRoleFromToken(String token) {
+        return getClaimFromToken(token, claims -> claims.get("role", String.class));
+    }
+
+    public Long getUserIdFromToken(String token) {
+        return getClaimFromToken(token, claims -> {
+            Object value = claims.get("userId");
+            if (value == null) return null;
+            return Long.valueOf(value.toString());
+        });
+    }
+
+    public Long getGuestSessionIdFromToken(String token) {
+        return getClaimFromToken(token, claims -> {
+            Object value = claims.get("guestSessionId");
+            if (value == null) return null;
+            return Long.valueOf(value.toString());
+        });
+    }
+
+    public String getInstallationIdFromToken(String token) {
+        return getClaimFromToken(token, claims -> claims.get("installationId", String.class));
     }
 
     public Date getExpirationDateFromToken(String token) {
@@ -72,8 +111,13 @@ public class JwtTokenUtil {
     }
 
     public boolean validateToken(String token, UserDetails userDetails) {
-        final String username = getUsernameFromToken(token); // phone
+        final String username = getUsernameFromToken(token);
         return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
+
+    public boolean validateGuestToken(String token, String installationId) {
+        final String subject = getUsernameFromToken(token);
+        return (subject.equals(installationId) && !isTokenExpired(token));
     }
 
     private boolean isTokenExpired(String token) {
