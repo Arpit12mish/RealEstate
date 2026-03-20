@@ -5,6 +5,8 @@ import com.brandPitara.sfs.entity.CityEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(name = "company_project")
 @Getter @Setter
@@ -34,6 +36,18 @@ public class CompanyProjectEntity extends BaseEntity {
 
   @Column(name = "address_line", columnDefinition = "text")
   private String addressLine;
+
+  @Column(name = "client_name", length = 180)
+  private String clientName;
+
+  @Column(name = "project_area", length = 100)
+  private String projectArea;
+
+  @Column(name = "detail3", length = 180)
+  private String detail3;
+
+  @Column(name = "tags", columnDefinition = "text")
+  private String tags;
 
   @Column(name = "cover_media_url", columnDefinition = "text")
   private String coverMediaUrl;

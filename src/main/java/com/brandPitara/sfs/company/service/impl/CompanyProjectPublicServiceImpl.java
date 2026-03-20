@@ -3,6 +3,7 @@ package com.brandPitara.sfs.company.service.impl;
 import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.company.service.CompanyProjectPublicService;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,12 @@ public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicServ
         .cityId(p.getCity() != null ? p.getCity().getId() : null)
         .cityName(p.getCity() != null ? p.getCity().getName() : null)
         .addressLine(p.getAddressLine())
+        .projectCityLatitude(p.getCity() != null ? p.getCity().getLatitude() : null)
+        .projectCityLongitude(p.getCity() != null ? p.getCity().getLongitude() : null)
+        .clientName(p.getClientName())
+        .projectArea(p.getProjectArea())
+        .detail3(p.getDetail3())
+        .tags(CompanyProjectTagMapper.toTags(p.getTags()))
         .coverMediaUrl(p.getCoverMediaUrl())
         .coverMediaType(p.getCoverMediaType())
         .build();
@@ -60,6 +67,12 @@ public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicServ
         .cityId(p.getCity() != null ? p.getCity().getId() : null)
         .cityName(p.getCity() != null ? p.getCity().getName() : null)
         .addressLine(p.getAddressLine())
+        .projectCityLatitude(p.getCity() != null ? p.getCity().getLatitude() : null)
+        .projectCityLongitude(p.getCity() != null ? p.getCity().getLongitude() : null)
+        .clientName(p.getClientName())
+        .projectArea(p.getProjectArea())
+        .detail3(p.getDetail3())
+        .tags(CompanyProjectTagMapper.toTags(p.getTags()))
         .description(p.getDescription())
         .coverMediaUrl(p.getCoverMediaUrl())
         .coverMediaType(p.getCoverMediaType())

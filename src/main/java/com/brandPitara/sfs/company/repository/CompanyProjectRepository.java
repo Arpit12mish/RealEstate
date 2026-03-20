@@ -4,6 +4,8 @@ import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface CompanyProjectRepository extends JpaRepository<CompanyProjectEntity, Long> {
@@ -13,4 +15,12 @@ public interface CompanyProjectRepository extends JpaRepository<CompanyProjectEn
   );
 
   Optional<CompanyProjectEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
+
+  List<CompanyProjectEntity> findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
+      Collection<Long> companyIds
+  );
+
+  List<CompanyProjectEntity> findTop10ByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
+      Long companyId
+  );
 }

@@ -19,6 +19,11 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
 
   List<CompanyEntity> findByIdInAndActiveTrueAndPublishedTrueAndDeletedFalse(Collection<Long> ids);
 
+  Page<CompanyEntity> findByCompanyTypeInAndActiveTrueAndPublishedTrueAndDeletedFalse(
+    Collection<String> companyTypes,
+    Pageable pageable
+);
+
 }
 
 

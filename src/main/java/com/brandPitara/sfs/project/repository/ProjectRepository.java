@@ -19,9 +19,14 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
 
   Page<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long builderId, Pageable pageable);
 
-  Page<ProjectEntity> findByPublishedTrueAndActiveTrueAndDeletedFalse(Pageable pageable);
 
   @EntityGraph(attributePaths = {"builder"}) // ✅ avoids lazy loading builder N+1
   List<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(Collection<Long> ids);
+
+  @EntityGraph(attributePaths = {"builder", "city"})
+  Page<ProjectEntity> findByPublishedTrueAndActiveTrueAndDeletedFalse(Pageable pageable);
+
+  @EntityGraph(attributePaths = {"builder", "city"})
+  Page<ProjectEntity> findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long cityId, Pageable pageable);
 
 }

@@ -1,0 +1,24 @@
+package com.brandPitara.sfs.project.mapper;
+
+import com.brandPitara.sfs.project.dto.ProjectFloorPlanResponse;
+import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
+
+public class ProjectFloorPlanMapper {
+
+  public static ProjectFloorPlanResponse toResponse(ProjectFloorPlanEntity e) {
+    return ProjectFloorPlanResponse.builder()
+        .id(e.getId())
+        .projectId(e.getProject() != null ? e.getProject().getId() : null)
+        .title(e.getTitle())
+        .floorCode(e.getFloorCode())
+        .imageUrl(e.getImageUrl())
+        .carpetArea(e.getCarpetArea())
+        .exclusiveArea(e.getExclusiveArea())
+        .superArea(e.getSuperArea())
+        .unitLabel(e.getUnitLabel())
+        .description(e.getDescription())
+        .sortOrder(e.getSortOrder() != null ? e.getSortOrder() : 0)
+        .active(Boolean.TRUE.equals(e.getActive()))
+        .build();
+  }
+}
