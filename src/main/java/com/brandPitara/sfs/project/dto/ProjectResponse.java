@@ -2,13 +2,18 @@ package com.brandPitara.sfs.project.dto;
 
 import com.brandPitara.sfs.project.enums.ProjectStatus;
 import com.brandPitara.sfs.project.enums.PropertyType;
+import com.brandPitara.sfs.projectmeter.dto.ProjectAmenitiesResponse;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Set;
 
-@Getter @Setter
-@NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class ProjectResponse {
 
   private Long id;
@@ -41,9 +46,20 @@ public class ProjectResponse {
   private boolean published;
   private int priority;
 
-  private String coverMediaUrl;     // image/thumbnail for card
-  private String coverMediaType;    // IMAGE/VIDEO etc (optional but helpful)
-  private String brochureUrl;       // PDF url if exists
-  private boolean hasVideo;         // optional UX indicator
+  private String coverMediaUrl;
+  private String coverMediaType;
+  private String brochureUrl;
+  private boolean hasVideo;
   private boolean hasImages;
+
+  private Long favoriteCount;
+  private Boolean isFavorite;
+
+  // --- aggregated sections for normal project screen ---
+  private ProjectPricingSummaryResponse pricing;
+  private ProjectLocationResponse location;
+  private List<ProjectFloorPlanGroupResponse> floorPlanGroups;
+  private ProjectConnectivityResponse connectivity;
+  private List<ProjectMediaResponse> glimpses;
+  private ProjectAmenitiesResponse amenities;
 }

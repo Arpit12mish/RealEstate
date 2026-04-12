@@ -9,6 +9,7 @@ import com.brandPitara.sfs.project.dto.ProjectCardDto;
 import com.brandPitara.sfs.project.mapper.ProjectCardMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -24,6 +25,7 @@ public class TopProjectsSectionLoader implements HomeSectionLoader {
 
   private final ProjectRepository projectRepository;
   private final ProjectMediaRepository projectMediaRepository;
+  private final ProjectFavoriteService projectFavoriteService;
 
   @Override
   public HomeSectionType supports() {
@@ -35,7 +37,6 @@ public class TopProjectsSectionLoader implements HomeSectionLoader {
 
     int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
 
-    // NOTE: if you want city filter for projects later, we'll add repository method.
     var projects = projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(
         PageRequest.of(0, limit, Sort.by("priority").ascending().and(Sort.by("id").descending()))
     ).getContent();
@@ -52,6 +53,8 @@ public class TopProjectsSectionLoader implements HomeSectionLoader {
     List<ProjectCardDto> cards = projects.stream()
         .map(p -> ProjectCardMapper.toCard(p, mediaByProject.getOrDefault(p.getId(), List.of())))
         .toList();
+
+    projectFavoriteService.enrichProjectCards(cards);
 
     return HomeSectionDto.<ProjectCardDto>builder()
         .type(HomeSectionType.TOP_PROJECTS)

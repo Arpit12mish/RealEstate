@@ -23,4 +23,5 @@ public class ArchitectDesignerDetailResponse {
   private List<CompanyStatDto> stats;
   private List<CompanyAwardDto> awardsAndPublications;
   private List<CompanyCertificateDto> certificates;
+  private java.util.List<ConnectedBrandDto> connectedBrands;
 }

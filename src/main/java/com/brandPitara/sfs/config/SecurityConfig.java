@@ -17,62 +17,65 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 @RequiredArgsConstructor
+@EnableMethodSecurity
 public class SecurityConfig {
 
     private final JwtRequestFilter jwtRequestFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-@Bean
-public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
 
-    http
-        .csrf(csrf -> csrf.disable())
-        .cors(Customizer.withDefaults())
-        .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
-        .authorizeHttpRequests(auth -> auth
+        http
+            .csrf(csrf -> csrf.disable())
+            .cors(Customizer.withDefaults())
+            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
+            .authorizeHttpRequests(auth -> auth
+
                 // 🔓 Public health & docs
                 .requestMatchers(
-                        "/api/health",
-                        "/actuator/health",
-                        "/v3/api-docs/**",
-                        "/swagger-ui/**",
-                        "/swagger-ui.html"
+                    "/api/health",
+                    "/actuator/health",
+                    "/v3/api-docs/**",
+                    "/swagger-ui/**",
+                    "/swagger-ui.html"
                 ).permitAll()
 
                 // 🔓 Auth-related APIs
                 .requestMatchers("/api/auth/**").permitAll()
 
+                // 🔓 Public app content APIs (privacy / terms / about / contact / share links)
+                .requestMatchers(HttpMethod.GET, "/api/app-content/**").permitAll()
+
+                // 🔓 Public provider APIs
                 .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
 
-                // 🔓 PUBLIC: business listing & details (GET only)
-                .requestMatchers(org.springframework.http.HttpMethod.GET, 
+                // 🔓 Public listing / search / calculators
+                .requestMatchers(
+                    HttpMethod.GET,
+                    "/api/public/**",
+                    "/api/projects/**",
                     "/api/businesses/**",
-                "/api/search/**")
-                    .permitAll()
+                    "/api/public/stamp-duty/**",
+                    "/api/public/interior-cost/**",
+                    "/api/search/**"
+                ).permitAll()
 
-                // everything else needs JWT
+                // 🔐 Everything else requires JWT
                 .anyRequest().authenticated()
-        );
+            );
 
-    // ❌ REMOVE httpBasic – we don’t want Basic auth at all
-    // .httpBasic(Customizer.withDefaults());
+        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
-    // 🔑 Register JWT filter (for endpoints that are protected)
-    http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
 
-    return http.build();
-}
-
-
-
-    // 🔐 AuthenticationManager for /login (email+password flow)
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
     }
 
-    // 🔐 Password encoder for hashing passwords (signup / phone-only synthetic passwords)
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

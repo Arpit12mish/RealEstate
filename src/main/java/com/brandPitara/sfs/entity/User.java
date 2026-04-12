@@ -69,4 +69,10 @@ public class User {
 
     @Column(name = "role_selected_at")
     private OffsetDateTime roleSelectedAt;
+
+    @Column(name = "profile_photo_url", columnDefinition = "text")
+    private String profilePhotoUrl;
+
+    @Column(name = "profile_photo_storage_key", length = 500)
+    private String profilePhotoStorageKey;
 }

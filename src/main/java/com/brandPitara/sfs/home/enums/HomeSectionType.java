@@ -22,6 +22,8 @@ public enum HomeSectionType {
   //Builder screen
   BUILDER_HERO,
   BUILDER_STATS,
-  BUILDER_STORY
+  BUILDER_STORY,
+  BUILDER_CREDIBILITY,
+  BUILDER_CREDIBILITY_CARDS
 
 }

@@ -1,7 +1,11 @@
 package com.brandPitara.sfs.projectmeter.service.impl;
 
+import com.brandPitara.sfs.buildercredibility.dto.BuilderCredibilitySummaryResponse;
+import com.brandPitara.sfs.buildercredibility.service.BuilderCredibilityService;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
+import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenityItemResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenitiesResponse;
@@ -13,6 +17,7 @@ import com.brandPitara.sfs.projectmeter.dto.ProjectCostBreakdownResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectLandLicenseResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectLandUtilizationResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectLocationRadarResponse;
+import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterDetailResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterSummaryResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectPaymentMilestoneResponse;
@@ -40,19 +45,14 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectPaymentMilestoneReposi
 import com.brandPitara.sfs.projectmeter.repository.ProjectPriceHistoryRepository;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
-import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
-import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -62,7 +62,6 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private final ProjectRepository projectRepository;
     private final ProjectMeterSnapshotRepository projectMeterSnapshotRepository;
     private final ProjectConstructionStageRepository projectConstructionStageRepository;
-
     private final ProjectComplianceItemRepository projectComplianceItemRepository;
     private final ProjectPriceHistoryRepository projectPriceHistoryRepository;
     private final ProjectPaymentMilestoneRepository projectPaymentMilestoneRepository;
@@ -71,6 +70,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private final ProjectLocationScoreRepository projectLocationScoreRepository;
     private final ProjectAmenityProgressRepository projectAmenityProgressRepository;
     private final ProjectMediaRepository projectMediaRepository;
+    private final BuilderCredibilityService builderCredibilityService;
 
     @Override
     @Transactional(readOnly = true)
@@ -214,6 +214,9 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .items(amenityEntities.stream().map(this::toAmenityItemResponse).toList())
             .build();
 
+        BuilderCredibilitySummaryResponse builderCredibility =
+            builderCredibilityService.publicGetCredibilitySummary(project.getBuilder().getId());
+
         return ProjectMeterDetailResponse.builder()
             .summary(summary)
             .construction(construction)
@@ -226,6 +229,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .landUtilization(landUtilization)
             .locationRadar(locationRadar)
             .amenities(amenities)
+            .builderCredibility(builderCredibility)
             .build();
     }
 
@@ -419,7 +423,6 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
         if (value == null) return 0;
         return Math.max(0, Math.min(100, value));
     }
-
 
     @Override
     @Transactional(readOnly = true)

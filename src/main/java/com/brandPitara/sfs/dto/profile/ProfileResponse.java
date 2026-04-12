@@ -11,6 +11,7 @@ import java.time.OffsetDateTime;
 public class ProfileResponse {
     private Long id;
     private String name;
+    private String profilePhotoUrl;
     private String email;
     private String phoneNumber;
     private boolean verified;

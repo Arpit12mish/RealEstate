@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.projectmeter.dto;
 
+import com.brandPitara.sfs.buildercredibility.dto.BuilderCredibilitySummaryResponse;
 import lombok.*;
 
 import java.util.List;
@@ -21,4 +22,6 @@ public class ProjectMeterDetailResponse {
     private ProjectLandUtilizationResponse landUtilization;
     private ProjectLocationRadarResponse locationRadar;
     private ProjectAmenitiesResponse amenities;
+
+    private BuilderCredibilitySummaryResponse builderCredibility;
 }

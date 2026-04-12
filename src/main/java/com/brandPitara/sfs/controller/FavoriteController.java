@@ -1,65 +1,51 @@
 package com.brandPitara.sfs.controller;
 
-import com.brandPitara.sfs.dto.BusinessResponse;
-import com.brandPitara.sfs.dto.PageResponse;
-import com.brandPitara.sfs.service.FavoriteService;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import com.brandPitara.sfs.project.dto.ProjectResponse;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/favorites")
+@RequestMapping("/api/project-favorites")
 @RequiredArgsConstructor
 public class FavoriteController {
 
-    private final FavoriteService favoriteService;
+    private final ProjectFavoriteService projectFavoriteService;
 
-    // ❤️ Add
-    @PostMapping("/{businessId}")
-    public ResponseEntity<?> add(@PathVariable Long businessId) {
-        favoriteService.addFavorite(businessId);
-        return ResponseEntity.ok(Map.of("status", "FAVORITED"));
-    }
+    @PostMapping("/{projectId}/toggle")
+    public ResponseEntity<?> toggle(@PathVariable Long projectId) {
+        projectFavoriteService.toggleProjectFavorite(projectId);
 
-    // 💔 Remove
-    @DeleteMapping("/{businessId}")
-    public ResponseEntity<?> remove(@PathVariable Long businessId) {
-        favoriteService.removeFavorite(businessId);
-        return ResponseEntity.ok(Map.of("status", "UNFAVORITED"));
-    }
-
-    // ✅ Exists (useful for heart icon)
-    @GetMapping("/exists/{businessId}")
-    public ResponseEntity<?> exists(@PathVariable Long businessId) {
-        boolean fav = favoriteService.isFavorite(businessId);
-        return ResponseEntity.ok(Map.of("favorite", fav));
-    }
-
-    // 📃 List (paged)
-    @GetMapping
-    public ResponseEntity<PageResponse<BusinessResponse>> list(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(50) int size
-    ) {
-        return ResponseEntity.ok(favoriteService.listFavorites(page, size));
-    }
-
-    @PostMapping("/{businessId}/toggle")
-    public ResponseEntity<?> toggle(@PathVariable Long businessId) {
-        favoriteService.toggleFavorite(businessId);
-
-        boolean isFav = favoriteService.isFavorite(businessId);
-        long count = favoriteService.getFavoriteCount(businessId); // add method OR use repository directly
+        boolean isFavorite = projectFavoriteService.isProjectFavorite(projectId);
+        long favoriteCount = projectFavoriteService.getProjectFavoriteCount(projectId);
 
         return ResponseEntity.ok(Map.of(
-                "status", isFav ? "FAVORITED" : "UNFAVORITED",
-                "isFavorite", isFav,
-                "favoriteCount", count
+                "targetType", "PROJECT",
+                "targetId", projectId,
+                "isFavorite", isFavorite,
+                "favoriteCount", favoriteCount
         ));
     }
 
+    @GetMapping("/{projectId}/exists")
+    public ResponseEntity<?> exists(@PathVariable Long projectId) {
+        return ResponseEntity.ok(Map.of(
+                "isFavorite", projectFavoriteService.isProjectFavorite(projectId)
+        ));
+    }
+
+    @GetMapping
+    public ResponseEntity<Page<ProjectResponse>> list(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, Math.min(size, 50));
+        return ResponseEntity.ok(projectFavoriteService.listMyFavoriteProjects(pageable));
+    }
 }

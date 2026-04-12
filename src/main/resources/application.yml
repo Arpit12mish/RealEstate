@@ -121,7 +121,7 @@
 spring:
   application:
     name: sfs
-    mail:
+  mail:
     host: smtp.gmail.com
     port: 587
     username: your-email@gmail.com
@@ -181,10 +181,15 @@ logging:
 # ============================
 jwt: 
   secret: 1c861b0ea3dcdfbad078d532b2d7e19bf58a48db8bdbf785dfeb39aed44cb6a8
+
+  refresh:
+      expiration:
+        days: 1
   expiration:
-    ms: 86400000     # 24 hours = 24 * 60 * 60 * 1000
+    ms: 60000     # 24 hours = 24 * 60 * 60 * 1000
 
-
+# jwt.expiration.ms=60000
+# jwt.refresh.expiration.days=1
 # ============================
 # TWILIO CONFIGURATION
 # ============================

@@ -11,12 +11,21 @@ import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.service.ProjectDetailComposer;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +34,8 @@ public class ProjectServiceImpl implements ProjectService {
   private final ProjectRepository projectRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectMediaRepository projectMediaRepository;
+  private final ProjectFavoriteService projectFavoriteService;
+  private final ProjectDetailComposer projectDetailComposer;
 
   @jakarta.persistence.PersistenceContext
   private jakarta.persistence.EntityManager em;
@@ -160,34 +171,33 @@ public class ProjectServiceImpl implements ProjectService {
   @Override
   @Transactional(readOnly = true)
   public Page<ProjectResponse> publicListByBuilder(Long builderId, Pageable pageable) {
-
     Page<ProjectEntity> page = projectRepository
         .findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
 
-    var projectIds = page.getContent().stream()
+    List<Long> projectIds = page.getContent().stream()
         .map(ProjectEntity::getId)
         .toList();
 
-    java.util.Map<Long, java.util.List<com.brandPitara.sfs.project.entity.ProjectMediaEntity>> mediaMap =
-        java.util.Collections.emptyMap();
-
+    Map<Long, List<ProjectMediaEntity>> mediaMap;
     if (!projectIds.isEmpty()) {
       var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
-      mediaMap = mediaList.stream().collect(
-          java.util.stream.Collectors.groupingBy(m -> m.getProject().getId())
-      );
+      mediaMap = mediaList.stream()
+          .collect(Collectors.groupingBy(m -> m.getProject().getId()));
+    } else {
+      mediaMap = Collections.emptyMap();
     }
 
-    final var finalMediaMap = mediaMap;
+    List<ProjectResponse> responses = page.getContent().stream()
+        .map(p -> ProjectMapper.toResponse(
+            p,
+            mediaMap.getOrDefault(p.getId(), List.of())
+        ))
+        .toList();
 
-    // return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
-    return page.map(p -> ProjectMapper.toResponse(
-    p,
-    finalMediaMap.getOrDefault(p.getId(), java.util.List.of())
-));
+    projectFavoriteService.enrichProjects(responses);
 
+    return new PageImpl<>(responses, pageable, page.getTotalElements());
   }
-
 
   @Override
   @Transactional(readOnly = true)
@@ -198,14 +208,15 @@ public class ProjectServiceImpl implements ProjectService {
     if (!Boolean.TRUE.equals(entity.getPublished()) || !Boolean.TRUE.equals(entity.getActive())) {
       throw new NotFoundException("Project not found: " + projectId);
     }
-    // ✅ Fetch media for this project
-    var media = projectMediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId);
 
-    // ✅ Enriched response (cover/brochure flags)
-    return ProjectMapper.toResponse(entity, media);
+    List<ProjectMediaEntity> media =
+        projectMediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId);
+
+    ProjectResponse response = projectDetailComposer.compose(entity, media);
+    projectFavoriteService.enrichProject(response);
+    return response;
   }
 
-  // helpers
   private CityEntity resolveCity(Long cityId) {
     if (cityId == null) return null;
     return em.getReference(CityEntity.class, cityId);
@@ -223,23 +234,32 @@ public class ProjectServiceImpl implements ProjectService {
   @Override
   @Transactional(readOnly = true)
   public Page<ProjectResponse> publicFeatured(Long builderId, Pageable pageable) {
-
     Page<ProjectEntity> page = (builderId == null)
         ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
         : projectRepository.findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
 
-    var projectIds = page.getContent().stream().map(ProjectEntity::getId).toList();
+    List<Long> projectIds = page.getContent().stream()
+        .map(ProjectEntity::getId)
+        .toList();
 
-    java.util.Map<Long, java.util.List<ProjectMediaEntity>> mediaMap = java.util.Collections.emptyMap();
-
+    Map<Long, List<ProjectMediaEntity>> mediaMap;
     if (!projectIds.isEmpty()) {
       var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
       mediaMap = mediaList.stream()
-          .collect(java.util.stream.Collectors.groupingBy(m -> m.getProject().getId()));
+          .collect(Collectors.groupingBy(m -> m.getProject().getId()));
+    } else {
+      mediaMap = Collections.emptyMap();
     }
 
-    final var finalMediaMap = mediaMap;
-    return page.map(p -> ProjectMapper.toResponse(p, finalMediaMap.get(p.getId())));
-  }
+    List<ProjectResponse> responses = page.getContent().stream()
+        .map(p -> ProjectMapper.toResponse(
+            p,
+            mediaMap.getOrDefault(p.getId(), List.of())
+        ))
+        .toList();
 
+    projectFavoriteService.enrichProjects(responses);
+
+    return new PageImpl<>(responses, pageable, page.getTotalElements());
+  }
 }

@@ -1,5 +1,8 @@
 package com.brandPitara.sfs.controller;
 
+import com.brandPitara.sfs.dto.profile.ConfirmProfilePhotoRequest;
+import com.brandPitara.sfs.dto.profile.PresignProfilePhotoRequest;
+import com.brandPitara.sfs.dto.profile.PresignProfilePhotoResponse;
 import com.brandPitara.sfs.dto.profile.ProfileResponse;
 import com.brandPitara.sfs.dto.profile.UpdateProfileRequest;
 import com.brandPitara.sfs.service.ProfileService;
@@ -17,7 +20,7 @@ public class ProfileController {
 
     @GetMapping
     public ProfileResponse getMyProfile(Authentication authentication) {
-        String phoneNumber = authentication.getName(); // JWT subject
+        String phoneNumber = authentication.getName();
         return profileService.getMyProfile(phoneNumber);
     }
 
@@ -28,5 +31,23 @@ public class ProfileController {
     ) {
         String phoneNumber = authentication.getName();
         return profileService.updateMyProfile(phoneNumber, request);
+    }
+
+    @PostMapping("/photo/presign")
+    public PresignProfilePhotoResponse createProfilePhotoPresign(
+            Authentication authentication,
+            @Valid @RequestBody PresignProfilePhotoRequest request
+    ) {
+        String phoneNumber = authentication.getName();
+        return profileService.createProfilePhotoPresign(phoneNumber, request);
+    }
+
+    @PostMapping("/photo/confirm")
+    public ProfileResponse confirmProfilePhoto(
+            Authentication authentication,
+            @Valid @RequestBody ConfirmProfilePhotoRequest request
+    ) {
+        String phoneNumber = authentication.getName();
+        return profileService.confirmProfilePhoto(phoneNumber, request);
     }
 }

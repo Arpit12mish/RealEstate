@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.exception;
 
+import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 
@@ -39,7 +40,7 @@ public class GlobalExceptionHandler {
         HttpRequestMethodNotSupportedException ex,
         HttpServletRequest req
     ) {
-    return build(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), req);
+        return build(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage(), req);
     }
 
     @ExceptionHandler(ForbiddenException.class)
@@ -68,7 +69,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleConstraint(DataIntegrityViolationException ex, HttpServletRequest req) {
-        // Optional: you can inspect ex.getMostSpecificCause().getMessage() for better messages
         return build(HttpStatus.CONFLICT, "Constraint violation", req);
     }
 
@@ -81,31 +81,39 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleAuth(AuthenticationException ex, HttpServletRequest req) {
         return build(HttpStatus.UNAUTHORIZED, "Unauthorized", req);
     }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiError> handleNotFound(NotFoundException ex, HttpServletRequest req) {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
     }
 
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ApiError> handleJpaNotFound(EntityNotFoundException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
+    }
 
-  @ExceptionHandler(Exception.class)
-  public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest request) {
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req);
+    }
 
-    // ✅ THIS is what you're missing
-    log.error("Unhandled error: method={} path={} msg={}",
-        request.getMethod(),
-        request.getRequestURI(),
-        ex.getMessage(),
-        ex
-    );
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleGeneric(Exception ex, HttpServletRequest request) {
+        log.error("Unhandled error: method={} path={} msg={}",
+            request.getMethod(),
+            request.getRequestURI(),
+            ex.getMessage(),
+            ex
+        );
 
-    ApiError body = ApiError.builder()
-        .timestamp(OffsetDateTime.now())
-        .status(500)
-        .error("Internal Server Error")
-        .message("Internal server error")
-        .path(request.getRequestURI())
-        .build();
+        ApiError body = ApiError.builder()
+            .timestamp(OffsetDateTime.now())
+            .status(500)
+            .error("Internal Server Error")
+            .message("Internal server error")
+            .path(request.getRequestURI())
+            .build();
 
-    return ResponseEntity.status(500).body(body);
-  }
+        return ResponseEntity.status(500).body(body);
+    }
 }

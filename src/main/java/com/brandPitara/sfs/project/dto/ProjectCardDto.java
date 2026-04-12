@@ -3,8 +3,11 @@ package com.brandPitara.sfs.project.dto;
 import lombok.*;
 import java.util.Set;
 
-@Getter @Setter
-@NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class ProjectCardDto {
   private Long id;
   private String name;
@@ -23,5 +26,8 @@ public class ProjectCardDto {
   private String coverMediaUrl;
   private String coverMediaType;
 
-  private Set<?> propertyTypes; // keep if needed
+  private Set<?> propertyTypes;
+
+  private Long favoriteCount;
+  private Boolean isFavorite;
 }

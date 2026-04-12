@@ -15,6 +15,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
+import com.brandPitara.sfs.company.entity.CompanyStatEntity;
+import com.brandPitara.sfs.company.repository.CompanyStatRepository;
 
 import java.util.*;
 import java.util.function.Function;
@@ -29,6 +31,7 @@ public class DesignersSectionLoader implements HomeSectionLoader {
 
   private final CompanyRepository companyRepository;
   private final CompanyProjectRepository companyProjectRepository;
+  private final CompanyStatRepository companyStatRepository;
 
   @Override
   public HomeSectionType supports() {
@@ -58,6 +61,18 @@ public class DesignersSectionLoader implements HomeSectionLoader {
 
     List<Long> companyIds = companies.stream().map(CompanyEntity::getId).toList();
 
+    Map<Long, String> projectsCompletedMap = companyStatRepository
+        .findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyIds)
+        .stream()
+        .filter(stat -> stat.getLabel() != null)
+        .filter(stat -> "PROJECTS COMPLETED".equalsIgnoreCase(stat.getLabel().trim()))
+        .collect(Collectors.toMap(
+            stat -> stat.getCompany().getId(),
+            CompanyStatEntity::getValue,
+            (first, second) -> first,
+            LinkedHashMap::new
+        ));
+
     Map<Long, CompanyProjectEntity> topProjectByCompanyId =
         companyProjectRepository
             .findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(companyIds)
@@ -70,7 +85,11 @@ public class DesignersSectionLoader implements HomeSectionLoader {
             ));
 
     List<ArchitectDesignerCardDto> cards = companies.stream()
-        .map(company -> toCard(company, topProjectByCompanyId.get(company.getId())))
+        .map(company -> toCard(
+            company,
+            topProjectByCompanyId.get(company.getId()),
+            projectsCompletedMap.get(company.getId())
+        ))
         .toList();
 
     return HomeSectionDto.<ArchitectDesignerCardDto>builder()
@@ -85,7 +104,7 @@ public class DesignersSectionLoader implements HomeSectionLoader {
         && ALLOWED_TYPES.contains(company.getCompanyType().trim().toUpperCase());
   }
 
-  private ArchitectDesignerCardDto toCard(CompanyEntity company, CompanyProjectEntity project) {
+  private ArchitectDesignerCardDto toCard(CompanyEntity company, CompanyProjectEntity project, String projectsCompleted) {
     return ArchitectDesignerCardDto.builder()
         .companyId(company.getId())
         .name(company.getName())
@@ -96,6 +115,7 @@ public class DesignersSectionLoader implements HomeSectionLoader {
         .addressLine(project != null ? project.getAddressLine() : null)
         .projectCityLatitude(project != null && project.getCity() != null ? project.getCity().getLatitude() : null)
         .projectCityLongitude(project != null && project.getCity() != null ? project.getCity().getLongitude() : null)
+        .projectsCompleted(projectsCompleted)
         .detail1(project != null ? project.getClientName() : null)
         .detail2(project != null ? project.getProjectArea() : null)
         .detail3(project != null ? project.getDetail3() : null)

@@ -24,6 +24,8 @@ public class ArchitectDesignerCardDto {
     private Double projectCityLatitude;
     private Double projectCityLongitude;
 
+  private String projectsCompleted;
+
   private String detail1; // clientName
   private String detail2; // projectArea
   private String detail3; // optional
