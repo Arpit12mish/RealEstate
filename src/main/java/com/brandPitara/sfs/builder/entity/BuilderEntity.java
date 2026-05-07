@@ -6,7 +6,13 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "builder")
+@Table(
+    name = "builder",
+    indexes = {
+        @Index(name = "idx_builder_city_id", columnList = "city_id"),
+        @Index(name = "idx_builder_public",  columnList = "published,active,deleted")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

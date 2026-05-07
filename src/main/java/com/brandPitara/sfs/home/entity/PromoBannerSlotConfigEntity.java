@@ -12,7 +12,14 @@ import lombok.*;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "promo_banner_slot_config")
+@Table(
+    name = "promo_banner_slot_config",
+    indexes = {
+        @Index(name = "idx_promo_slot_category_id", columnList = "home_category_id"),
+        @Index(name = "idx_promo_slot_city_id",     columnList = "city_id"),
+        @Index(name = "idx_promo_slot_screen",      columnList = "screen")
+    }
+)
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class PromoBannerSlotConfigEntity extends BaseEntity {

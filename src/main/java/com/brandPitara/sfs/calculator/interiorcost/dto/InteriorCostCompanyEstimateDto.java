@@ -34,6 +34,11 @@ public class InteriorCostCompanyEstimateDto {
     private BigDecimal contingencyPercent;
     private BigDecimal taxPercent;
 
+    private BigDecimal matchedMinArea;
+    private BigDecimal matchedMaxArea;
+    private String matchType; // EXACT or APPROXIMATE
+    private Boolean approximate;
+
     private List<String> assumptions;
     private Boolean isLowest;
 }

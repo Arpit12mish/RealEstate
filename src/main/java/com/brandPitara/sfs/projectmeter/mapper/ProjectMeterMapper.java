@@ -1,10 +1,15 @@
 package com.brandPitara.sfs.projectmeter.mapper;
 
+import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.projectmeter.dto.ProjectConstructionStageResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterSummaryResponse;
 import com.brandPitara.sfs.projectmeter.entity.ProjectConstructionStageEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
+
+import java.time.OffsetDateTime;
+import java.util.List;
 
 public final class ProjectMeterMapper {
 
@@ -22,6 +27,7 @@ public final class ProjectMeterMapper {
             .verified(entity.getVerified())
             .computedAt(entity.getComputedAt())
             .lastVerifiedAt(entity.getLastVerifiedAt())
+            .lastUpdatedAt(resolveLastUpdatedAt(entity))
             .build();
     }
 
@@ -45,9 +51,9 @@ public final class ProjectMeterMapper {
     }
 
     public static ProjectMeterCardResponse toCardResponse(
-        com.brandPitara.sfs.project.entity.ProjectEntity project,
-        com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity snapshot,
-        java.util.List<com.brandPitara.sfs.project.entity.ProjectMediaEntity> media
+        ProjectEntity project,
+        ProjectMeterSnapshotEntity snapshot,
+        List<ProjectMediaEntity> media
     ) {
         var picked = com.brandPitara.sfs.project.mapper.ProjectMediaPicker.pick(media, false);
 
@@ -78,6 +84,21 @@ public final class ProjectMeterMapper {
             .constructionStartDate(snapshot != null ? snapshot.getConstructionStartDate() : null)
             .timelineStatus(timelineStatus)
             .delayDays(delayDays)
+            .lastUpdatedAt(resolveLastUpdatedAt(snapshot))
             .build();
+    }
+
+    public static OffsetDateTime resolveLastUpdatedAt(ProjectMeterSnapshotEntity entity) {
+        if (entity == null) return null;
+
+        if (entity.getLastVerifiedAt() != null) {
+            return entity.getLastVerifiedAt();
+        }
+
+        if (entity.getComputedAt() != null) {
+            return entity.getComputedAt();
+        }
+
+        return entity.getUpdatedAt();
     }
 }

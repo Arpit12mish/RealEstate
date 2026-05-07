@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import java.util.List;
 
 @Service
@@ -24,6 +24,7 @@ public class ProjectHighlightServiceImpl implements ProjectHighlightService {
   private final ProjectRepository projectRepository;
   private final ProjectHighlightRepository highlightRepository;
   private final ContentVersionService contentVersionService;
+  private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -91,9 +92,7 @@ public class ProjectHighlightServiceImpl implements ProjectHighlightService {
     ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
 
-    if (!Boolean.TRUE.equals(project.getPublished()) || !Boolean.TRUE.equals(project.getActive())) {
-      throw new EntityNotFoundException("Project not found: " + projectId);
-    }
+    projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
 
     return highlightRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(projectId)
         .stream()

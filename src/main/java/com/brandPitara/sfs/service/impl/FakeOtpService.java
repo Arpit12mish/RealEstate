@@ -1,27 +1,31 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.service.OtpService;
+import com.brandPitara.sfs.service.model.OtpSendResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-// @Profile("dev")
+@Profile("local-fake-otp")
 public class FakeOtpService implements OtpService {
 
     @Override
-    public void sendOtp(String phoneNumber) {
-        // No real SMS in dev
+    public OtpSendResult sendOtp(String phoneNumber) {
         String fixedCode = "123456";
         log.info("FAKE OTP: sending {} to phone {} (no real SMS sent)", fixedCode, phoneNumber);
-        // optional: store in DB if your flow expects an Otp row
+
+        return OtpSendResult.builder()
+                .status("OTP_SENT")
+                .message("OTP sent successfully")
+                .resendAfterSeconds(30)
+                .build();
     }
 
     @Override
     public boolean verifyOtp(String phoneNumber, String code) {
         log.info("FAKE OTP verify for {} with code {}", phoneNumber, code);
-        // simplest rule: one fixed code; you can make it more flexible later
         return "123456".equals(code);
     }
 }

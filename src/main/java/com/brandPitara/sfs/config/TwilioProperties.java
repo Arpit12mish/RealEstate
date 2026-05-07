@@ -15,4 +15,6 @@ public class TwilioProperties {
     private String authToken;
     private String verifyServiceSid;
     private String phoneNumber;
+
+    private String verifyTemplateSid;
 }

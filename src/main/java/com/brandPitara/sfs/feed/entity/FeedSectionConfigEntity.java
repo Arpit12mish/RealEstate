@@ -5,7 +5,14 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "feed_section_config")
+@Table(
+    name = "feed_section_config",
+    indexes = {
+        @Index(name = "idx_feed_section_screen",      columnList = "screen"),
+        @Index(name = "idx_feed_section_category_id", columnList = "category_id"),
+        @Index(name = "idx_feed_section_city_id",     columnList = "city_id")
+    }
+)
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class FeedSectionConfigEntity extends BaseEntity {

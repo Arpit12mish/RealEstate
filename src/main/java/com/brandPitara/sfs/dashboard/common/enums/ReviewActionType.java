@@ -1,0 +1,20 @@
+package com.brandPitara.sfs.dashboard.common.enums;
+
+public enum ReviewActionType {
+
+    CREATED,
+    UPDATED,
+    SUBMITTED_FOR_REVIEW,
+    FIELD_MARKED_RECHECK,
+    FIELD_MARKED_WRONG,
+    FIELD_MARKED_FIXED,
+    APPROVED,
+    REJECTED,
+    REOPENED,
+    MOVED_TO_RECHECK,
+    PUBLISHED,
+    UNPUBLISHED,
+    ARCHIVED,
+    RESTORED,
+    FIELD_ISSUE_DELETED
+}

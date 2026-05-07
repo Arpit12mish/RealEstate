@@ -6,6 +6,7 @@ import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
+import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.mapper.ProjectCardMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -37,21 +38,45 @@ public class TopProjectsSectionLoader implements HomeSectionLoader {
 
     int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
 
-    var projects = projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(
-        PageRequest.of(0, limit, Sort.by("priority").ascending().and(Sort.by("id").descending()))
-    ).getContent();
+    PageRequest pageable = PageRequest.of(
+        0,
+        limit,
+        Sort.by("priority").ascending().and(Sort.by("id").descending())
+    );
 
-    var projectIds = projects.stream().map(p -> p.getId()).toList();
+    List<ProjectEntity> projects;
+
+    if (ctx != null && ctx.cityId() != null) {
+      projects = projectRepository
+          .findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalse(ctx.cityId(), pageable)
+          .getContent();
+    } else {
+      projects = List.of();
+    }
+
+    if (projects.isEmpty()) {
+      projects = projectRepository
+          .findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
+          .getContent();
+    }
+
+    var projectIds = projects.stream()
+        .map(ProjectEntity::getId)
+        .toList();
 
     var media = projectIds.isEmpty()
         ? List.<com.brandPitara.sfs.project.entity.ProjectMediaEntity>of()
         : projectMediaRepository.findActiveByProjectIds(projectIds);
 
     Map<Long, List<com.brandPitara.sfs.project.entity.ProjectMediaEntity>> mediaByProject =
-        media.stream().collect(Collectors.groupingBy(m -> m.getProject().getId()));
+        media.stream()
+            .collect(Collectors.groupingBy(m -> m.getProject().getId()));
 
     List<ProjectCardDto> cards = projects.stream()
-        .map(p -> ProjectCardMapper.toCard(p, mediaByProject.getOrDefault(p.getId(), List.of())))
+        .map(p -> ProjectCardMapper.toCard(
+            p,
+            mediaByProject.getOrDefault(p.getId(), List.of())
+        ))
         .toList();
 
     projectFavoriteService.enrichProjectCards(cards);

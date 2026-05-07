@@ -66,4 +66,9 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
             refreshTokenRepository.save(rt);
         });
     }
+
+    @Override
+    public void revokeAllByUser(Long userId) {
+        refreshTokenRepository.revokeAllByUserId(userId);
+    }
 }

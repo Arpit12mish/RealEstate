@@ -6,7 +6,13 @@ import lombok.*;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "promo_banner")
+@Table(
+    name = "promo_banner",
+    indexes = {
+        @Index(name = "idx_promo_banner_category_id",  columnList = "category_id"),
+        @Index(name = "idx_promo_banner_active_slot",  columnList = "is_active,slot_key")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

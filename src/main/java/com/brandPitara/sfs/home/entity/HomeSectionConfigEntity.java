@@ -7,7 +7,12 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "home_section_config")
+@Table(
+    name = "home_section_config",
+    indexes = {
+        @Index(name = "idx_home_section_category_id", columnList = "home_category_id")
+    }
+)
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class HomeSectionConfigEntity extends BaseEntity {

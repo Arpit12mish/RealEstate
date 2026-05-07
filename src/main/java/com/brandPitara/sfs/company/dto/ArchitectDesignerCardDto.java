@@ -2,9 +2,6 @@ package com.brandPitara.sfs.company.dto;
 
 import lombok.*;
 
-import java.math.BigDecimal;
-import java.util.List;
-
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,18 +14,18 @@ public class ArchitectDesignerCardDto {
   private String companyType;
 
   private String logoUrl;
-  private String projectImageUrl;
+  private String coverImageUrl;
 
-  private String cityName;
-  private String addressLine;
-    private Double projectCityLatitude;
-    private Double projectCityLongitude;
+  // ex: "Architecture | Interiors | Landscape"
+  private String specializationText;
 
+  // Stats row
   private String projectsCompleted;
+  private String yearsExperience;
+  private String citiesServed;
+  private String awardsCount;
 
-  private String detail1; // clientName
-  private String detail2; // projectArea
-  private String detail3; // optional
-
-  private List<String> tags;
+  // Bottom descriptive lines
+  private String infoLine1;
+  private String infoLine2;
 }

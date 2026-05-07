@@ -12,4 +12,6 @@ public interface ProfileService {
 
     PresignProfilePhotoResponse createProfilePhotoPresign(String phoneNumber, PresignProfilePhotoRequest request);
     ProfileResponse confirmProfilePhoto(String phoneNumber, ConfirmProfilePhotoRequest request);
+
+    void deleteAccount(String phoneNumber);
 }

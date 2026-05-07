@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import java.util.List;
 
 @Service
@@ -24,6 +24,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
   private final ProjectRepository projectRepository;
   private final ProjectFloorPlanRepository projectFloorPlanRepository;
   private final ContentVersionService contentVersionService;
+  private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -61,9 +62,13 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
 
   @Override
   @Transactional
-  public ProjectFloorPlanResponse update(Long floorPlanId, ProjectFloorPlanUpsertRequest request) {
+  public ProjectFloorPlanResponse update(Long projectId, Long floorPlanId, ProjectFloorPlanUpsertRequest request) {
     ProjectFloorPlanEntity entity = projectFloorPlanRepository.findByIdAndDeletedFalse(floorPlanId)
         .orElseThrow(() -> new NotFoundException("Floor plan not found: " + floorPlanId));
+
+    if (!entity.getProject().getId().equals(projectId)) {
+      throw new NotFoundException("Floor plan not found for project: " + floorPlanId);
+    }
 
     if (request.getTitle() != null) entity.setTitle(cleanRequired(request.getTitle()));
     if (request.getFloorCode() != null) entity.setFloorCode(clean(request.getFloorCode()));
@@ -88,9 +93,13 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
 
   @Override
   @Transactional
-  public ProjectFloorPlanResponse setActive(Long floorPlanId, boolean active) {
+  public ProjectFloorPlanResponse setActive(Long projectId, Long floorPlanId, boolean active) {
     ProjectFloorPlanEntity entity = projectFloorPlanRepository.findByIdAndDeletedFalse(floorPlanId)
         .orElseThrow(() -> new NotFoundException("Floor plan not found: " + floorPlanId));
+
+    if (!entity.getProject().getId().equals(projectId)) {
+      throw new NotFoundException("Floor plan not found for project: " + floorPlanId);
+    }
 
     entity.setActive(active);
     ProjectFloorPlanEntity saved = projectFloorPlanRepository.save(entity);
@@ -105,9 +114,13 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
 
   @Override
   @Transactional
-  public void softDelete(Long floorPlanId) {
+  public void softDelete(Long projectId, Long floorPlanId) {
     ProjectFloorPlanEntity entity = projectFloorPlanRepository.findByIdAndDeletedFalse(floorPlanId)
         .orElseThrow(() -> new NotFoundException("Floor plan not found: " + floorPlanId));
+
+    if (!entity.getProject().getId().equals(projectId)) {
+      throw new NotFoundException("Floor plan not found for project: " + floorPlanId);
+    }
 
     entity.setDeleted(true);
     entity.setActive(false);
@@ -134,9 +147,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-    if (!Boolean.TRUE.equals(project.getPublished()) || !Boolean.TRUE.equals(project.getActive())) {
-      throw new NotFoundException("Project not found: " + projectId);
-    }
+    projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
 
     return projectFloorPlanRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(projectId)
         .stream()

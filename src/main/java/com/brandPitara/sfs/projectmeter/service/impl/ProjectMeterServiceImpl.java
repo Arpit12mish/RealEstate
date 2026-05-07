@@ -2,6 +2,7 @@ package com.brandPitara.sfs.projectmeter.service.impl;
 
 import com.brandPitara.sfs.buildercredibility.dto.BuilderCredibilitySummaryResponse;
 import com.brandPitara.sfs.buildercredibility.service.BuilderCredibilityService;
+import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
@@ -80,6 +81,17 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
         return projectMeterSnapshotRepository.findByProjectId(projectId)
             .map(ProjectMeterMapper::toSummaryResponse)
             .orElseGet(() -> buildFallbackSummary(project));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProjectMeterSummaryResponse adminGetMeterSummary(Long projectId) {
+        ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+
+        return projectMeterSnapshotRepository.findByProjectId(projectId)
+                .map(ProjectMeterMapper::toSummaryResponse)
+                .orElseGet(() -> buildFallbackSummary(project));
     }
 
     @Override
@@ -237,9 +249,13 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
         ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
             .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-        if (!Boolean.TRUE.equals(entity.getPublished()) || !Boolean.TRUE.equals(entity.getActive())) {
+        if (!Boolean.TRUE.equals(entity.getPublished())
+                || !Boolean.TRUE.equals(entity.getActive())
+                || Boolean.TRUE.equals(entity.getDeleted())
+                || entity.getReviewStatus() != ReviewStatus.APPROVED) {
             throw new NotFoundException("Project not found: " + projectId);
         }
+
         return entity;
     }
 
@@ -250,6 +266,10 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
         int overallProgress = calculateOverallProgress(stages);
         int delayDays = calculateDelayDays(project, null);
 
+        OffsetDateTime fallbackUpdatedAt = project.getUpdatedAt() != null
+            ? project.getUpdatedAt()
+            : project.getCreatedAt();
+
         return ProjectMeterSummaryResponse.builder()
             .projectId(project.getId())
             .constructionProgressPercent(overallProgress)
@@ -258,8 +278,9 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .expectedCompletionDate(project.getPossessionDate())
             .revisedCompletionDate(null)
             .verified(false)
-            .computedAt(OffsetDateTime.now())
+            .computedAt(null)
             .lastVerifiedAt(null)
+            .lastUpdatedAt(fallbackUpdatedAt)
             .build();
     }
 
@@ -428,8 +449,15 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     @Transactional(readOnly = true)
     public Page<ProjectMeterCardResponse> publicListMeterCards(Long cityId, Pageable pageable) {
         Page<ProjectEntity> page = (cityId == null)
-            ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
-            : projectRepository.findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalse(cityId, pageable);
+            ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+                ReviewStatus.APPROVED,
+                pageable
+            )
+            : projectRepository.findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+                cityId,
+                ReviewStatus.APPROVED,
+                pageable
+            );
 
         List<Long> projectIds = page.getContent().stream()
             .map(ProjectEntity::getId)

@@ -15,17 +15,23 @@ import com.brandPitara.sfs.home.repository.PromoBannerSlotConfigRepository;
 import com.brandPitara.sfs.home.service.HomeFeedService;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
 import com.brandPitara.sfs.home.service.section.SectionContext;
+import com.brandPitara.sfs.repository.CityRepository;
 import com.brandPitara.sfs.service.PromoBannerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class HomeFeedServiceImpl implements HomeFeedService {
+
+  private static final Long GLOBAL_CITY_ID = 0L;
 
   private final ContentVersionRepository contentVersionRepository;
   private final HomeSectionConfigRepository homeSectionConfigRepository;
@@ -34,27 +40,47 @@ public class HomeFeedServiceImpl implements HomeFeedService {
   private final PromoBannerSlotConfigRepository promoBannerSlotConfigRepository;
   private final PromoBannerService promoBannerService;
   private final PromoBannerInjector promoBannerInjector;
+  private final CityRepository cityRepository;
 
   @Override
-  public HomeFeedResponse getHome(Long cityId, Long categoryId, Long builderId, Long clientVersion) {
+  public HomeFeedResponse getHome(
+      Long cityId,
+      Long categoryId,
+      Long builderId,
+      Long clientVersion
+  ) {
 
-    boolean isAll = (categoryId == null || categoryId == 0);
-    Long homeCategoryId = isAll ? 0L : categoryId;
+    /*
+     * cityId behavior:
+     * cityId > 0  => city-specific feed
+     * cityId = 0  => global/all-available feed
+     * cityId null => global/all-available feed
+     *
+     * Do NOT store "Global" as a real city row.
+     */
+    Long resolvedCityId = normalizeCityId(cityId);
 
-    String key = isAll ? "HOME:ALL" : "HOME:" + categoryId;
+    boolean isAllCategory = categoryId == null || categoryId == 0;
+    Long homeCategoryId = isAllCategory ? 0L : categoryId;
 
-    long version = contentVersionRepository.findById(key)
+    String contentVersionKey = isAllCategory ? "HOME:ALL" : "HOME:" + categoryId;
+
+    long version = contentVersionRepository.findById(contentVersionKey)
         .map(ContentVersionEntity::getVersion)
         .orElse(1L);
 
     var configs = homeSectionConfigRepository
         .findByHomeCategory_IdAndEnabledTrueOrderBySortOrderAscIdAsc(homeCategoryId);
 
-    Map<HomeSectionType, HomeSectionLoader> loaderMap = new EnumMap<>(HomeSectionType.class);
-    for (HomeSectionLoader l : loaders) loaderMap.put(l.supports(), l);
+    Map<HomeSectionType, HomeSectionLoader> loaderMap =
+        new EnumMap<>(HomeSectionType.class);
+
+    for (HomeSectionLoader loader : loaders) {
+      loaderMap.put(loader.supports(), loader);
+    }
 
     SectionContext ctx = SectionContext.builder()
-        .cityId(cityId)
+        .cityId(resolvedCityId)
         .categoryId(homeCategoryId)
         .builderId(builderId)
         .build();
@@ -62,67 +88,133 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     List<HomeSectionDto<?>> sections = new ArrayList<>();
 
     for (var cfg : configs) {
-      var loader = loaderMap.get(cfg.getSectionType());
-      if (loader == null) continue;
+      HomeSectionLoader loader = loaderMap.get(cfg.getSectionType());
+
+      if (loader == null) {
+        log.warn(
+            "No HomeSectionLoader found for sectionType={} configId={}",
+            cfg.getSectionType(),
+            cfg.getId()
+        );
+        continue;
+      }
 
       HomeSectionDto<?> section = loader.load(cfg, ctx);
-      if (section != null && section.getItems() != null && !section.getItems().isEmpty()) {
+
+      if (
+          section != null
+              && section.getItems() != null
+              && !section.getItems().isEmpty()
+      ) {
         sections.add(section);
       }
     }
 
-    // ✅ Inject promo banners via slot config rules
-    List<PromoBannerSlotConfigEntity> rules = loadPromoRules(FeedScreen.HOME, homeCategoryId, cityId);
+    List<PromoBannerSlotConfigEntity> rules =
+        loadPromoRules(FeedScreen.HOME, homeCategoryId, resolvedCityId);
 
     sections = promoBannerInjector.inject(
         sections,
         rules,
         rule -> {
-          String slotKey = rule.getSlotKey(); // HERO / MID
+          String slotKey = rule.getSlotKey();
 
-          var items = promoBannerService.getBannersForCategoryAndSlot(
-              homeCategoryId,
-              slotKey,
-              rule.getMaxItems()
-          );
+          List<PromoBannerResponse> items =
+              promoBannerService.getBannersForCategoryAndSlot(
+                  homeCategoryId,
+                  slotKey,
+                  rule.getMaxItems()
+              );
 
-          // ✅ Step 6: HERO is required -> log error if missing
           if (items == null || items.isEmpty()) {
             if ("HERO".equalsIgnoreCase(slotKey)) {
-              log.error("HERO banner missing for screen={} category={} city={}",
-                  FeedScreen.HOME, homeCategoryId, cityId);
+              log.error(
+                  "HERO banner missing for screen={} category={} requestedCityId={} resolvedCityId={}",
+                  FeedScreen.HOME,
+                  homeCategoryId,
+                  cityId,
+                  resolvedCityId
+              );
             }
+
             return null;
           }
 
-          // ✅ Step 4: set section.key = slotKey so frontend can render big vs normal
           return HomeSectionDto.<PromoBannerResponse>builder()
               .type(HomeSectionType.PROMO_BANNERS)
-              .key(slotKey) // ✅ HERO / MID
+              .key(slotKey)
               .title(null)
               .items(items)
               .build();
         }
     );
 
+    String cityName = resolveCityName(resolvedCityId);
+
     return HomeFeedResponse.builder()
         .version(version)
-        .header(HomeHeaderDto.builder()
-            .cityId(cityId)
-            .cityName(null)
-            .sentences(List.of("Verified professionals", "Trusted brands near you"))
-            .build())
+        .header(
+            HomeHeaderDto.builder()
+                .cityId(resolvedCityId)
+                .cityName(cityName)
+                .sentences(List.of("Verified professionals", "Trusted brands near you"))
+                .build()
+        )
         .sections(sections)
         .build();
   }
 
-  private List<PromoBannerSlotConfigEntity> loadPromoRules(FeedScreen screen, Long homeCategoryId, Long cityId) {
-    if (cityId != null) {
-      var cityRules = promoBannerSlotConfigRepository
-          .findByScreenAndHomeCategory_IdAndCity_IdAndActiveTrueOrderByPriorityAscIdAsc(screen, homeCategoryId, cityId);
-      if (cityRules != null && !cityRules.isEmpty()) return cityRules;
+  private Long normalizeCityId(Long cityId) {
+    if (cityId == null) {
+      return null;
     }
+
+    if (cityId <= GLOBAL_CITY_ID) {
+      return null;
+    }
+
+    return cityId;
+  }
+
+  private List<PromoBannerSlotConfigEntity> loadPromoRules(
+      FeedScreen screen,
+      Long homeCategoryId,
+      Long resolvedCityId
+  ) {
+    if (resolvedCityId != null) {
+      List<PromoBannerSlotConfigEntity> cityRules =
+          promoBannerSlotConfigRepository
+              .findByScreenAndHomeCategory_IdAndCity_IdAndActiveTrueOrderByPriorityAscIdAsc(
+                  screen,
+                  homeCategoryId,
+                  resolvedCityId
+              );
+
+      if (cityRules != null && !cityRules.isEmpty()) {
+        return cityRules;
+      }
+    }
+
     return promoBannerSlotConfigRepository
-        .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(screen, homeCategoryId);
+        .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(
+            screen,
+            homeCategoryId
+        );
+  }
+
+  private String resolveCityName(Long resolvedCityId) {
+    if (resolvedCityId == null) {
+      return null;
+    }
+
+    return cityRepository.findById(resolvedCityId)
+        .map(city -> {
+          if (city.getName() == null || city.getName().isBlank()) {
+            return null;
+          }
+
+          return city.getName().trim();
+        })
+        .orElse(null);
   }
 }

@@ -7,6 +7,11 @@ import com.brandPitara.sfs.dto.profile.ProfileResponse;
 import com.brandPitara.sfs.dto.profile.UpdateProfileRequest;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.media.config.S3Properties;
+import com.brandPitara.sfs.repository.FavoriteRepository;
+import com.brandPitara.sfs.repository.GuestSessionRepository;
+import com.brandPitara.sfs.repository.LoginHistoryRepository;
+import com.brandPitara.sfs.repository.RefreshTokenRepository;
+import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.ProfileService;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +31,11 @@ import java.util.UUID;
 public class ProfileServiceImpl implements ProfileService {
 
     private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final FavoriteRepository favoriteRepository;
+    private final UserFavoriteRepository userFavoriteRepository;
+    private final LoginHistoryRepository loginHistoryRepository;
+    private final GuestSessionRepository guestSessionRepository;
     private final S3Presigner s3Presigner;
     private final S3Properties s3Properties;
 
@@ -101,6 +111,24 @@ public class ProfileServiceImpl implements ProfileService {
 
         User saved = userRepository.save(user);
         return toResponse(saved);
+    }
+
+    @Override
+    public void deleteAccount(String phoneNumber) {
+        User user = userRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow(() -> new IllegalArgumentException("User not found for phone: " + phoneNumber));
+
+        Long userId = user.getId();
+
+        // Important: unlink guest sessions first, otherwise FK blocks user delete
+        guestSessionRepository.unlinkUserFromGuestSessions(userId);
+
+        refreshTokenRepository.deleteAllByUserId(userId);
+        favoriteRepository.deleteAllByUserId(userId);
+        userFavoriteRepository.deleteAllByUserId(userId);
+        loginHistoryRepository.nullifyUserById(userId);
+
+        userRepository.delete(user);
     }
 
     private String buildPublicUrl(String storageKey) {

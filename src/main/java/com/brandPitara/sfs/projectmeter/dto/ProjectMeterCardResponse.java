@@ -3,6 +3,7 @@ package com.brandPitara.sfs.projectmeter.dto;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 @Getter
 @Setter
@@ -32,4 +33,6 @@ public class ProjectMeterCardResponse {
 
     private String timelineStatus;
     private Integer delayDays;
+
+    private OffsetDateTime lastUpdatedAt;
 }

@@ -11,12 +11,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@RequestMapping("/api/admin/projects/{projectId}/floor-plans")
 @RequiredArgsConstructor
 public class AdminProjectFloorPlanController {
 
   private final ProjectFloorPlanService projectFloorPlanService;
 
-  @PostMapping("/api/admin/projects/{projectId}/floor-plans")
+  @PostMapping
   @PreAuthorize("hasRole('ADMIN')")
   public ProjectFloorPlanResponse create(
       @PathVariable Long projectId,
@@ -25,33 +26,38 @@ public class AdminProjectFloorPlanController {
     return projectFloorPlanService.create(projectId, request);
   }
 
-  @GetMapping("/api/admin/projects/{projectId}/floor-plans")
+  @GetMapping
   @PreAuthorize("hasRole('ADMIN')")
   public List<ProjectFloorPlanResponse> adminList(@PathVariable Long projectId) {
     return projectFloorPlanService.adminList(projectId);
   }
 
-  @PutMapping("/api/admin/project-floor-plans/{floorPlanId}")
+  @PutMapping("/{floorPlanId}")
   @PreAuthorize("hasRole('ADMIN')")
   public ProjectFloorPlanResponse update(
+      @PathVariable Long projectId,
       @PathVariable Long floorPlanId,
       @Valid @RequestBody ProjectFloorPlanUpsertRequest request
   ) {
-    return projectFloorPlanService.update(floorPlanId, request);
+    return projectFloorPlanService.update(projectId, floorPlanId, request);
   }
 
-  @PatchMapping("/api/admin/project-floor-plans/{floorPlanId}/active")
+  @PatchMapping("/{floorPlanId}/active")
   @PreAuthorize("hasRole('ADMIN')")
   public ProjectFloorPlanResponse setActive(
+      @PathVariable Long projectId,
       @PathVariable Long floorPlanId,
       @RequestParam boolean active
   ) {
-    return projectFloorPlanService.setActive(floorPlanId, active);
+    return projectFloorPlanService.setActive(projectId, floorPlanId, active);
   }
 
-  @DeleteMapping("/api/admin/project-floor-plans/{floorPlanId}")
+  @DeleteMapping("/{floorPlanId}")
   @PreAuthorize("hasRole('ADMIN')")
-  public void delete(@PathVariable Long floorPlanId) {
-    projectFloorPlanService.softDelete(floorPlanId);
+  public void delete(
+      @PathVariable Long projectId,
+      @PathVariable Long floorPlanId
+  ) {
+    projectFloorPlanService.softDelete(projectId, floorPlanId);
   }
 }

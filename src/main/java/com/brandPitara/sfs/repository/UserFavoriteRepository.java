@@ -3,6 +3,7 @@ package com.brandPitara.sfs.repository;
 import com.brandPitara.sfs.entity.UserFavoriteEntity;
 import com.brandPitara.sfs.enums.FavoriteTargetType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.Collection;
@@ -28,6 +29,10 @@ public interface UserFavoriteRepository extends JpaRepository<UserFavoriteEntity
             FavoriteTargetType targetType,
             Long targetId
     );
+
+    @Modifying
+    @Query("DELETE FROM UserFavoriteEntity uf WHERE uf.user.id = :userId")
+    void deleteAllByUserId(Long userId);
 
     long countByTargetTypeAndTargetId(FavoriteTargetType targetType, Long targetId);
 

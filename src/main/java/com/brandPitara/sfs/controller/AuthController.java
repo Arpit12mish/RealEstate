@@ -25,14 +25,14 @@ import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.RefreshTokenService;
 import com.brandPitara.sfs.service.UserService;
 import com.brandPitara.sfs.service.model.UserLoginResult;
-// import com.brandPitara.sfs.service.PhoneAuthService;
-// import com.brandPitara.sfs.service.UserService;
 import com.brandPitara.sfs.util.JwtTokenUtil;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -50,17 +50,21 @@ public class AuthController {
     // 1️⃣ Request OTP  TODO: add rate limiting per phone/IP here
     @PostMapping("/request-otp")
     public ResponseEntity<?> requestOtp(@Valid @RequestBody SendOtpRequest request) {
-        
-        otpService.sendOtp(request.getPhoneNumber());
-        return ResponseEntity.ok(Map.of("status", "OTP_SENT"));
+
+        var result = otpService.sendOtp(request.getPhoneNumber());
+
+        return ResponseEntity.ok(Map.of(
+                "status", result.getStatus(),
+                "message", result.getMessage(),
+                "resendAfterSeconds", result.getResendAfterSeconds()
+        ));
     }
 
     // 2️⃣ Verify OTP => issue access + refresh tokens
     @PostMapping("/verify-otp")
     public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpRequest request, HttpServletRequest httpRequest) {
 
-        System.out.println("VERIFY OTP deviceId = " + request.getDeviceId());
-        System.out.println("VERIFY OTP phone = " + request.getPhoneNumber());
+        log.debug("verify-otp requested for deviceId={}", request.getDeviceId());
         boolean ok = otpService.verifyOtp(request.getPhoneNumber(), request.getCode());
 
         if (!ok) {
@@ -141,8 +145,12 @@ public class AuthController {
                 user.getRole().name()
         );
 
+        refreshTokenService.revokeToken(request.getRefreshToken());
+        RefreshToken newRt = refreshTokenService.createRefreshToken(user, rt.getDeviceId(), rt.getFcmToken());
+
         return ResponseEntity.ok(Map.of(
-                "accessToken", newAccessToken
+                "accessToken", newAccessToken,
+                "refreshToken", newRt.getToken()
         ));
     }
 
@@ -151,5 +159,18 @@ public class AuthController {
     public ResponseEntity<?> logout(@Valid @RequestBody LogoutRequest request) {
         refreshTokenService.revokeToken(request.getRefreshToken());
         return ResponseEntity.ok(Map.of("status", "LOGGED_OUT"));
+    }
+
+    // 5️⃣ Logout all devices -> revoke every refresh token for this user
+    @PostMapping("/logout-all")
+    public ResponseEntity<?> logoutAll(@Valid @RequestBody LogoutRequest request) {
+        RefreshToken rt;
+        try {
+            rt = refreshTokenService.verifyAndGet(request.getRefreshToken());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(401).body(Map.of("error", "INVALID_REFRESH_TOKEN"));
+        }
+        refreshTokenService.revokeAllByUser(rt.getUser().getId());
+        return ResponseEntity.ok(Map.of("status", "ALL_SESSIONS_REVOKED"));
     }
 }

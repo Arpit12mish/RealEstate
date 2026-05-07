@@ -10,7 +10,13 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "provider_profile")
+@Table(
+    name = "provider_profile",
+    indexes = {
+        @Index(name = "idx_provider_category_id", columnList = "primary_category_id"),
+        @Index(name = "idx_provider_featured",    columnList = "is_featured")
+    }
+)
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class ProviderProfileEntity extends BaseEntity {
 

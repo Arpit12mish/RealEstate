@@ -25,6 +25,78 @@ public interface InteriorCostRuleRepository extends JpaRepository<InteriorCostRu
     List<String> findDistinctActiveCities();
 
     @Query("""
+        select distinct r.propertyType
+        from InteriorCostRuleEntity r
+        join r.company c
+        where r.active = true
+          and c.active = true
+          and c.published = true
+          and c.deleted = false
+          and lower(r.cityName) = lower(:cityName)
+        order by r.propertyType asc
+    """)
+    List<InteriorPropertyType> findDistinctPropertyTypesByCity(
+            @Param("cityName") String cityName
+    );
+
+    @Query("""
+        select distinct r.bhkType
+        from InteriorCostRuleEntity r
+        join r.company c
+        where r.active = true
+          and c.active = true
+          and c.published = true
+          and c.deleted = false
+          and lower(r.cityName) = lower(:cityName)
+          and r.propertyType = :propertyType
+        order by r.bhkType asc
+    """)
+    List<InteriorBhkType> findDistinctBhkTypesByCityAndPropertyType(
+            @Param("cityName") String cityName,
+            @Param("propertyType") InteriorPropertyType propertyType
+    );
+
+    @Query("""
+        select distinct r.packageType
+        from InteriorCostRuleEntity r
+        join r.company c
+        where r.active = true
+          and c.active = true
+          and c.published = true
+          and c.deleted = false
+          and lower(r.cityName) = lower(:cityName)
+          and r.propertyType = :propertyType
+          and r.bhkType = :bhkType
+        order by r.packageType asc
+    """)
+    List<InteriorPackageType> findDistinctPackageTypesByCityAndPropertyTypeAndBhkType(
+            @Param("cityName") String cityName,
+            @Param("propertyType") InteriorPropertyType propertyType,
+            @Param("bhkType") InteriorBhkType bhkType
+    );
+
+    @Query("""
+        select distinct r.scopeType
+        from InteriorCostRuleEntity r
+        join r.company c
+        where r.active = true
+          and c.active = true
+          and c.published = true
+          and c.deleted = false
+          and lower(r.cityName) = lower(:cityName)
+          and r.propertyType = :propertyType
+          and r.bhkType = :bhkType
+          and r.packageType = :packageType
+        order by r.scopeType asc
+    """)
+    List<InteriorScopeType> findDistinctScopeTypesByCityAndPropertyTypeAndBhkTypeAndPackageType(
+            @Param("cityName") String cityName,
+            @Param("propertyType") InteriorPropertyType propertyType,
+            @Param("bhkType") InteriorBhkType bhkType,
+            @Param("packageType") InteriorPackageType packageType
+    );
+
+    @Query("""
         select r
         from InteriorCostRuleEntity r
         join fetch r.company c
@@ -49,6 +121,32 @@ public interface InteriorCostRuleRepository extends JpaRepository<InteriorCostRu
             @Param("scopeType") InteriorScopeType scopeType,
             @Param("bhkType") InteriorBhkType bhkType,
             @Param("normalizedArea") BigDecimal normalizedArea,
+            @Param("asOfDate") LocalDate asOfDate
+    );
+
+    @Query("""
+        select r
+        from InteriorCostRuleEntity r
+        join fetch r.company c
+        where r.active = true
+          and c.active = true
+          and c.published = true
+          and c.deleted = false
+          and lower(r.cityName) = lower(:cityName)
+          and r.propertyType = :propertyType
+          and r.packageType = :packageType
+          and r.scopeType = :scopeType
+          and r.bhkType = :bhkType
+          and r.effectiveFrom <= :asOfDate
+          and (r.effectiveTo is null or r.effectiveTo >= :asOfDate)
+        order by r.minArea asc, r.maxArea asc, r.id asc
+    """)
+    List<InteriorCostRuleEntity> findCandidateRulesIgnoringArea(
+            @Param("cityName") String cityName,
+            @Param("propertyType") InteriorPropertyType propertyType,
+            @Param("packageType") InteriorPackageType packageType,
+            @Param("scopeType") InteriorScopeType scopeType,
+            @Param("bhkType") InteriorBhkType bhkType,
             @Param("asOfDate") LocalDate asOfDate
     );
 
@@ -79,4 +177,54 @@ public interface InteriorCostRuleRepository extends JpaRepository<InteriorCostRu
             @Param("effectiveFrom") LocalDate effectiveFrom,
             @Param("effectiveTo") LocalDate effectiveTo
     );
+
+    @Query("""
+    select r
+    from InteriorCostRuleEntity r
+    join fetch r.company c
+    where r.active = true
+      and c.active = true
+      and c.published = true
+      and c.deleted = false
+      and lower(r.cityName) = lower(:cityName)
+      and r.propertyType = :propertyType
+      and r.scopeType = :scopeType
+      and r.bhkType = :bhkType
+      and :normalizedArea between r.minArea and r.maxArea
+      and r.effectiveFrom <= :asOfDate
+      and (r.effectiveTo is null or r.effectiveTo >= :asOfDate)
+    order by r.packageType asc, r.baseRatePerUnit asc, r.id asc
+""")
+List<InteriorCostRuleEntity> findExactPackageSummaryRules(
+        @Param("cityName") String cityName,
+        @Param("propertyType") InteriorPropertyType propertyType,
+        @Param("scopeType") InteriorScopeType scopeType,
+        @Param("bhkType") InteriorBhkType bhkType,
+        @Param("normalizedArea") BigDecimal normalizedArea,
+        @Param("asOfDate") LocalDate asOfDate
+);
+
+@Query("""
+    select r
+    from InteriorCostRuleEntity r
+    join fetch r.company c
+    where r.active = true
+      and c.active = true
+      and c.published = true
+      and c.deleted = false
+      and lower(r.cityName) = lower(:cityName)
+      and r.propertyType = :propertyType
+      and r.scopeType = :scopeType
+      and r.bhkType = :bhkType
+      and r.effectiveFrom <= :asOfDate
+      and (r.effectiveTo is null or r.effectiveTo >= :asOfDate)
+    order by r.packageType asc, r.minArea asc, r.maxArea asc, r.id asc
+""")
+List<InteriorCostRuleEntity> findCandidatePackageSummaryRulesIgnoringArea(
+        @Param("cityName") String cityName,
+        @Param("propertyType") InteriorPropertyType propertyType,
+        @Param("scopeType") InteriorScopeType scopeType,
+        @Param("bhkType") InteriorBhkType bhkType,
+        @Param("asOfDate") LocalDate asOfDate
+);
 }

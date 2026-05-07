@@ -9,5 +9,6 @@ public interface ProjectMediaService {
   ProjectMediaResponse addMedia(Long projectId, ProjectMediaUpsertRequest request);
   List<ProjectMediaResponse> adminList(Long projectId);
   List<ProjectMediaResponse> publicList(Long projectId);
+  ProjectMediaResponse updateMedia(Long projectId, Long mediaId, ProjectMediaUpsertRequest request);
   void softDelete(Long projectId, Long mediaId);
 }

@@ -8,7 +8,13 @@ import lombok.*;
 import com.brandPitara.sfs.brand.enums.PromoMediaType;
 
 @Entity
-@Table(name = "brand")
+@Table(
+    name = "brand",
+    indexes = {
+        @Index(name = "idx_brand_category_id", columnList = "category_id"),
+        @Index(name = "idx_brand_public",      columnList = "published,active,deleted")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

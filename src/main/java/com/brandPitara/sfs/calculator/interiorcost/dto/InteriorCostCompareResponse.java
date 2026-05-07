@@ -26,5 +26,6 @@ public class InteriorCostCompareResponse {
     private Integer bathroomCount;
 
     private String currency;
+    private String message;
     private List<InteriorCostCompanyEstimateDto> results;
 }

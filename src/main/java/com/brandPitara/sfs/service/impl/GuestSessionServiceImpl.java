@@ -8,11 +8,13 @@ import com.brandPitara.sfs.repository.GuestSessionRepository;
 import com.brandPitara.sfs.service.GuestSessionService;
 import com.brandPitara.sfs.util.JwtTokenUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -69,7 +71,7 @@ public class GuestSessionServiceImpl implements GuestSessionService {
         if (installationId == null || installationId.isBlank() || user == null) {
             return;
         }
-        System.out.println("LINK GUEST SESSION installationId = " + installationId + ", userId = " + user.getId());
+        log.debug("linking guest session installationId={} to userId={}", installationId, user.getId());
 
         guestSessionRepository.findByInstallationIdAndActiveTrue(installationId)
                 .ifPresent(guestSession -> {
@@ -77,7 +79,7 @@ public class GuestSessionServiceImpl implements GuestSessionService {
                     guestSession.setLinkedAt(OffsetDateTime.now());
                     guestSession.setLastSeenAt(OffsetDateTime.now());
                     guestSessionRepository.save(guestSession);
-                    System.out.println("GUEST SESSION FOUND AND LINKED: guestSessionId = " + guestSession.getId());
+                    log.debug("guest session {} linked to userId={}", guestSession.getId(), user.getId());
                 });
     }
 }

@@ -7,9 +7,9 @@ import java.util.List;
 
 public interface ProjectFloorPlanService {
   ProjectFloorPlanResponse create(Long projectId, ProjectFloorPlanUpsertRequest request);
-  ProjectFloorPlanResponse update(Long floorPlanId, ProjectFloorPlanUpsertRequest request);
-  ProjectFloorPlanResponse setActive(Long floorPlanId, boolean active);
-  void softDelete(Long floorPlanId);
+  ProjectFloorPlanResponse update(Long projectId, Long floorPlanId, ProjectFloorPlanUpsertRequest request);
+  ProjectFloorPlanResponse setActive(Long projectId, Long floorPlanId, boolean active);
+  void softDelete(Long projectId, Long floorPlanId);
 
   List<ProjectFloorPlanResponse> adminList(Long projectId);
   List<ProjectFloorPlanResponse> publicList(Long projectId);

@@ -16,32 +16,45 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PromoBannersSectionLoader implements HomeSectionLoader {
 
-  private final PromoBannerService promoBannerService;
+    private final PromoBannerService promoBannerService;
 
-  @Override
-  public HomeSectionType supports() {
-    return HomeSectionType.PROMO_BANNERS;
-  }
+    @Override
+    public HomeSectionType supports() {
+        return HomeSectionType.PROMO_BANNERS;
+    }
 
-  @Override
-  public HomeSectionDto<?> load(HomeSectionConfigEntity cfg, SectionContext ctx) {
+    @Override
+    public HomeSectionDto<?> load(HomeSectionConfigEntity cfg, SectionContext ctx) {
 
-    Long fallbackCategoryId = (cfg.getHomeCategory() != null ? cfg.getHomeCategory().getId() : ctx.categoryId());
+        Long fallbackCategoryId =
+                (cfg.getHomeCategory() != null ? cfg.getHomeCategory().getId() : ctx.categoryId());
 
-    // param1 can override bannerCategoryId. If null, use home category.
-    Long bannerCategoryId = (cfg.getParam1() != null && !cfg.getParam1().isBlank())
-        ? Long.valueOf(cfg.getParam1())
-        : fallbackCategoryId;
+        // param1 = banner category override
+        Long bannerCategoryId =
+                (cfg.getParam1() != null && !cfg.getParam1().isBlank())
+                        ? Long.valueOf(cfg.getParam1())
+                        : fallbackCategoryId;
 
-    List<PromoBannerResponse> banners = promoBannerService.getBannersForCategory(bannerCategoryId);
+        // param2 = slot key like HERO / MID / BOTTOM
+        String slotKey =
+                (cfg.getParam2() == null || cfg.getParam2().isBlank())
+                        ? "HERO"
+                        : cfg.getParam2().trim().toUpperCase();
 
-    int limit = Math.max(0, cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
-    if (banners.size() > limit) banners = banners.subList(0, limit);
+        Integer maxItems = (cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
 
-    return HomeSectionDto.<PromoBannerResponse>builder()
-        .type(HomeSectionType.PROMO_BANNERS)
-        .title(cfg.getTitle()) // usually null (banner section has no title)
-        .items(banners)
-        .build();
-  }
+        List<PromoBannerResponse> banners =
+                promoBannerService.getBannersForCategoryAndSlot(
+                        bannerCategoryId,
+                        slotKey,
+                        maxItems
+                );
+
+        return HomeSectionDto.<PromoBannerResponse>builder()
+                .type(HomeSectionType.PROMO_BANNERS)
+                .key(slotKey)
+                .title(cfg.getTitle())
+                .items(banners)
+                .build();
+    }
 }

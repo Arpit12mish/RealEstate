@@ -3,9 +3,10 @@ package com.brandPitara.sfs.home.service.section.impl;
 import com.brandPitara.sfs.company.dto.ArchitectDesignerCardDto;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
-import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
+import com.brandPitara.sfs.company.entity.CompanyStatEntity;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
+import com.brandPitara.sfs.company.repository.CompanyStatRepository;
 import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
@@ -25,10 +26,17 @@ import java.util.stream.Collectors;
 public class ArchitectsAndDesignersSectionLoader implements HomeSectionLoader {
 
   private static final Set<String> DEFAULT_TYPES =
-    Set.of("ARCHITECT", "DESIGNER", "DESIGNERS", "ARCHITECT&DESIGNERS", "INTERIOR_DESIGNER");
+      Set.of("ARCHITECT", "DESIGNER", "DESIGNERS", "ARCHITECT&DESIGNERS", "INTERIOR_DESIGNER");
+
+  private static final String STAT_PROJECTS_COMPLETED = "PROJECTS COMPLETED";
+  private static final String STAT_YEARS_EXPERIENCE = "YEARS EXPERIENCE";
+  private static final String STAT_CITIES_SERVED = "CITIES SERVED";
+  private static final Set<String> AWARD_LABELS =
+      Set.of("AWARDS", "AWARDS WON", "TOTAL AWARDS");
 
   private final CompanyRepository companyRepository;
   private final CompanyProjectRepository companyProjectRepository;
+  private final CompanyStatRepository companyStatRepository;
 
   @Override
   public HomeSectionType supports() {
@@ -39,7 +47,8 @@ public class ArchitectsAndDesignersSectionLoader implements HomeSectionLoader {
   public HomeSectionDto<?> load(HomeSectionConfigEntity cfg, SectionContext ctx) {
     int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
 
-    List<CompanyEntity> companies = companyRepository.findByActiveTrueAndPublishedTrueAndDeletedFalse(
+    List<CompanyEntity> companies = companyRepository
+        .findByActiveTrueAndPublishedTrueAndDeletedFalse(
             PageRequest.of(0, limit * 3, Sort.by("priority").ascending().and(Sort.by("id").descending()))
         )
         .getContent()
@@ -54,6 +63,8 @@ public class ArchitectsAndDesignersSectionLoader implements HomeSectionLoader {
 
     List<Long> companyIds = companies.stream().map(CompanyEntity::getId).toList();
 
+    Map<Long, Map<String, String>> statMapByCompanyId = buildStatMap(companyIds);
+
     Map<Long, CompanyProjectEntity> topProjectByCompanyId =
         companyProjectRepository
             .findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(companyIds)
@@ -66,7 +77,11 @@ public class ArchitectsAndDesignersSectionLoader implements HomeSectionLoader {
             ));
 
     List<ArchitectDesignerCardDto> items = companies.stream()
-        .map(company -> toCard(company, topProjectByCompanyId.get(company.getId())))
+        .map(company -> toCard(
+            company,
+            statMapByCompanyId.getOrDefault(company.getId(), Map.of()),
+            topProjectByCompanyId.get(company.getId())
+        ))
         .toList();
 
     return HomeSectionDto.<ArchitectDesignerCardDto>builder()
@@ -81,22 +96,67 @@ public class ArchitectsAndDesignersSectionLoader implements HomeSectionLoader {
         && DEFAULT_TYPES.contains(company.getCompanyType().trim().toUpperCase());
   }
 
-  private ArchitectDesignerCardDto toCard(CompanyEntity company, CompanyProjectEntity project) {
+  private Map<Long, Map<String, String>> buildStatMap(List<Long> companyIds) {
+    Map<Long, Map<String, String>> statMapByCompanyId = new LinkedHashMap<>();
+
+    List<CompanyStatEntity> stats = companyStatRepository
+        .findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyIds);
+
+    for (CompanyStatEntity stat : stats) {
+      if (stat.getCompany() == null || stat.getCompany().getId() == null || stat.getLabel() == null) {
+        continue;
+      }
+
+      Long companyId = stat.getCompany().getId();
+      String normalizedLabel = normalize(stat.getLabel());
+
+      statMapByCompanyId
+          .computeIfAbsent(companyId, k -> new LinkedHashMap<>())
+          .putIfAbsent(normalizedLabel, stat.getValue());
+    }
+
+    return statMapByCompanyId;
+  }
+
+  private ArchitectDesignerCardDto toCard(
+      CompanyEntity company,
+      Map<String, String> stats,
+      CompanyProjectEntity topProject
+  ) {
     return ArchitectDesignerCardDto.builder()
         .companyId(company.getId())
         .name(company.getName())
         .companyType(company.getCompanyType())
         .logoUrl(company.getLogoUrl())
-        .projectImageUrl(project != null ? project.getCoverMediaUrl() : company.getCoverImageUrl())
-        .cityName(project != null && project.getCity() != null ? project.getCity().getName() : null)
-        .addressLine(project != null ? project.getAddressLine() : null)
-        .projectCityLatitude(project != null && project.getCity() != null ? project.getCity().getLatitude() : null)
-        .projectCityLongitude(project != null && project.getCity() != null ? project.getCity().getLongitude() : null)
-        .detail1(project != null ? project.getClientName() : null)
-        .detail2(project != null ? project.getProjectArea() : null)
-        .detail3(project != null ? project.getDetail3() : null)
-        .tags(project != null ? CompanyProjectTagMapper.toTags(project.getTags()) : List.of())
+        .coverImageUrl(resolveCoverImage(company, topProject))
+        .specializationText(company.getSpecializationText())
+        .projectsCompleted(stats.get(STAT_PROJECTS_COMPLETED))
+        .yearsExperience(stats.get(STAT_YEARS_EXPERIENCE))
+        .citiesServed(stats.get(STAT_CITIES_SERVED))
+        .awardsCount(resolveAwardsCount(stats))
+        .infoLine1(company.getInfoLine1())
+        .infoLine2(company.getInfoLine2())
         .build();
+  }
+
+  private String resolveCoverImage(CompanyEntity company, CompanyProjectEntity topProject) {
+    if (company.getCoverImageUrl() != null && !company.getCoverImageUrl().isBlank()) {
+      return company.getCoverImageUrl();
+    }
+    return topProject != null ? topProject.getCoverMediaUrl() : null;
+  }
+
+  private String resolveAwardsCount(Map<String, String> stats) {
+    for (String label : AWARD_LABELS) {
+      if (stats.containsKey(label)) {
+        return stats.get(label);
+      }
+    }
+    return null;
+  }
+
+  private String normalize(String value) {
+    return value == null ? null : value.trim().toUpperCase();
   }
 
   private HomeSectionDto<ArchitectDesignerCardDto> empty(HomeSectionConfigEntity cfg) {

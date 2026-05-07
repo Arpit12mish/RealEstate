@@ -20,7 +20,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -41,7 +41,10 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
         ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
                 .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-        if (!Boolean.TRUE.equals(project.getPublished()) || !Boolean.TRUE.equals(project.getActive())) {
+        if (!Boolean.TRUE.equals(project.getPublished())
+                || !Boolean.TRUE.equals(project.getActive())
+                || Boolean.TRUE.equals(project.getDeleted())
+                || project.getReviewStatus() != ReviewStatus.APPROVED) {
             throw new NotFoundException("Project not found: " + projectId);
         }
 
@@ -106,7 +109,10 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
         }
 
         List<ProjectEntity> projects = projectRepository
-                .findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(projectIds);
+            .findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+                    projectIds,
+                    ReviewStatus.APPROVED
+            );
 
         Map<Long, ProjectEntity> projectMap = projects.stream()
                 .collect(Collectors.toMap(ProjectEntity::getId, p -> p));

@@ -10,4 +10,6 @@ public interface RefreshTokenService {
     RefreshToken verifyAndGet(String token);
 
     void revokeToken(String token);
+
+    void revokeAllByUser(Long userId);
 }

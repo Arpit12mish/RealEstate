@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
@@ -17,6 +18,10 @@ public interface FavoriteRepository extends JpaRepository<FavoriteEntity, Long> 
     Optional<FavoriteEntity> findByUser_IdAndBusiness_Id(Long userId, Long businessId);
 
     void deleteByUser_IdAndBusiness_Id(Long userId, Long businessId);
+
+    @Modifying
+    @Query("DELETE FROM FavoriteEntity f WHERE f.user.id = :userId")
+    void deleteAllByUserId(Long userId);
 
     @EntityGraph(attributePaths = {"business", "business.city", "business.category"})
     Page<FavoriteEntity> findByUser_Id(Long userId, Pageable pageable);

@@ -6,7 +6,13 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "project_media")
+@Table(
+    name = "project_media",
+    indexes = {
+        @Index(name = "idx_proj_media_project_id",     columnList = "project_id"),
+        @Index(name = "idx_proj_media_active_lookup",  columnList = "project_id,active,deleted,sort_order")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

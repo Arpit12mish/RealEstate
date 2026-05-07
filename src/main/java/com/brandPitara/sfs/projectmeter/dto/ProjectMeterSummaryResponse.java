@@ -18,6 +18,9 @@ public class ProjectMeterSummaryResponse {
     private LocalDate expectedCompletionDate;
     private LocalDate revisedCompletionDate;
     private Boolean verified;
+
     private OffsetDateTime computedAt;
     private OffsetDateTime lastVerifiedAt;
+
+    private OffsetDateTime lastUpdatedAt;
 }

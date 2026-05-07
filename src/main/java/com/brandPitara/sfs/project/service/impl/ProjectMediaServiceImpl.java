@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import java.util.List;
 
 @Service
@@ -24,6 +24,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
   private final ProjectRepository projectRepository;
   private final ProjectMediaRepository mediaRepository;
   private final ContentVersionService contentVersionService;
+  private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -67,12 +68,32 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
     ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
 
-    if (!Boolean.TRUE.equals(project.getPublished()) || !Boolean.TRUE.equals(project.getActive())) {
-      throw new EntityNotFoundException("Project not found: " + projectId);
-    }
+    projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
 
     return mediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId)
         .stream().map(ProjectMediaMapper::toResponse).toList();
+  }
+
+  @Override
+  @Transactional
+  public ProjectMediaResponse updateMedia(Long projectId, Long mediaId, ProjectMediaUpsertRequest request) {
+    ProjectMediaEntity media = mediaRepository.findByIdAndProjectIdAndDeletedFalse(mediaId, projectId)
+        .orElseThrow(() -> new EntityNotFoundException("Media not found: " + mediaId));
+
+    if (request.getMediaType() != null) media.setMediaType(request.getMediaType());
+    if (request.getUrl() != null)       media.setUrl(clean(request.getUrl()));
+    if (request.getCaption() != null)   media.setCaption(clean(request.getCaption()));
+    if (request.getSortOrder() != null) media.setSortOrder(request.getSortOrder());
+    if (request.getActive() != null)    media.setActive(request.getActive());
+
+    ProjectMediaEntity saved = mediaRepository.save(media);
+
+    contentVersionService.bump(KEY_PROJECTS);
+    ProjectEntity project = saved.getProject();
+    if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
+      contentVersionService.bump(KEY_HOME);
+    }
+    return ProjectMediaMapper.toResponse(saved);
   }
 
   @Override

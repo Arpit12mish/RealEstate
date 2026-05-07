@@ -24,7 +24,7 @@ public class CompanyEntity extends BaseEntity {
   private String slug;
 
   @Column(name = "company_type", nullable = false, length = 40)
-  private String companyType; // ARCHITECT, DESIGNER, TILES, etc
+  private String companyType;
 
   @Column(name = "logo_url", columnDefinition = "text")
   private String logoUrl;
@@ -34,6 +34,15 @@ public class CompanyEntity extends BaseEntity {
 
   @Column(columnDefinition = "text")
   private String description;
+
+  @Column(name = "specialization_text", length = 255)
+  private String specializationText;
+
+  @Column(name = "info_line_1", columnDefinition = "text")
+  private String infoLine1;
+
+  @Column(name = "info_line_2", columnDefinition = "text")
+  private String infoLine2;
 
   @Column(length = 20)
   private String phone;

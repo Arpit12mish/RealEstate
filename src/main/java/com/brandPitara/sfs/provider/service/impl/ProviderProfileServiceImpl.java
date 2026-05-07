@@ -20,8 +20,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.PageRequest;
+
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -172,12 +176,24 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         ProviderProfileEntity base = providerProfileRepository.findById(providerId)
                 .orElseThrow(() -> new NotFoundException("Provider not found"));
 
-        // TODO: replace with repository query findSimilar(...) for scalability
-        return providerProfileRepository.findAll().stream()
-                .filter(p -> !p.getId().equals(providerId))
-                .filter(p -> p.getPrimaryCategory().getId().equals(base.getPrimaryCategory().getId()))
-                .limit(limit)
-                .map(p -> toResponse(p, serviceAreaRepository.findByProviderId(p.getId())))
+        List<ProviderServiceAreaEntity> baseAreas = serviceAreaRepository.findByProviderId(base.getId());
+        if (baseAreas.isEmpty()) return List.of();
+
+        Long categoryId = base.getPrimaryCategory().getId();
+        Long cityId = baseAreas.get(0).getCity().getId();
+
+        List<ProviderProfileEntity> similar = providerProfileRepository.findSimilar(
+                providerId, categoryId, cityId, PageRequest.of(0, limit));
+
+        if (similar.isEmpty()) return List.of();
+
+        List<Long> ids = similar.stream().map(ProviderProfileEntity::getId).toList();
+        Map<Long, List<ProviderServiceAreaEntity>> areasByProvider = serviceAreaRepository
+                .findByProviderIdIn(ids).stream()
+                .collect(Collectors.groupingBy(a -> a.getProvider().getId()));
+
+        return similar.stream()
+                .map(p -> toResponse(p, areasByProvider.getOrDefault(p.getId(), List.of())))
                 .toList();
     }
 

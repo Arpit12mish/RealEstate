@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 
 public interface ProjectMeterService {
     ProjectMeterSummaryResponse publicGetMeterSummary(Long projectId);
+    ProjectMeterSummaryResponse adminGetMeterSummary(Long projectId);
     ProjectConstructionProgressResponse publicGetConstructionProgress(Long projectId);
     ProjectMeterDetailResponse publicGetMeterDetail(Long projectId);
     Page<ProjectMeterCardResponse> publicListMeterCards(Long cityId, Pageable pageable);

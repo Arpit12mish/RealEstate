@@ -1,4 +1,3 @@
-package com.brandPitara.sfs.service;
 
 // import java.time.LocalDateTime;
 // import java.util.List;
@@ -77,9 +76,13 @@ package com.brandPitara.sfs.service;
 //     }
 // }
 
+package com.brandPitara.sfs.service;
+
+import com.brandPitara.sfs.service.model.OtpSendResult;
+
 public interface OtpService {
 
-    void sendOtp(String phoneNumber);           // e.g. +918368046868
+    OtpSendResult sendOtp(String phoneNumber);
 
     boolean verifyOtp(String phoneNumber, String code);
 }

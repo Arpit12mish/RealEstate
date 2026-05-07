@@ -8,6 +8,7 @@ import com.brandPitara.sfs.dto.profile.UpdateProfileRequest;
 import com.brandPitara.sfs.service.ProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -49,5 +50,12 @@ public class ProfileController {
     ) {
         String phoneNumber = authentication.getName();
         return profileService.confirmProfilePhoto(phoneNumber, request);
+    }
+
+    @DeleteMapping("/account")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAccount(Authentication authentication) {
+        String phoneNumber = authentication.getName();
+        profileService.deleteAccount(phoneNumber);
     }
 }

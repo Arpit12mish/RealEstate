@@ -7,7 +7,16 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "business")
+@Table(
+    name = "business",
+    indexes = {
+        @Index(name = "idx_business_city_id",       columnList = "city_id"),
+        @Index(name = "idx_business_category_id",   columnList = "category_id"),
+        @Index(name = "idx_business_owner_user_id", columnList = "owner_user_id"),
+        @Index(name = "idx_business_active",        columnList = "is_active"),
+        @Index(name = "idx_business_sponsored",     columnList = "sponsored,sponsored_priority")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor

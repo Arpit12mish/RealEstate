@@ -2,6 +2,7 @@ package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
@@ -9,6 +10,7 @@ import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectDetailComposer;
@@ -36,6 +38,7 @@ public class ProjectServiceImpl implements ProjectService {
   private final ProjectMediaRepository projectMediaRepository;
   private final ProjectFavoriteService projectFavoriteService;
   private final ProjectDetailComposer projectDetailComposer;
+  private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
   @jakarta.persistence.PersistenceContext
   private jakarta.persistence.EntityManager em;
@@ -108,6 +111,7 @@ public class ProjectServiceImpl implements ProjectService {
     if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+
     return ProjectMapper.toResponse(saved);
   }
 
@@ -116,11 +120,13 @@ public class ProjectServiceImpl implements ProjectService {
   public ProjectResponse setPublished(Long projectId, boolean published) {
     ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+
     entity.setPublished(published);
     ProjectEntity saved = projectRepository.save(entity);
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+
     return ProjectMapper.toResponse(saved);
   }
 
@@ -129,11 +135,13 @@ public class ProjectServiceImpl implements ProjectService {
   public ProjectResponse setActive(Long projectId, boolean active) {
     ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+
     entity.setActive(active);
     ProjectEntity saved = projectRepository.save(entity);
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+
     return ProjectMapper.toResponse(saved);
   }
 
@@ -156,6 +164,7 @@ public class ProjectServiceImpl implements ProjectService {
   public ProjectResponse adminGet(Long projectId) {
     ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+
     return ProjectMapper.toResponse(entity);
   }
 
@@ -165,6 +174,25 @@ public class ProjectServiceImpl implements ProjectService {
     Page<ProjectEntity> page = (builderId == null)
         ? projectRepository.findByDeletedFalse(pageable)
         : projectRepository.findByBuilderIdAndDeletedFalse(builderId, pageable);
+
+    return page.map(ProjectMapper::toResponse);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Page<ProjectResponse> dashboardList(Long builderId, ReviewStatus reviewStatus, Pageable pageable) {
+    Page<ProjectEntity> page;
+
+    if (builderId == null && reviewStatus == null) {
+      page = projectRepository.findByDeletedFalse(pageable);
+    } else if (builderId != null && reviewStatus == null) {
+      page = projectRepository.findByBuilderIdAndDeletedFalse(builderId, pageable);
+    } else if (builderId == null) {
+      page = projectRepository.findByDeletedFalseAndReviewStatus(reviewStatus, pageable);
+    } else {
+      page = projectRepository.findByBuilderIdAndDeletedFalseAndReviewStatus(builderId, reviewStatus, pageable);
+    }
+
     return page.map(ProjectMapper::toResponse);
   }
 
@@ -172,13 +200,18 @@ public class ProjectServiceImpl implements ProjectService {
   @Transactional(readOnly = true)
   public Page<ProjectResponse> publicListByBuilder(Long builderId, Pageable pageable) {
     Page<ProjectEntity> page = projectRepository
-        .findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
+        .findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+            builderId,
+            ReviewStatus.APPROVED,
+            pageable
+        );
 
     List<Long> projectIds = page.getContent().stream()
         .map(ProjectEntity::getId)
         .toList();
 
     Map<Long, List<ProjectMediaEntity>> mediaMap;
+
     if (!projectIds.isEmpty()) {
       var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
       mediaMap = mediaList.stream()
@@ -205,44 +238,37 @@ public class ProjectServiceImpl implements ProjectService {
     ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-    if (!Boolean.TRUE.equals(entity.getPublished()) || !Boolean.TRUE.equals(entity.getActive())) {
-      throw new NotFoundException("Project not found: " + projectId);
-    }
+    projectPublicVisibilityPolicy.assertPubliclyVisible(entity, projectId);
 
     List<ProjectMediaEntity> media =
         projectMediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId);
 
     ProjectResponse response = projectDetailComposer.compose(entity, media);
     projectFavoriteService.enrichProject(response);
+
     return response;
-  }
-
-  private CityEntity resolveCity(Long cityId) {
-    if (cityId == null) return null;
-    return em.getReference(CityEntity.class, cityId);
-  }
-
-  private String clean(String s) {
-    if (!StringUtils.hasText(s)) return null;
-    return s.trim();
-  }
-
-  private java.util.Set<com.brandPitara.sfs.project.enums.PropertyType> entityDefaultTypes() {
-    return new java.util.HashSet<>();
   }
 
   @Override
   @Transactional(readOnly = true)
   public Page<ProjectResponse> publicFeatured(Long builderId, Pageable pageable) {
     Page<ProjectEntity> page = (builderId == null)
-        ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
-        : projectRepository.findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(builderId, pageable);
+        ? projectRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+            ReviewStatus.APPROVED,
+            pageable
+        )
+        : projectRepository.findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+            builderId,
+            ReviewStatus.APPROVED,
+            pageable
+        );
 
     List<Long> projectIds = page.getContent().stream()
         .map(ProjectEntity::getId)
         .toList();
 
     Map<Long, List<ProjectMediaEntity>> mediaMap;
+
     if (!projectIds.isEmpty()) {
       var mediaList = projectMediaRepository.findActiveByProjectIds(projectIds);
       mediaMap = mediaList.stream()
@@ -261,5 +287,25 @@ public class ProjectServiceImpl implements ProjectService {
     projectFavoriteService.enrichProjects(responses);
 
     return new PageImpl<>(responses, pageable, page.getTotalElements());
+  }
+
+  private CityEntity resolveCity(Long cityId) {
+    if (cityId == null) {
+      return null;
+    }
+
+    return em.getReference(CityEntity.class, cityId);
+  }
+
+  private String clean(String s) {
+    if (!StringUtils.hasText(s)) {
+      return null;
+    }
+
+    return s.trim();
+  }
+
+  private java.util.Set<com.brandPitara.sfs.project.enums.PropertyType> entityDefaultTypes() {
+    return new java.util.HashSet<>();
   }
 }

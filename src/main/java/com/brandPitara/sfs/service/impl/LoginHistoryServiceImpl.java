@@ -27,10 +27,18 @@ public class LoginHistoryServiceImpl implements LoginHistoryService {
         history.setSuccess(success);
         history.setDeviceId(deviceId);
         history.setFcmToken(fcmToken);
-        history.setIpAddress(request.getRemoteAddr());
+        history.setIpAddress(extractClientIp(request));
         history.setUserAgent(request.getHeader("User-Agent"));
         history.setLoginTime(OffsetDateTime.now());
 
         loginHistoryRepository.save(history);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            return xff.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }
