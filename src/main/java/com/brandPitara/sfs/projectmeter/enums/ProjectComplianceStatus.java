@@ -1,10 +1,8 @@
 package com.brandPitara.sfs.projectmeter.enums;
 
 public enum ProjectComplianceStatus {
-    NOT_AVAILABLE,
+    OBTAINED,
     PENDING,
-    SUBMITTED,
-    APPROVED,
-    REJECTED,
-    VERIFIED
+    NOT_APPLICABLE,
+    EXPIRED
 }

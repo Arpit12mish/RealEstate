@@ -9,11 +9,14 @@ import com.brandPitara.sfs.dashboard.common.enums.DashboardAuditAction;
 import com.brandPitara.sfs.dashboard.common.enums.DashboardRole;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewEntityType;
 import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
-
-import java.time.OffsetDateTime;
+import com.brandPitara.sfs.observability.LogEvents;
+import com.brandPitara.sfs.observability.LoggingConstants;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.argument.StructuredArguments;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -25,10 +28,16 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DashboardActionAuditServiceImpl implements DashboardActionAuditService {
+
+    private static final Logger AUDIT_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_AUDIT);
 
     private final DashboardActionAuditRepository auditRepository;
     private final DashboardCurrentUserService currentUserService;
@@ -55,12 +64,40 @@ public class DashboardActionAuditServiceImpl implements DashboardActionAuditServ
                         .ipAddress(resolveIp())
                         .userAgent(resolveUserAgent())
                         .build());
+
+                // Mirror to sfs-audit.log — fires only after DB save succeeds
+                writeAuditLog(action, entityType, entityId, projectId, user);
             });
         } catch (Exception e) {
             log.warn("Failed to record dashboard action audit: action={}, entityType={}, entityId={}",
                     action, entityType, entityId, e);
         }
     }
+
+    private void writeAuditLog(
+            DashboardAuditAction action,
+            ReviewEntityType entityType,
+            Long entityId,
+            Long projectId,
+            DashboardUserEntity user
+    ) {
+        try {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("event",      LogEvents.AUDIT_ACTION);
+            fields.put("action",     action.name());
+            fields.put("entityType", entityType.name());
+            fields.put("entityId",   entityId);
+            if (projectId != null) fields.put("projectId", projectId);
+            fields.put("actorId",    user != null ? user.getId()   : "unknown");
+            fields.put("actorName",  user != null ? user.getName() : "unknown");
+            fields.put("actorRole",  user != null ? user.getRole().name() : "unknown");
+            AUDIT_LOG.info("{}", StructuredArguments.entries(fields));
+        } catch (Exception ignored) {
+            // Audit file logging must never break the business flow
+        }
+    }
+
+    // ── Existing helpers (unchanged) ──────────────────────────────────────────
 
     private DashboardUserEntity tryGetCurrentUser() {
         try {

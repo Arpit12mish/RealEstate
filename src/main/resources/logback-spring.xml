@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- ================================================================
+         SFS Production Logging — logback-spring.xml
+         Log dir: /var/log/sfs  (override via env SFS_LOG_DIR)
+         Profile "local" → console only (DEBUG)
+         All other profiles → console + 5 rolling file appenders (JSON)
+         ================================================================ -->
+
+    <springProperty scope="context" name="APP_NAME"  source="spring.application.name" defaultValue="sfs"/>
+    <springProperty scope="context" name="APP_ENV"   source="spring.profiles.active"  defaultValue="unknown"/>
+
+    <!-- Honour env-var SFS_LOG_DIR; fall back to /var/log/sfs -->
+    <property name="LOG_DIR" value="${SFS_LOG_DIR:-/var/log/sfs}"/>
+
+    <!-- ============================================================
+         CONSOLE APPENDER  (human-readable, always active)
+         ============================================================ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{requestId:-no-rid}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ============================================================
+         FILE APPENDERS  (JSON via logstash-logback-encoder)
+         Only activated for non-local profiles.
+         ============================================================ -->
+
+    <!-- ── sfs-api.log ─────────────────────────────────────────── -->
+    <appender name="API_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app/sfs-api.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/sfs-api.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>role</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- ── sfs-error.log ───────────────────────────────────────── -->
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app/sfs-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/sfs-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>role</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- ── sfs-security.log ────────────────────────────────────── -->
+    <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app/sfs-security.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/sfs-security.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>60</maxHistory>
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- ── sfs-audit.log ───────────────────────────────────────── -->
+    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app/sfs-audit.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/sfs-audit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>180</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>role</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- ── sfs-app.log ─────────────────────────────────────────── -->
+    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_DIR}/app/sfs-app.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archive/sfs-app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>100MB</maxFileSize>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <!-- ============================================================
+         PRODUCTION profile (everything except "local")
+         ============================================================ -->
+    <springProfile name="!local">
+
+        <!-- API requests → sfs-api.log ONLY (additivity=false) -->
+        <logger name="com.brandPitara.sfs.observability.api"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="API_FILE"/>
+        </logger>
+
+        <!-- Security/auth events → sfs-security.log ONLY -->
+        <logger name="com.brandPitara.sfs.observability.security"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="SECURITY_FILE"/>
+        </logger>
+
+        <!-- Audit events → sfs-audit.log ONLY -->
+        <logger name="com.brandPitara.sfs.observability.audit"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="AUDIT_FILE"/>
+        </logger>
+
+        <!-- Hibernate: silence verbose SQL in production -->
+        <logger name="org.hibernate.SQL"                           level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql"          level="WARN"/>
+        <logger name="org.hibernate.orm.jdbc.bind"                level="WARN"/>
+
+        <!-- Actuator health endpoint noise reduction -->
+        <logger name="org.springframework.boot.actuate"           level="WARN"/>
+
+        <!-- Root → sfs-app.log + sfs-error.log + console -->
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="APP_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+
+    </springProfile>
+
+    <!-- ============================================================
+         LOCAL development profile
+         Console always on. File appenders also active when
+         SFS_LOG_DIR is set (e.g. SFS_LOG_DIR=$PWD/logs/sfs).
+         ============================================================ -->
+    <springProfile name="local">
+
+        <!-- API requests → console + sfs-api.log -->
+        <logger name="com.brandPitara.sfs.observability.api"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_FILE"/>
+        </logger>
+
+        <!-- Security/auth events → console + sfs-security.log -->
+        <logger name="com.brandPitara.sfs.observability.security"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="SECURITY_FILE"/>
+        </logger>
+
+        <!-- Audit events → console + sfs-audit.log -->
+        <logger name="com.brandPitara.sfs.observability.audit"
+                level="INFO"
+                additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="AUDIT_FILE"/>
+        </logger>
+
+        <!-- Root → console + sfs-app.log + sfs-error.log -->
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="APP_FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+
+    </springProfile>
+
+</configuration>

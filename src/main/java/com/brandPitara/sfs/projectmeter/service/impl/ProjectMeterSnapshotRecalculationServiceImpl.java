@@ -184,16 +184,25 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
             return 0;
         }
 
-        int total = items.size();
+        int total = 0;
         int approved = 0;
         int partial = 0;
 
         for (ProjectComplianceItemEntity item : items) {
-            if (item.getStatus() == ProjectComplianceStatus.APPROVED) {
+            if (item.getStatus() == ProjectComplianceStatus.NOT_APPLICABLE) {
+                continue;
+            }
+            total++;
+            if (item.getStatus() == ProjectComplianceStatus.OBTAINED) {
                 approved++;
-            } else if (item.getStatus() == ProjectComplianceStatus.PENDING) {
+            } else if (item.getStatus() == ProjectComplianceStatus.PENDING
+                    || item.getStatus() == ProjectComplianceStatus.EXPIRED) {
                 partial++;
             }
+        }
+
+        if (total == 0) {
+            return 0;
         }
 
         double rawScore = ((approved * 1.0) + (partial * 0.5)) / total * 100.0;

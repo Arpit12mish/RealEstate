@@ -57,6 +57,15 @@ Each endpoint below lists which roles are permitted in the **Access** column.
 11. [Media Upload (Presign)](#11-media-upload-presign)
 12. [Review & Field Issues](#12-review--field-issues)
 13. [Audit Log](#13-audit-log)
+14. [Field Help System](#14-field-help-system)
+15. [Data Imports (RERA Scraping)](#15-data-imports-rera-scraping)
+    - [Search RERA by Number (no persistence)](#151-search-rera-by-number-no-persistence)
+    - [Save Scrape Candidate](#152-save-scrape-candidate)
+    - [List Candidates](#153-list-candidates)
+    - [Get Candidate Detail](#154-get-candidate-detail)
+    - [Update Candidate Status](#155-update-candidate-status)
+    - [Link Builder to Candidate](#156-link-builder-to-candidate)
+    - [Apply Candidate to Project](#157-apply-candidate-to-project)
 
 ---
 
@@ -313,9 +322,9 @@ Projects belong to a builder. A project goes through a review workflow before it
 
 **Project lifecycle:**
 ```
-DRAFT → SUBMITTED_FOR_REVIEW → APPROVED (published) 
-                              ↘ REJECTED → DRAFT (after fix) → resubmit
-                              ↘ RECHECK  → DRAFT (after fix) → resubmit
+DRAFT → PENDING_REVIEW → APPROVED (published) 
+                        ↘ REJECTED → DRAFT (after fix) → resubmit
+                        ↘ RECHECK  → DRAFT (after fix) → resubmit
 ```
 
 ---
@@ -414,7 +423,7 @@ GET /api/dashboard/projects/{projectId}
 #### List Projects
 
 ```
-GET /api/dashboard/projects?builderId=5&reviewStatus=SUBMITTED_FOR_REVIEW&page=0&size=20
+GET /api/dashboard/projects?builderId=5&reviewStatus=PENDING_REVIEW&page=0&size=20
 ```
 
 **Access:** A, R, DE
@@ -424,7 +433,7 @@ GET /api/dashboard/projects?builderId=5&reviewStatus=SUBMITTED_FOR_REVIEW&page=0
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
 | `builderId` | number | ❌ | Filter by builder |
-| `reviewStatus` | string | ❌ | `DRAFT`, `SUBMITTED_FOR_REVIEW`, `APPROVED`, `REJECTED`, `RECHECK` |
+| `reviewStatus` | string | ❌ | `DRAFT`, `PENDING_REVIEW`, `APPROVED`, `REJECTED`, `RECHECK` |
 | `page` | number | ❌ | Page index (default: 0, max page size: 50) |
 | `size` | number | ❌ | Page size (default: 20) |
 
@@ -835,7 +844,7 @@ GET /api/dashboard/projects/{projectId}/review-status
 ```json
 {
   "projectId": 123,
-  "reviewStatus": "SUBMITTED_FOR_REVIEW",
+  "reviewStatus": "PENDING_REVIEW",
   "submittedAt": "2025-03-15T10:30:00Z",
   "submittedByUserId": 7,
   "reviewRemarks": null,
@@ -1068,7 +1077,8 @@ POST /api/dashboard/projects/{projectId}/meter/compliance-items
 **`itemGroup` values:**
 ```
 RERA, ENVIRONMENTAL, FIRE_SAFETY, STRUCTURAL,
-LEGAL_TITLE, UTILITY, OCCUPANCY, OTHER
+LEGAL_TITLE, UTILITY, OCCUPANCY, OTHER,
+LAND_LICENSE, APPROVAL_NOC
 ```
 
 **`status` values:**
@@ -2224,9 +2234,11 @@ GET /api/admin/interior-cost/addon-rules
 Use this endpoint to get a pre-signed S3 URL for direct file upload from the browser. This avoids routing large files through your backend.
 
 **Upload flow:**
-1. Call `POST /api/dashboard/media/presign-upload` → get `uploadUrl` and `fileKey`
-2. `PUT` the file directly to `uploadUrl` from the browser (no auth headers needed for S3)
-3. Save the resulting CDN URL to the relevant entity (project, builder, etc.)
+1. Call `POST /api/dashboard/media/presign-upload` → get `uploadUrl`, `requiredHeaders`, and `publicUrl`
+2. `PUT` the file directly to `uploadUrl` from the browser — **include every header in `requiredHeaders` exactly as returned** (no other auth headers needed for S3)
+3. Save `publicUrl` (strip any query-string if needed) to the relevant entity (project, builder, etc.)
+
+> **Important:** The presigned URL is signed for a specific set of headers (`Content-Type` and `Cache-Control`). If your PUT request is missing any of the `requiredHeaders` values, S3 will return `403 Forbidden`. Always spread `requiredHeaders` directly into your PUT headers rather than constructing them manually.
 
 ```
 POST /api/dashboard/media/presign-upload
@@ -2267,13 +2279,27 @@ POST /api/dashboard/media/presign-upload
 **Response:** `DashboardPresignUploadResponse`
 ```json
 {
-  "uploadUrl": "https://s3.ap-south-1.amazonaws.com/your-bucket/...",
-  "fileKey": "projects/123/images/abc123.webp",
-  "cdnUrl": "https://cdn.yourdomain.com/projects/123/images/abc123.webp"
+  "uploadUrl": "https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/dashboard/projects/123/images/abc123.jpg?X-Amz-Algorithm=...",
+  "storageKey": "dashboard/projects/123/images/abc123.jpg",
+  "publicUrl": "https://cdn.yourdomain.com/dashboard/projects/123/images/abc123.jpg",
+  "expiresInSeconds": 300,
+  "requiredHeaders": {
+    "Content-Type": "image/jpeg",
+    "Cache-Control": "public, max-age=31536000, immutable"
+  }
 }
 ```
 
-After the PUT to `uploadUrl` succeeds, save `cdnUrl` as the `url` field in the media/logo endpoint.
+**Performing the S3 PUT:**
+```ts
+await fetch(uploadUrl, {
+  method: "PUT",
+  headers: requiredHeaders,   // spread exactly as returned — do not add or omit any header
+  body: file,
+});
+```
+
+After the PUT to `uploadUrl` succeeds, save `publicUrl` (strip query-string with `.split("?")[0]`) as the `url` field in the media/logo endpoint.
 
 ---
 
@@ -2394,7 +2420,7 @@ GET /api/dashboard/reviews/history?entityType=PROJECT&entityId=123
     "entityType": "PROJECT",
     "entityId": 123,
     "fromStatus": "DRAFT",
-    "toStatus": "SUBMITTED_FOR_REVIEW",
+    "toStatus": "PENDING_REVIEW",
     "remarks": "Ready for review",
     "performedByUserId": 7,
     "performedAt": "2025-03-15T10:30:00Z"
@@ -2481,6 +2507,778 @@ CONNECTIVITY_UPSERTED, CONNECTIVITY_PLACE_ADDED, CONNECTIVITY_PLACE_UPDATED, CON
 
 ---
 
+## 14. Field Help System
+
+Backend-driven contextual help text for every dashboard form field. Data-entry users see an `i` icon next to each field label; clicking it opens a popover with guidance on what the field means, why it is needed, where to collect the value, and an example.
+
+Help text is stored in the database and can be updated by an admin at any time without a frontend deployment.
+
+**Base path:** `/api/dashboard/field-help`
+
+---
+
+### 14.1 List Help for a Module
+
+Returns all active help entries for one module, ordered by `displayOrder` ascending.
+
+```
+GET /api/dashboard/field-help?module=PROJECT_METER_CONSTRUCTION_STAGE
+```
+
+**Access:** A, R, DE
+
+**Query params:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `module` | string (enum) | ✅ | Module identifier — see values below |
+
+**`module` values:**
+
+| Value | Covers |
+|-------|--------|
+| `PROJECT_BASIC` | Core project fields (name, RERA number, status, dates, price) |
+| `PROJECT_MEDIA` | Project gallery media fields |
+| `PROJECT_FLOOR_PLAN` | Floor plan fields |
+| `PROJECT_HIGHLIGHT` | Highlight / USP fields |
+| `PROJECT_CONNECTIVITY` | Connectivity overview and places |
+| `PROJECT_METER_CONSTRUCTION_STAGE` | Construction stage form fields |
+| `PROJECT_METER_COMPLIANCE` | Compliance item fields |
+| `PROJECT_METER_AMENITY` | Amenity fields |
+| `PROJECT_METER_PRICE_HISTORY` | Price history fields |
+| `PROJECT_METER_PAYMENT_MILESTONE` | Payment milestone fields |
+| `PROJECT_METER_COST_BREAKDOWN` | Cost breakdown fields |
+| `PROJECT_METER_LAND_UTILIZATION` | Land utilization fields |
+| `PROJECT_METER_LOCATION_SCORE` | Location score fields |
+| `BUILDER` | Builder profile fields |
+
+**Response:** `DashboardFieldHelpResponse[]`
+```json
+[
+  {
+    "id": 1,
+    "module": "PROJECT_METER_CONSTRUCTION_STAGE",
+    "fieldKey": "weightPercent",
+    "fieldLabel": "Weight %",
+    "shortHelp": "Importance of this stage in total construction progress.",
+    "detailedHelp": "Weight percentage defines how much this stage contributes to the total construction progress score.",
+    "whyNeeded": "Used to calculate overall construction progress in Project Meter.",
+    "sourceHint": "Use internal construction weighting, project schedule, or engineer estimate.",
+    "exampleValue": "20",
+    "validationHint": "Enter value between 0 and 100. Total stage weights should ideally equal 100.",
+    "active": true,
+    "displayOrder": 5
+  }
+]
+```
+
+**Response fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Unique ID |
+| `module` | string | Module this help belongs to |
+| `fieldKey` | string | Machine-readable field identifier matching the form field name |
+| `fieldLabel` | string | Human-readable label shown in the popover title |
+| `shortHelp` | string | One-sentence summary shown at the top of the popover |
+| `detailedHelp` | string \| null | Longer explanation (optional) |
+| `whyNeeded` | string \| null | Why this field matters for the product |
+| `sourceHint` | string \| null | Where the data entry user should collect this value from |
+| `exampleValue` | string \| null | Concrete example value |
+| `validationHint` | string \| null | Constraint reminder for the user |
+| `active` | boolean | Whether this help entry is currently shown |
+| `displayOrder` | number | Ordering within the module |
+
+---
+
+### 14.2 Get Help for a Single Field
+
+```
+GET /api/dashboard/field-help/{module}/{fieldKey}
+```
+
+**Access:** A, R, DE
+
+**Path params:**
+
+| Param | Description |
+|-------|-------------|
+| `module` | Module enum value (e.g. `PROJECT_METER_CONSTRUCTION_STAGE`) |
+| `fieldKey` | Field key (e.g. `weightPercent`) |
+
+**Response:** Single `DashboardFieldHelpResponse` (same shape as above)
+
+Returns `404` if no entry exists for that module + fieldKey combination.
+
+---
+
+### 14.3 Create or Update Help Text (Upsert)
+
+Creates a new entry or updates an existing one. Identity is determined by `(module, fieldKey)` — if a record exists for that pair it is updated; otherwise a new record is created.
+
+```
+PUT /api/dashboard/field-help
+```
+
+**Access:** A only
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `module` | string (enum) | ✅ | Valid module value | Module this help belongs to |
+| `fieldKey` | string | ✅ | Not blank | Machine-readable field identifier |
+| `fieldLabel` | string | ✅ | Not blank | Human-readable label |
+| `shortHelp` | string | ✅ | Not blank | One-sentence summary |
+| `detailedHelp` | string | ❌ | — | Longer explanation |
+| `whyNeeded` | string | ❌ | — | Why the field matters |
+| `sourceHint` | string | ❌ | — | Where to collect this data |
+| `exampleValue` | string | ❌ | — | Example value string |
+| `validationHint` | string | ❌ | — | Constraint reminder |
+| `active` | boolean | ❌ | — | Defaults to `true` on create |
+| `displayOrder` | number | ❌ | — | Defaults to `0` on create |
+
+**Example:**
+```json
+{
+  "module": "PROJECT_METER_CONSTRUCTION_STAGE",
+  "fieldKey": "weightPercent",
+  "fieldLabel": "Weight %",
+  "shortHelp": "Importance of this stage in total construction progress.",
+  "detailedHelp": "Weight percentage defines how much this stage contributes to the total construction progress score.",
+  "whyNeeded": "Used to calculate overall construction progress in Project Meter.",
+  "sourceHint": "Use internal construction weighting, project schedule, or engineer estimate.",
+  "exampleValue": "20",
+  "validationHint": "Enter value between 0 and 100. Total stage weights should ideally equal 100.",
+  "displayOrder": 5
+}
+```
+
+**Response:** `DashboardFieldHelpResponse` (the created or updated record)
+
+---
+
+### 14.4 Activate / Deactivate a Help Entry
+
+Toggles visibility of a help entry without deleting it. Deactivated entries are excluded from the list endpoint.
+
+```
+PATCH /api/dashboard/field-help/{id}/active?value=false
+```
+
+**Access:** A only
+
+**Path params:**
+
+| Param | Description |
+|-------|-------------|
+| `id` | Help entry ID |
+
+**Query params:**
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `value` | boolean | ✅ | `true` to activate, `false` to deactivate |
+
+**Response:** `204 No Content`
+
+---
+
+### 14.5 Delete a Help Entry (Soft Delete)
+
+Marks the entry as inactive (`active = false`). The record is retained in the database but will not appear in list responses.
+
+```
+DELETE /api/dashboard/field-help/{id}
+```
+
+**Access:** A only
+
+**Response:** `204 No Content`
+
+---
+
+### Seeded Help Data
+
+All Project Meter module fields are pre-seeded on database migration (V71 + V72) and immediately available via the list endpoint.
+
+**`PROJECT_METER_CONSTRUCTION_STAGE`** (V71 — 12 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `stageCode` | Stage Code |
+| `displayOrder` | Display Order |
+| `stageLabel` | Stage Label |
+| `status` | Status |
+| `weightPercent` | Weight % |
+| `progressPercent` | Progress % |
+| `plannedStartDate` | Planned Start |
+| `plannedEndDate` | Planned End |
+| `actualStartDate` | Actual Start |
+| `actualEndDate` | Actual End |
+| `evidenceCount` | Evidence Count |
+| `verified` | Verified |
+
+**`PROJECT_METER_COMPLIANCE`** (V72 — 9 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `itemGroup` | Group |
+| `itemKey` | Item Key |
+| `itemLabel` | Item Label |
+| `status` | Status |
+| `displayOrder` | Display Order |
+| `valueText` | Value / Reference |
+| `documentUrl` | Document URL |
+| `remarks` | Remarks |
+| `verified` | Verified |
+
+**`PROJECT_METER_AMENITY`** (V72 — 8 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `amenityCode` | Amenity Code |
+| `amenityLabel` | Amenity Label |
+| `status` | Status |
+| `progressPercent` | Progress % |
+| `weightPercent` | Weight % |
+| `displayOrder` | Order |
+| `remarks` | Remarks |
+| `verified` | Verified |
+
+**`PROJECT_METER_PRICE_HISTORY`** (V72 — 5 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `yearLabel` | Year / Month |
+| `projectPrice` | Project Price |
+| `averageAreaPrice` | Area Avg Price |
+| `displayOrder` | Display Order |
+| `verified` | Verified |
+
+**`PROJECT_METER_PAYMENT_MILESTONE`** (V72 — 7 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `milestoneCode` | Milestone Code |
+| `milestoneLabel` | Milestone Label |
+| `percentageValue` | Percentage % |
+| `displayOrder` | Display Order |
+| `linkedStageCode` | Linked Stage Code |
+| `description` | Description |
+| `active` | Active |
+
+**`PROJECT_METER_COST_BREAKDOWN`** (V72 — 8 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `landCost` | Land Cost |
+| `constructionCost` | Construction Cost |
+| `infrastructureCost` | Infrastructure Cost |
+| `otherCost` | Other Cost |
+| `totalCost` | Total Cost (manual override) |
+| `sourceLabel` | Source Label |
+| `remarks` | Remarks |
+| `verified` | Verified |
+
+**`PROJECT_METER_LAND_UTILIZATION`** (V72 — 10 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `areaUnit` | Area Unit |
+| `totalLandArea` | Total Land Area |
+| `builtUpArea` | Built-up Area |
+| `openArea` | Open / Green Area |
+| `parkingArea` | Parking Area |
+| `amenitiesArea` | Amenities Area |
+| `otherArea` | Other Area |
+| `sourceLabel` | Source Label |
+| `remarks` | Remarks |
+| `verified` | Verified |
+
+**`PROJECT_METER_LOCATION_SCORE`** (V72 — 10 fields)
+
+| `fieldKey` | `fieldLabel` |
+|------------|-------------|
+| `connectivityScore` | Connectivity Score |
+| `infrastructureScore` | Infrastructure Score |
+| `socialInfraScore` | Social Infrastructure Score |
+| `appreciationScore` | Appreciation Score |
+| `safetyScore` | Safety Score |
+| `greeneryScore` | Greenery Score |
+| `overallScore` | Overall Score (manual override) |
+| `sourceLabel` | Source Label |
+| `remarks` | Remarks |
+| `verified` | Verified |
+
+Modules not listed above (`PROJECT_BASIC`, `PROJECT_MEDIA`, `PROJECT_FLOOR_PLAN`, `PROJECT_HIGHLIGHT`, `PROJECT_CONNECTIVITY`, `BUILDER`) have no pre-seeded entries — use the upsert endpoint to add help text for those fields.
+
+---
+
+## 15. Data Imports (RERA Scraping)
+
+**Base path:** `/api/dashboard/scraping`
+
+The Data Imports module lets admins search a public RERA portal by registration number, review the extracted data as a *candidate*, and then apply it to a new or existing project draft. Nothing is published automatically — every candidate goes through the normal review workflow.
+
+### RERA Sources Available
+
+| `sourceCode` | Portal | Status |
+|---|---|---|
+| `HARYANA_RERA` | haryanarera.gov.in | **Active** — district-based DataTable search |
+| `UP_RERA` | up-rera.in | **Active** — direct registration-number search, Angular SPA |
+| `MAHA_RERA` | maharera.mahaonline.gov.in | Coming soon |
+| `KARNATAKA_RERA` | rera.karnataka.gov.in | Coming soon |
+
+### Candidate Status Machine
+
+```
+SCRAPED → NEEDS_REVIEW → READY_TO_APPLY → APPLIED (terminal)
+                                        ↘ REJECTED (terminal)
+FAILED  (set automatically when scrape yields no data)
+```
+
+| Status | Description |
+|---|---|
+| `SCRAPED` | Live scrape ran and data was extracted |
+| `NEEDS_REVIEW` | Admin flagged the candidate for closer inspection |
+| `READY_TO_APPLY` | Reviewed and approved — ready to import |
+| `APPLIED` | Candidate data has been applied to a project (terminal) |
+| `REJECTED` | Candidate discarded — will not be applied (terminal) |
+| `FAILED` | Scrape ran but returned no usable data |
+
+---
+
+### 15.1 Search RERA by Number (no persistence)
+
+```
+POST /api/dashboard/scraping/rera/search-by-number
+```
+
+**Access:** ADMIN only
+
+Runs a live headless-browser scrape against the selected RERA portal and returns extracted candidate data. **Nothing is saved to the database.** Use [15.2](#152-save-scrape-candidate) to both scrape and persist in one call.
+
+> Typical response time: **10–60 seconds** (browser launch + portal navigation).
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `sourceCode` | `ReraSourceCode` | ✅ | Valid enum value | RERA authority to search |
+| `reraNumber` | string | ✅ | Not blank, max 100 chars | Registration number as shown on the portal |
+| `saveEvidence` | boolean | ❌ | Default `true` | Save raw HTML + screenshot to `/tmp/sfs-scrapes/` |
+| `includeRaw` | boolean | ❌ | Default `true` | Include `allExtractedKeyValues` map in response |
+
+**Example:**
+```json
+{
+  "sourceCode": "UP_RERA",
+  "reraNumber": "UPRERAPRJ12345",
+  "saveEvidence": true,
+  "includeRaw": false
+}
+```
+
+**Response:** `ReraNumberSearchResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sourceCode` | string | Echo of request |
+| `reraNumber` | string | Echo of request |
+| `found` | boolean | Whether data was successfully extracted |
+| `captchaDetected` | boolean | Portal returned a CAPTCHA / anti-bot page |
+| `requestedAt` | ISO-8601 | Browser navigation start time |
+| `sourceSearchUrl` | string | Portal search page URL |
+| `sourceDetailUrl` | string | Project detail page URL (null if not navigated) |
+| `finalUrl` | string | Browser's final URL after all navigation |
+| `title` | string | Page `<title>` |
+| `rawHtmlPath` | string | Absolute path of saved HTML file (null if `saveEvidence=false`) |
+| `screenshotPath` | string | Absolute path of saved PNG (null if `saveEvidence=false`) |
+| `summary` | object | Confidence summary — see below |
+| `projectCandidate` | object | Extracted project fields |
+| `builderCandidate` | object | Extracted builder / promoter fields |
+| `complianceCandidates` | array | Compliance items found (always includes `RERA_REGISTRATION`) |
+| `fieldResults` | array | Per-field found / missing detail |
+| `missingFields` | array | Only the missing fields (null if all found) |
+| `warnings` | array | Non-fatal warnings (null if none) |
+| `raw` | object | `{ "allExtractedKeyValues": {...} }` (null if `includeRaw=false`) |
+
+**`summary` object:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `totalExpectedFields` | int | Fixed: 18 |
+| `foundFields` | int | Fields where a value was extracted |
+| `missingFields` | int | `totalExpectedFields − foundFields` |
+| `highConfidenceFields` | int | Found fields with confidence ≥ 80 |
+| `lowConfidenceFields` | int | Found fields with confidence < 80 |
+| `confidenceScore` | int | `round(foundFields × 100 / totalExpectedFields)` |
+| `status` | string | `COMPLETE` / `PARTIAL` / `LOW_CONFIDENCE` / `NOT_FOUND` / `BLOCKED` |
+
+**Success example:**
+```json
+{
+  "sourceCode": "UP_RERA",
+  "reraNumber": "UPRERAPRJ12345",
+  "found": true,
+  "captchaDetected": false,
+  "requestedAt": "2026-05-12T10:15:00Z",
+  "sourceSearchUrl": "https://www.up-rera.in/Prodetails",
+  "sourceDetailUrl": "https://www.up-rera.in/ProjectDetails?id=12345",
+  "finalUrl": "https://www.up-rera.in/ProjectDetails?id=12345",
+  "title": "Project Details — UP RERA",
+  "rawHtmlPath": "/tmp/sfs-scrapes/rera-up_rera-20260512101500-a1b2c3d4.html",
+  "screenshotPath": "/tmp/sfs-scrapes/rera-up_rera-20260512101500-a1b2c3d4.png",
+  "summary": {
+    "totalExpectedFields": 18,
+    "foundFields": 10,
+    "missingFields": 8,
+    "highConfidenceFields": 7,
+    "lowConfidenceFields": 3,
+    "confidenceScore": 56,
+    "status": "PARTIAL"
+  },
+  "projectCandidate": {
+    "name": "Green Valley Residency",
+    "cityName": "Lucknow",
+    "addressLine": "Sector 12, Gomti Nagar, Lucknow",
+    "reraNumber": "UPRERAPRJ12345",
+    "possessionDate": "2027-03-31",
+    "projectStatus": "UNDER_CONSTRUCTION",
+    "propertyTypes": ["APARTMENT"]
+  },
+  "builderCandidate": {
+    "name": "ABC Developers Pvt. Ltd.",
+    "phone": "9876543210",
+    "email": "contact@abcdev.com",
+    "addressLine": "12, Hazratganj, Lucknow"
+  },
+  "complianceCandidates": [
+    {
+      "itemGroup": "RERA",
+      "itemKey": "RERA_REGISTRATION",
+      "itemLabel": "RERA Registration",
+      "status": "OBTAINED",
+      "valueText": "UPRERAPRJ12345",
+      "documentUrl": "https://www.up-rera.in/ProjectDetails?id=12345",
+      "remarks": "Extracted from RERA portal",
+      "displayOrder": 1,
+      "verified": false
+    }
+  ],
+  "warnings": null
+}
+```
+
+**CAPTCHA / blocked example:**
+```json
+{
+  "sourceCode": "UP_RERA",
+  "reraNumber": "UPRERAPRJ12345",
+  "found": false,
+  "captchaDetected": true,
+  "summary": { "status": "BLOCKED", "confidenceScore": 0 },
+  "warnings": ["CAPTCHA or anti-bot challenge detected. Scrape aborted."]
+}
+```
+
+---
+
+### 15.2 Save Scrape Candidate
+
+```
+POST /api/dashboard/scraping/candidates
+```
+
+**Access:** ADMIN only  
+**HTTP Status on success:** `201 Created`
+
+Runs a live scrape (same as 15.1) **and** persists the full result as a candidate record. Always saves — including failed or CAPTCHA-blocked scrapes. Returns the full `ScrapeCandidateDetailResponse`.
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `sourceCode` | `ReraSourceCode` | ✅ | Valid enum value | RERA authority to search |
+| `reraNumber` | string | ✅ | Not blank, max 100 chars | Registration number |
+| `saveEvidence` | boolean | ❌ | Default `true` | Save raw HTML + screenshot to disk |
+
+**Example:**
+```json
+{
+  "sourceCode": "UP_RERA",
+  "reraNumber": "UPRERAPRJ12345",
+  "saveEvidence": true
+}
+```
+
+**Response:** `ScrapeCandidateDetailResponse` — see [15.4](#154-get-candidate-detail) for the full field list.
+
+---
+
+### 15.3 List Candidates
+
+```
+GET /api/dashboard/scraping/candidates
+```
+
+**Access:** ADMIN, DATA_ENTRY, REVIEWER
+
+Returns a paginated list of candidate summaries. Supports optional filtering by status, source, and RERA number.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | `ScrapeCandidateStatus` | ❌ | Filter by candidate status |
+| `sourceCode` | `ReraSourceCode` | ❌ | Filter by RERA source |
+| `reraNumber` | string | ❌ | Filter by exact or partial RERA number |
+| `page` | int | ❌ | Page number, 0-indexed (default `0`) |
+| `size` | int | ❌ | Page size (default `20`) |
+| `sort` | string | ❌ | Sort field (default `createdAt,desc`) |
+
+**Example:**
+```
+GET /api/dashboard/scraping/candidates?status=READY_TO_APPLY&sourceCode=UP_RERA&page=0&size=20
+```
+
+**Response:** Spring `Page<ScrapeCandidateSummaryDto>`
+
+Each item in `content`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | long | Candidate ID |
+| `sourceCode` | string | RERA authority |
+| `reraNumber` | string | Registration number searched |
+| `projectName` | string | Extracted project name (null if scrape failed) |
+| `builderName` | string | Extracted promoter name (null if scrape failed) |
+| `found` | boolean | Whether data was extracted |
+| `confidenceScore` | int | 0–100 |
+| `confidenceStatus` | string | `COMPLETE` / `PARTIAL` / `LOW_CONFIDENCE` / `NOT_FOUND` / `BLOCKED` |
+| `foundFields` | int | Number of fields successfully extracted |
+| `missingFields` | int | Number of fields not found |
+| `status` | string | Candidate workflow status |
+| `linkedBuilderId` | long | Builder linked to this candidate (null if not linked) |
+| `linkedProjectId` | long | Project linked during apply (null if not applied) |
+| `appliedProjectId` | long | Project that candidate data was applied to (null if not applied) |
+| `sourceDetailUrl` | string | Portal detail page URL |
+| `createdAt` | ISO-8601 | When the scrape was saved |
+| `updatedAt` | ISO-8601 | Last status / link change |
+
+---
+
+### 15.4 Get Candidate Detail
+
+```
+GET /api/dashboard/scraping/candidates/{id}
+```
+
+**Access:** ADMIN, DATA_ENTRY, REVIEWER
+
+Returns the full candidate record including all extracted child data, field-level evidence, and raw values.
+
+**Path Parameter:** `id` — candidate ID from the list endpoint.
+
+**Response:** `ScrapeCandidateDetailResponse`
+
+**Core fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | long | Candidate ID |
+| `sourceCode` | string | RERA authority |
+| `reraNumber` | string | Registration number |
+| `found` | boolean | Scrape extracted data |
+| `captchaDetected` | boolean | Blocked by CAPTCHA |
+| `sourceSearchUrl` | string | Portal search page |
+| `sourceDetailUrl` | string | Portal detail page |
+| `finalUrl` | string | Browser final URL |
+| `pageTitle` | string | Detail page title |
+| `rawHtmlPath` | string | Saved HTML file path |
+| `screenshotPath` | string | Saved PNG file path |
+| `confidenceScore` | int | 0–100 |
+| `confidenceStatus` | string | Overall scrape quality |
+| `totalExpectedFields` | int | Always 18 |
+| `foundFields` | int | Fields extracted |
+| `missingFields` | int | Fields not found |
+| `status` | string | Candidate workflow status |
+| `linkedBuilderId` | long | Linked builder (null if none) |
+| `linkedProjectId` | long | Linked project (null if none) |
+| `appliedProjectId` | long | Applied project (null if not applied) |
+| `remarks` | string | Admin remarks (e.g. rejection reason) |
+| `appliedAt` | ISO-8601 | When apply was executed (null if not applied) |
+| `createdAt` | ISO-8601 | Scrape timestamp |
+| `updatedAt` | ISO-8601 | Last update |
+
+**Nested objects:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `projectCandidate` | object | Extracted project fields (name, city, address, price, dates, RERA number, status, property types) |
+| `builderCandidate` | object | Extracted builder fields (name, phone, email, address, city) |
+| `complianceCandidates` | array | Compliance items — always includes `RERA_REGISTRATION` |
+| `costBreakdownCandidate` | object | Cost breakdown data (null if not found) |
+| `landUtilizationCandidate` | object | Land utilization data (null if not found) |
+| `documentCandidates` | array | Documents found on the portal page |
+| `fieldResults` | array | Per-field found / missing detail with confidence score |
+| `missingFieldResults` | array | Only missing fields |
+| `rawValues` | array | All raw key-value pairs extracted from the portal HTML |
+
+---
+
+### 15.5 Update Candidate Status
+
+```
+PATCH /api/dashboard/scraping/candidates/{id}/status
+```
+
+**Access:** ADMIN, DATA_ENTRY
+
+Moves a candidate through the workflow. Use this to mark a candidate as reviewed, ready, or rejected. Remarks are required when setting `REJECTED`.
+
+**Path Parameter:** `id` — candidate ID.
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `status` | `ScrapeCandidateStatus` | ✅ | Not null | Target status |
+| `remarks` | string | ❌ (required for `REJECTED`) | max 1000 chars | Admin notes |
+
+**Example — mark ready:**
+```json
+{
+  "status": "READY_TO_APPLY"
+}
+```
+
+**Example — reject with reason:**
+```json
+{
+  "status": "REJECTED",
+  "remarks": "Duplicate of candidate #42 — same project already imported."
+}
+```
+
+**Response:** Updated `ScrapeCandidateDetailResponse`.
+
+> Terminal statuses (`APPLIED`, `REJECTED`) cannot be changed again.
+
+---
+
+### 15.6 Link Builder to Candidate
+
+```
+PATCH /api/dashboard/scraping/candidates/{id}/link-builder
+```
+
+**Access:** ADMIN, DATA_ENTRY
+
+Associates an existing builder record with this candidate. Required before applying with `CREATE_NEW_PROJECT` mode if the portal did not extract a builder name that maps to an existing builder. The `builderId` supplied here is used as the default during apply.
+
+**Path Parameter:** `id` — candidate ID.
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `builderId` | long | ✅ | Not null | ID of the existing builder to link |
+
+**Example:**
+```json
+{
+  "builderId": 7
+}
+```
+
+**Response:** Updated `ScrapeCandidateDetailResponse`.
+
+---
+
+### 15.7 Apply Candidate to Project
+
+```
+POST /api/dashboard/scraping/candidates/{id}/apply-to-project
+```
+
+**Access:** ADMIN, DATA_ENTRY
+
+Applies extracted candidate data to a project. Two modes are supported:
+
+| `mode` | Behaviour |
+|--------|-----------|
+| `CREATE_NEW_PROJECT` | Creates a new project draft using candidate data. Requires `builderId` (from request or linked builder). |
+| `UPDATE_EXISTING_PROJECT` | Merges candidate data into an existing project. Requires `projectId`. Existing non-null fields are preserved unless `overwrite=true`. |
+
+The resulting project enters the normal `DRAFT → PENDING_REVIEW` workflow — **nothing is published automatically**.
+
+**Path Parameter:** `id` — candidate ID.
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `mode` | `ApplyMode` | ✅ | Not null | `CREATE_NEW_PROJECT` or `UPDATE_EXISTING_PROJECT` |
+| `builderId` | long | Conditional | Required for `CREATE_NEW_PROJECT` if candidate has no linked builder | Builder to attach to the new project |
+| `projectId` | long | Conditional | Required for `UPDATE_EXISTING_PROJECT` | Project to update |
+| `cityId` | long | ❌ | — | City ID mapping (the candidate stores the city name as text; supply the resolved ID here) |
+| `overwrite` | boolean | ❌ | Default `false` | When `true`, candidate values overwrite existing non-null project fields |
+
+**Example — create new project:**
+```json
+{
+  "mode": "CREATE_NEW_PROJECT",
+  "builderId": 7,
+  "cityId": 3,
+  "overwrite": false
+}
+```
+
+**Example — update existing project:**
+```json
+{
+  "mode": "UPDATE_EXISTING_PROJECT",
+  "projectId": 105,
+  "cityId": 3,
+  "overwrite": true
+}
+```
+
+**Response:** `ApplyToProjectResponse`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `createdProject` | boolean | `true` if a new project was created; `false` if an existing one was updated |
+| `projectId` | long | ID of the created / updated project |
+| `candidateId` | long | ID of the candidate that was applied |
+| `fieldsApplied` | int | Number of project fields written from candidate data |
+| `fieldsSkipped` | int | Number of fields skipped (already populated and `overwrite=false`) |
+| `complianceItemsCreated` | int | New compliance items added to Project Meter |
+| `complianceItemsSkipped` | int | Compliance items that already existed |
+| `meterSectionsCreated` | array | Names of new Project Meter sections created (e.g. `["LAND_UTILIZATION"]`) |
+| `warnings` | array | Non-fatal warnings (null if none) |
+
+**Example response:**
+```json
+{
+  "createdProject": true,
+  "projectId": 201,
+  "candidateId": 14,
+  "fieldsApplied": 8,
+  "fieldsSkipped": 0,
+  "complianceItemsCreated": 1,
+  "complianceItemsSkipped": 0,
+  "meterSectionsCreated": ["LAND_UTILIZATION"],
+  "warnings": null
+}
+```
+
+> After apply succeeds the candidate status is automatically set to `APPLIED` (terminal — cannot be changed again).
+
+---
+
 ## Quick Reference: Who Can Do What
 
 | Section | ADMIN | REVIEWER | DATA_ENTRY |
@@ -2512,6 +3310,13 @@ CONNECTIVITY_UPSERTED, CONNECTIVITY_PLACE_ADDED, CONNECTIVITY_PLACE_UPDATED, CON
 | Manage Distributors | ✅ | ❌ | ❌ |
 | Manage Calculator Rules | ✅ | ❌ | ❌ |
 | Media Upload (presign) | ✅ | ❌ | ✅ |
+| View Field Help | ✅ | ✅ | ✅ |
+| Manage Field Help (create/update/delete) | ✅ | ❌ | ❌ |
+| RERA Search (no persistence) | ✅ | ❌ | ❌ |
+| Save Scrape Candidate | ✅ | ❌ | ❌ |
+| View Candidates (list + detail) | ✅ | ✅ | ✅ |
+| Update Candidate Status / Link Builder | ✅ | ❌ | ✅ |
+| Apply Candidate to Project | ✅ | ❌ | ✅ |
 
 ---
 

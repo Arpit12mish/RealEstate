@@ -14,6 +14,7 @@ public class ApiError {
     private String error;
     private String message;
     private String path;
+    private String requestId;
 
     // optional (only for validation errors)
     private Map<String, String> validationErrors;

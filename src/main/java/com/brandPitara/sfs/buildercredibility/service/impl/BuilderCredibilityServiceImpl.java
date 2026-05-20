@@ -660,12 +660,10 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
 
     private double complianceStatusScore(ProjectComplianceStatus status, Boolean verified) {
         double base = switch (status) {
-            case VERIFIED -> 100.0;
-            case APPROVED -> 90.0;
-            case SUBMITTED -> 65.0;
+            case OBTAINED -> 90.0;
             case PENDING -> 40.0;
-            case NOT_AVAILABLE -> 20.0;
-            case REJECTED -> 0.0;
+            case NOT_APPLICABLE -> 100.0;
+            case EXPIRED -> 10.0;
         };
 
         if (Boolean.TRUE.equals(verified)) {

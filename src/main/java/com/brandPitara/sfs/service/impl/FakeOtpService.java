@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-@Profile("local-fake-otp")
+@Profile({"local", "local-fake-otp"})
 public class FakeOtpService implements OtpService {
 
     @Override

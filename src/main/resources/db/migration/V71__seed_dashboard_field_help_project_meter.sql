@@ -1,0 +1,147 @@
+INSERT INTO dashboard_field_help
+    (module, field_key, field_label, short_help, detailed_help, why_needed, source_hint, example_value, validation_hint, display_order)
+VALUES
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'stageCode',
+    'Stage Code',
+    'Unique code for the construction stage.',
+    'Stage Code identifies the construction stage in a consistent machine-readable way, such as FOUNDATION, STRUCTURE, FINISHING.',
+    'Used for sorting, grouping, linking payment milestones, and calculating construction progress.',
+    'Use standard stage names from construction plan, builder status report, or internal predefined list.',
+    'FOUNDATION',
+    'Use uppercase code without spaces. Example: FOUNDATION.',
+    1
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'displayOrder',
+    'Display Order',
+    'Controls the order in which stages appear in the dashboard and app.',
+    'Lower numbers appear first. This does not directly affect calculation unless used with business rules.',
+    'Helps users view construction stages in logical sequence.',
+    'Use construction sequence from project schedule.',
+    '1',
+    'Enter a non-negative number.',
+    2
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'stageLabel',
+    'Stage Label',
+    'Human-readable name of the construction stage.',
+    'This is shown to admins, reviewers, and app users.',
+    'Makes the stage understandable for non-technical users.',
+    'Use builder brochure, construction report, or standard project stage name.',
+    'Foundation Work',
+    'Keep it short and clear.',
+    3
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'status',
+    'Status',
+    'Current status of this construction stage.',
+    'Shows whether the stage has not started, is in progress, completed, delayed, or blocked.',
+    'Helps reviewers and users understand actual construction condition.',
+    'Use site visit report, builder progress update, or engineer report.',
+    'IN_PROGRESS',
+    'Select the closest valid status from the dropdown.',
+    4
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'weightPercent',
+    'Weight %',
+    'Importance of this stage in total construction progress.',
+    'Weight percentage defines how much this stage contributes to the total construction progress score.',
+    'Used to calculate overall construction progress in Project Meter.',
+    'Use internal construction weightage, project schedule, or engineer estimate.',
+    '20',
+    'Enter value between 0 and 100. Total stage weights should ideally equal 100.',
+    5
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'progressPercent',
+    'Progress %',
+    'Completion percentage of this construction stage.',
+    'Shows how much of the selected stage is completed.',
+    'Used with Weight % to calculate overall construction progress.',
+    'Use site visit evidence, builder progress report, or engineer confirmation.',
+    '80',
+    'Enter value between 0 and 100.',
+    6
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'plannedStartDate',
+    'Planned Start',
+    'Original planned start date for this stage.',
+    'This is the expected date when this stage should have started.',
+    'Used to compare planned timeline against actual progress.',
+    'Collect from project construction schedule or builder timeline.',
+    '2025-01-01',
+    'Use official planned schedule date.',
+    7
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'plannedEndDate',
+    'Planned End',
+    'Original planned end date for this stage.',
+    'This is the expected date when this stage should be completed.',
+    'Used for delay calculation and progress tracking.',
+    'Collect from project construction schedule or builder timeline.',
+    '2025-06-30',
+    'Planned end date should not be before planned start date.',
+    8
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'actualStartDate',
+    'Actual Start',
+    'Actual date when this stage started on site.',
+    'This captures real project execution start date.',
+    'Used to compare actual work with planned schedule.',
+    'Collect from site report, construction update, or builder confirmation.',
+    '2025-01-10',
+    'Leave blank if stage has not started.',
+    9
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'actualEndDate',
+    'Actual End',
+    'Actual date when this stage was completed.',
+    'This captures real completion date for this stage.',
+    'Used to identify delay and completed progress.',
+    'Collect from site report, completion certificate, or builder confirmation.',
+    '2025-07-05',
+    'Leave blank if stage is not completed.',
+    10
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'evidenceCount',
+    'Evidence Count',
+    'Number of supporting evidence items available for this stage.',
+    'Evidence can include images, site reports, PDFs, certificates, or verification notes.',
+    'Helps reviewer judge confidence level of entered progress.',
+    'Count uploaded site images, documents, inspection notes, or reports.',
+    '3',
+    'Enter zero or a positive number.',
+    11
+),
+(
+    'PROJECT_METER_CONSTRUCTION_STAGE',
+    'verified',
+    'Verified',
+    'Marks whether this stage has been checked by a reviewer or admin.',
+    'Verified means the information has been checked against source evidence.',
+    'Helps improve trust score and internal data quality.',
+    'Reviewer or admin should mark verified after checking source documents or evidence.',
+    'true',
+    'Only mark verified when evidence has been checked.',
+    12
+);

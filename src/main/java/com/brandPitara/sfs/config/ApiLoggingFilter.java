@@ -11,7 +11,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
 @Slf4j
-@Component
+// Replaced by com.brandPitara.sfs.observability.ApiRequestLoggingFilter
+// Kept for reference; @Component removed to prevent duplicate registration
 public class ApiLoggingFilter extends OncePerRequestFilter {
 
     @Override

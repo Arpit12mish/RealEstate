@@ -56,6 +56,9 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
 
+                // Allow CORS preflight requests
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                 // Public dashboard auth APIs
                 .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/refresh").permitAll()
@@ -92,6 +95,13 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
             .authorizeHttpRequests(auth -> auth
+
+                // Allow CORS preflight requests
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
+                // Error dispatch path — must be permitted so Tomcat's internal
+                // /error forward (after sendError) does not trigger a second 401
+                .requestMatchers("/error").permitAll()
 
                 // Public health & docs
                 .requestMatchers(
