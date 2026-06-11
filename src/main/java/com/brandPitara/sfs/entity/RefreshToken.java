@@ -28,8 +28,9 @@ public class RefreshToken {
     @JoinColumn(name = "user_id")
     private User user;
 
+    // SHA-256 hex digest of the raw token sent to the client — raw value is never persisted
     @Column(nullable = false, unique = true, length = 256)
-    private String token;   // random secure string (can hash later if you want extra security)
+    private String token;
 
     @Column(name = "device_id")
     private String deviceId;

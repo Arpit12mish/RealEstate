@@ -11,6 +11,7 @@ import com.brandPitara.sfs.project.service.ProjectDetailComposer;
 import com.brandPitara.sfs.project.service.ProjectFloorPlanService;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterDetailResponse;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
+import org.springframework.lang.Nullable;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -34,35 +35,91 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
     ProjectResponse response = ProjectMapper.toResponse(project, media);
 
     ProjectMeterDetailResponse meterDetail = safeGetMeterDetail(project.getId());
+    ProjectConnectivityResponse connectivity = safeGetConnectivity(project.getId());
 
     response.setPricing(buildPricing(project, meterDetail));
-    response.setLocation(buildLocation(project));
+    response.setLocation(buildLocation(project, connectivity));
     response.setFloorPlanGroups(buildFloorPlanGroups(project.getId()));
-    response.setConnectivity(projectConnectivityService.publicGet(project.getId()));
+    response.setConnectivity(connectivity);
     response.setGlimpses(buildGlimpses(media));
     response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
 
     return response;
   }
 
+  @Override
+  public ProjectPublicResponse composePublic(ProjectEntity project, List<ProjectMediaEntity> media) {
+    ProjectPublicResponse response = ProjectMapper.toPublicResponse(project, media);
+
+    ProjectMeterDetailResponse meterDetail = safeGetMeterDetail(project.getId());
+    ProjectConnectivityResponse connectivity = safeGetConnectivity(project.getId());
+
+    response.setPricing(buildPricing(project, meterDetail));
+    response.setLocation(buildLocation(project, connectivity));
+    response.setFloorPlanGroups(buildFloorPlanGroups(project.getId()));
+    response.setConnectivity(connectivity);
+    response.setGlimpses(buildGlimpses(media));
+    response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
+
+    return response;
+  }
+
+  @Override
+  public ProjectResponse composeForPreview(ProjectEntity project, List<ProjectMediaEntity> media,
+                                           @Nullable ProjectMeterDetailResponse meterDetail) {
+    ProjectResponse response = ProjectMapper.toResponse(project, media);
+    ProjectConnectivityResponse connectivity = safeGetDashboardConnectivity(project.getId());
+
+    response.setPricing(buildPricing(project, meterDetail));
+    response.setLocation(buildLocation(project, connectivity));
+    response.setFloorPlanGroups(buildDashboardPreviewFloorPlanGroups(project.getId()));
+    response.setConnectivity(connectivity);
+    response.setGlimpses(buildGlimpses(media));
+    response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
+
+    return response;
+  }
+
+  private ProjectConnectivityResponse safeGetConnectivity(Long projectId) {
+    try {
+      return projectConnectivityService.publicGet(projectId);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private ProjectConnectivityResponse safeGetDashboardConnectivity(Long projectId) {
+    try {
+      return projectConnectivityService.adminGet(projectId);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
   private ProjectPricingSummaryResponse buildPricing(ProjectEntity project, ProjectMeterDetailResponse meterDetail) {
     Long minPrice = project.getPriceMin();
     Long maxPrice = project.getPriceMax();
 
-    Long averageAreaPrice = null;
+    Long averageAreaPrice = project.getAveragePricePerSqft();
     Double appreciationPercent = null;
 
     if (meterDetail != null && meterDetail.getPriceInsights() != null) {
-      averageAreaPrice = meterDetail.getPriceInsights().getAverageAreaPrice();
+      if (averageAreaPrice == null) {
+        averageAreaPrice = meterDetail.getPriceInsights().getAverageAreaPrice();
+      }
       appreciationPercent = meterDetail.getPriceInsights().getAppreciationPercent();
     }
+
+    // Use dashboard-stored EMI values when available; fall back to formula-derived values.
+    Long emiMin = project.getMonthlyEmiMin() != null ? project.getMonthlyEmiMin() : calculateEmi(minPrice);
+    Long emiMax = project.getMonthlyEmiMax() != null ? project.getMonthlyEmiMax() : calculateEmi(maxPrice);
 
     return ProjectPricingSummaryResponse.builder()
         .minPrice(minPrice)
         .maxPrice(maxPrice)
         .averageAreaPrice(averageAreaPrice)
-        .estimatedMonthlyEmiMin(calculateEmi(minPrice))
-        .estimatedMonthlyEmiMax(calculateEmi(maxPrice))
+        .estimatedMonthlyEmiMin(emiMin)
+        .estimatedMonthlyEmiMax(emiMax)
         .appreciationPercent(appreciationPercent)
         .downPaymentPercent(DEFAULT_DOWN_PAYMENT_PERCENT)
         .annualInterestRate(DEFAULT_ANNUAL_INTEREST_RATE)
@@ -70,44 +127,57 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
         .build();
   }
 
-  private ProjectLocationResponse buildLocation(ProjectEntity project) {
-    String mapImageUrl = null;
-    try {
-      var connectivity = projectConnectivityService.publicGet(project.getId());
-      mapImageUrl = connectivity != null ? connectivity.getMapImageUrl() : null;
-    } catch (Exception ignored) {
-    }
-
+  private ProjectLocationResponse buildLocation(ProjectEntity project, ProjectConnectivityResponse connectivity) {
     return ProjectLocationResponse.builder()
         .addressLine(project.getAddressLine())
         .cityId(project.getCity() != null ? project.getCity().getId() : null)
         .cityName(project.getCity() != null ? project.getCity().getName() : null)
         .latitude(project.getLatitude())
         .longitude(project.getLongitude())
-        .mapImageUrl(mapImageUrl)
+        .mapImageUrl(connectivity != null ? connectivity.getMapImageUrl() : null)
         .build();
   }
 
   private List<ProjectFloorPlanGroupResponse> buildFloorPlanGroups(Long projectId) {
     List<ProjectFloorPlanResponse> floorPlans = projectFloorPlanService.publicList(projectId);
+    return groupFloorPlans(floorPlans);
+  }
 
+  private List<ProjectFloorPlanGroupResponse> buildDashboardPreviewFloorPlanGroups(Long projectId) {
+    List<ProjectFloorPlanResponse> floorPlans = projectFloorPlanService.dashboardPreviewList(projectId);
+    return groupFloorPlans(floorPlans);
+  }
+
+  private List<ProjectFloorPlanGroupResponse> groupFloorPlans(List<ProjectFloorPlanResponse> floorPlans) {
     if (floorPlans == null || floorPlans.isEmpty()) {
       return List.of();
     }
 
     Map<String, List<ProjectFloorPlanResponse>> grouped = floorPlans.stream()
         .collect(Collectors.groupingBy(
-            fp -> normalizeGroupKey(fp.getUnitLabel(), fp.getTitle(), fp.getFloorCode()),
+            fp -> fp.getUnitConfigurationType() != null
+                ? fp.getUnitConfigurationType().name()
+                : normalizeGroupKey(fp.getUnitLabel(), fp.getTitle(), fp.getFloorCode()),
             LinkedHashMap::new,
             Collectors.toList()
         ));
 
     return grouped.entrySet().stream()
-        .map(entry -> ProjectFloorPlanGroupResponse.builder()
-            .groupKey(entry.getKey())
-            .groupLabel(toReadableGroupLabel(entry.getKey()))
-            .items(entry.getValue())
-            .build())
+        .map(entry -> {
+          String key = entry.getKey();
+          List<ProjectFloorPlanResponse> items = entry.getValue();
+          String label = items.stream()
+              .filter(fp -> fp.getUnitConfigurationType() != null)
+              .map(fp -> fp.getUnitConfigurationTypeLabel())
+              .filter(l -> l != null)
+              .findFirst()
+              .orElse(toReadableGroupLabel(key));
+          return ProjectFloorPlanGroupResponse.builder()
+              .groupKey(key)
+              .groupLabel(label)
+              .items(items)
+              .build();
+        })
         .toList();
   }
 

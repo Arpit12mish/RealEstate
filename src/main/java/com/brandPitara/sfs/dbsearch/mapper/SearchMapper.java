@@ -29,7 +29,6 @@ public class SearchMapper {
                 .cityName(p.getCity() != null ? p.getCity().getName() : null)
                 .builderId(p.getBuilder() != null ? p.getBuilder().getId() : null)
                 .builderName(p.getBuilder() != null ? p.getBuilder().getName() : null)
-                .priorityRank(p.getPriority())
                 .location(buildProjectLocation(p))
                 .priceMin(p.getPriceMin())
                 .priceMax(p.getPriceMax())
@@ -47,7 +46,6 @@ public class SearchMapper {
                 .imageUrl(b.getLogoUrl())
                 .cityId(b.getCity() != null ? b.getCity().getId() : null)
                 .cityName(b.getCity() != null ? b.getCity().getName() : null)
-                .priorityRank(b.getPriority())
                 .location(b.getAddressLine())
                 .build();
     }
@@ -61,7 +59,6 @@ public class SearchMapper {
                 .imageUrl(c.getLogoUrl())
                 .slug(c.getSlug())
                 .companyType(c.getCompanyType())
-                .priorityRank(c.getPriority())
                 .build();
     }
 

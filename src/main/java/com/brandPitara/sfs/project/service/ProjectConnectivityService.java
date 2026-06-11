@@ -17,4 +17,12 @@ public interface ProjectConnectivityService {
   List<ProjectConnectivityPlaceResponse> adminListPlaces(Long projectId);
 
   void softDeletePlace(Long projectId, Long placeId);
+
+  ProjectConnectivitySearchResponse searchNearby(Long projectId, String query);
+
+  ConnectivityProviderSearchResponse providerSearch(Long projectId, ConnectivityProviderSearchRequest request);
+
+  List<ConnectivityProviderCategoryMetaResponse> providerCategories();
+
+  ProjectConnectivityPlaceBulkSaveResponse bulkSavePlaces(Long projectId, ProjectConnectivityPlaceBulkUpsertRequest request);
 }

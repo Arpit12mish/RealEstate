@@ -94,8 +94,8 @@ public class AuthController {
                 user.getRole().name()
         );
 
-        // Refresh token
-        RefreshToken refreshToken =
+        // Refresh token — raw value returned to client; SHA-256 hash is stored in DB
+        String refreshToken =
                 refreshTokenService.createRefreshToken(user, request.getDeviceId(), request.getFcmToken());
 
         AuthResponse response = AuthResponse.builder()
@@ -109,7 +109,7 @@ public class AuthController {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("accessToken", accessToken);
-        payload.put("refreshToken", refreshToken.getToken());
+        payload.put("refreshToken", refreshToken);
         payload.put("user", response);
         payload.put("isNewUser", isNewUser); // or track separately if needed
         // add onboarding payload so frontend can route
@@ -146,11 +146,11 @@ public class AuthController {
         );
 
         refreshTokenService.revokeToken(request.getRefreshToken());
-        RefreshToken newRt = refreshTokenService.createRefreshToken(user, rt.getDeviceId(), rt.getFcmToken());
+        String newRawRefreshToken = refreshTokenService.createRefreshToken(user, rt.getDeviceId(), rt.getFcmToken());
 
         return ResponseEntity.ok(Map.of(
                 "accessToken", newAccessToken,
-                "refreshToken", newRt.getToken()
+                "refreshToken", newRawRefreshToken
         ));
     }
 

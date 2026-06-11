@@ -6,10 +6,10 @@ import com.brandPitara.sfs.provider.service.ProviderProfileService;
 import com.brandPitara.sfs.security.CurrentUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/providers")
@@ -32,16 +32,17 @@ public class ProviderController {
     return providerProfileService.getMyProfile(currentUserService.requireUserId());
   }
 
-  // Public profile for customers
+  // Public provider profile endpoints are disabled (legacy — exposed sensitive fields userId/gstNumber).
+  // Re-enable only when a ProviderPublicResponse DTO is introduced.
   @GetMapping("/{providerId}")
-  public ProviderProfileResponse getPublic(@PathVariable Long providerId) {
-    return providerProfileService.getPublicProfile(providerId);
+  public void getPublic(@PathVariable Long providerId) {
+    throw new ResponseStatusException(HttpStatus.GONE,
+        "Public provider profiles are not available via this API.");
   }
 
-  // Similar providers (public)
   @GetMapping("/{providerId}/similar")
-  public List<ProviderProfileResponse> similar(@PathVariable Long providerId,
-                                               @RequestParam(defaultValue = "10") int limit) {
-    return providerProfileService.getSimilarProviders(providerId, Math.min(limit, 20));
+  public void similar(@PathVariable Long providerId) {
+    throw new ResponseStatusException(HttpStatus.GONE,
+        "Similar providers endpoint is not available via this API.");
   }
 }

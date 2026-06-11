@@ -5,6 +5,7 @@ import com.brandPitara.sfs.dashboard.common.enums.DashboardAuditAction;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewEntityType;
 import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
+import com.brandPitara.sfs.builder.dto.UpdateBuilderLogoRequest;
 import com.brandPitara.sfs.builder.service.BuilderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -78,6 +79,22 @@ public class DashboardBuilderController {
         );
 
         return builderService.adminList(published, active, pageable);
+    }
+
+    /**
+     * DATA_ENTRY can update builder logo after presign upload.
+     * ADMIN can also update logo.
+     * Intentionally scoped to logoUrl only — does not allow DATA_ENTRY to modify other builder fields.
+     */
+    @PatchMapping("/{builderId}/logo")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public BuilderResponse updateLogo(
+            @PathVariable Long builderId,
+            @Valid @RequestBody UpdateBuilderLogoRequest request
+    ) {
+        BuilderResponse response = builderService.updateLogo(builderId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.BUILDER_LOGO_UPDATED, ReviewEntityType.BUILDER, builderId, null);
+        return response;
     }
 
     /**

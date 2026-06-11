@@ -1,8 +1,10 @@
 package com.brandPitara.sfs.builder.service.impl;
 
 import com.brandPitara.sfs.builder.dto.BuilderCardResponse;
+import com.brandPitara.sfs.builder.dto.BuilderPublicResponse;
 import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
+import com.brandPitara.sfs.builder.dto.UpdateBuilderLogoRequest;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.mapper.BuilderMapper;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
@@ -91,6 +93,22 @@ public class BuilderServiceImpl implements BuilderService {
 
   @Override
   @Transactional
+  public BuilderResponse updateLogo(Long id, UpdateBuilderLogoRequest request) {
+    BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
+        .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
+
+    entity.setLogoUrl(clean(request.getLogoUrl()));
+    BuilderEntity saved = builderRepository.save(entity);
+
+    contentVersionService.bump(KEY_BUILDERS);
+    if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
+      contentVersionService.bump(KEY_HOME);
+    }
+    return BuilderMapper.toResponse(saved);
+  }
+
+  @Override
+  @Transactional
   public BuilderResponse setPublished(Long id, boolean published) {
     BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
@@ -145,21 +163,21 @@ public class BuilderServiceImpl implements BuilderService {
 
   @Override
   @Transactional(readOnly = true)
-  public Page<BuilderResponse> listPublished(Pageable pageable) {
+  public Page<BuilderPublicResponse> listPublished(Pageable pageable) {
     return builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
-        .map(BuilderMapper::toResponse);
+        .map(BuilderMapper::toPublicResponse);
   }
 
   @Override
   @Transactional(readOnly = true)
-  public BuilderResponse publicGetById(Long id) {
+  public BuilderPublicResponse publicGetById(Long id) {
     BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
 
     if (!Boolean.TRUE.equals(entity.getPublished()) || !Boolean.TRUE.equals(entity.getActive())) {
       throw new EntityNotFoundException("Builder not found: " + id);
     }
-    return BuilderMapper.toResponse(entity);
+    return BuilderMapper.toPublicResponse(entity);
   }
 
   // -------- helpers --------

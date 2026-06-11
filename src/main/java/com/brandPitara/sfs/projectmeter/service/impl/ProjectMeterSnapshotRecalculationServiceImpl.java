@@ -9,13 +9,17 @@ import com.brandPitara.sfs.projectmeter.entity.ProjectConstructionStageEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectCostBreakdownEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectLocationScoreEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
+import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityStatus;
 import com.brandPitara.sfs.projectmeter.enums.ProjectComplianceStatus;
+import com.brandPitara.sfs.projectmeter.entity.ProjectPriceHistoryEntity;
+import com.brandPitara.sfs.projectmeter.mapper.ProjectMeterMapper;
 import com.brandPitara.sfs.projectmeter.repository.ProjectAmenityProgressRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectComplianceItemRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectConstructionStageRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectCostBreakdownRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectLocationScoreRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
+import com.brandPitara.sfs.projectmeter.repository.ProjectPriceHistoryRepository;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterSnapshotRecalculationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -24,9 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -40,6 +42,7 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
     private final ProjectAmenityProgressRepository projectAmenityProgressRepository;
     private final ProjectLocationScoreRepository projectLocationScoreRepository;
     private final ProjectCostBreakdownRepository projectCostBreakdownRepository;
+    private final ProjectPriceHistoryRepository projectPriceHistoryRepository;
 
     @Override
     @Transactional
@@ -51,7 +54,8 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
             projectConstructionStageRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(projectId);
 
         List<ProjectAmenityProgressEntity> amenities =
-            projectAmenityProgressRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(projectId);
+            projectAmenityProgressRepository
+                .findByProjectIdAndActiveTrueAndPublicVisibleTrueOrderByCategoryDisplayOrderAscDisplayOrderAscIdAsc(projectId);
 
         List<ProjectComplianceItemEntity> complianceItems =
             projectComplianceItemRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(projectId);
@@ -67,14 +71,58 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
                 .project(project)
                 .build());
 
+        if (snapshot.getConstructionStartDate() == null && project.getStartDate() != null) {
+            snapshot.setConstructionStartDate(project.getStartDate());
+        }
+
+        if (snapshot.getExpectedCompletionDate() == null) {
+            snapshot.setExpectedCompletionDate(project.getPossessionDate());
+        }
+        if (snapshot.getOriginalCompletionDate() == null) {
+            snapshot.setOriginalCompletionDate(snapshot.getExpectedCompletionDate());
+        }
+        if (snapshot.getLatestReraCompletionDate() == null) {
+            snapshot.setLatestReraCompletionDate(
+                snapshot.getRevisedCompletionDate() != null
+                    ? snapshot.getRevisedCompletionDate()
+                    : snapshot.getExpectedCompletionDate()
+            );
+        }
+
         Integer constructionProgressPercent = calculateOverallProgress(stages);
-        Integer delayDays = calculateDelayDays(project, snapshot);
+        applyTimeline(project, snapshot);
+        Integer delayDays = snapshot.getDelayDays();
         Integer complianceScore = calculateComplianceScore(complianceItems);
         Integer amenityScore = calculateAmenityCompletionPercent(amenities);
 
-        Long launchPrice = snapshot.getLaunchPrice();
-        Long currentPrice = snapshot.getCurrentPrice();
-        Long averageAreaPrice = snapshot.getAverageAreaPrice();
+        List<ProjectPriceHistoryEntity> priceHistory =
+            projectPriceHistoryRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(projectId);
+
+        Long launchPrice;
+        Long currentPrice;
+        Long averageAreaPrice;
+
+        if (!priceHistory.isEmpty()) {
+            launchPrice = priceHistory.get(0).getProjectPrice();
+            currentPrice = priceHistory.get(priceHistory.size() - 1).getProjectPrice();
+
+            Long derivedAvgAreaPrice = null;
+            for (int i = priceHistory.size() - 1; i >= 0; i--) {
+                if (priceHistory.get(i).getAverageAreaPrice() != null) {
+                    derivedAvgAreaPrice = priceHistory.get(i).getAverageAreaPrice();
+                    break;
+                }
+            }
+            averageAreaPrice = derivedAvgAreaPrice != null
+                ? derivedAvgAreaPrice
+                : (project.getAveragePricePerSqft() != null
+                    ? project.getAveragePricePerSqft()
+                    : snapshot.getAverageAreaPrice());
+        } else {
+            launchPrice = snapshot.getLaunchPrice();
+            currentPrice = snapshot.getCurrentPrice();
+            averageAreaPrice = snapshot.getAverageAreaPrice();
+        }
 
         Double priceAppreciationPercent = calculatePriceAppreciationPercent(launchPrice, currentPrice);
 
@@ -82,6 +130,10 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
         snapshot.setDelayDays(delayDays);
         snapshot.setComplianceScore(complianceScore);
         snapshot.setAmenityScore(amenityScore);
+
+        snapshot.setLaunchPrice(launchPrice);
+        snapshot.setCurrentPrice(currentPrice);
+        snapshot.setAverageAreaPrice(averageAreaPrice);
 
         if (locationScore != null) {
             snapshot.setLocationScore(locationScore.getFinalScore());
@@ -92,10 +144,6 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
 
         if (costBreakdown != null) {
             snapshot.setEstimatedCostTotal(costBreakdown.getTotalCost());
-        }
-
-        if (snapshot.getExpectedCompletionDate() == null) {
-            snapshot.setExpectedCompletionDate(project.getPossessionDate());
         }
 
         if (snapshot.getComputedAt() == null) {
@@ -163,20 +211,29 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
 
         int weightedSum = 0;
         int totalWeight = 0;
+        int simpleSum = 0;
+        int simpleCount = 0;
 
         for (ProjectAmenityProgressEntity amenity : amenities) {
+            if (Boolean.FALSE.equals(amenity.getAvailable())) continue;
+            if (amenity.getStatus() == ProjectAmenityStatus.NOT_AVAILABLE) continue;
+
             int progress = safePercent(amenity.getProgressPercent());
             int weight = amenity.getWeightPercent() == null ? 0 : Math.max(amenity.getWeightPercent(), 0);
 
             weightedSum += progress * weight;
             totalWeight += weight;
+            simpleSum += progress;
+            simpleCount++;
         }
 
-        if (totalWeight <= 0) {
-            return 0;
+        if (totalWeight > 0) {
+            return Math.round((float) weightedSum / totalWeight);
         }
-
-        return Math.round((float) weightedSum / totalWeight);
+        if (simpleCount > 0) {
+            return Math.round((float) simpleSum / simpleCount);
+        }
+        return 0;
     }
 
     private Integer calculateComplianceScore(List<ProjectComplianceItemEntity> items) {
@@ -209,27 +266,20 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
         return (int) Math.round(rawScore);
     }
 
-    private Integer calculateDelayDays(ProjectEntity project, ProjectMeterSnapshotEntity snapshot) {
-        LocalDate baselineDate = null;
+    private void applyTimeline(ProjectEntity project, ProjectMeterSnapshotEntity snapshot) {
+        ProjectMeterMapper.TimelineComputed timeline = ProjectMeterMapper.computeTimeline(
+            snapshot.getOriginalCompletionDate(),
+            snapshot.getLatestReraCompletionDate(),
+            snapshot.getActualCompletionDate(),
+            snapshot.getReraExtensionCount()
+        );
 
-        if (snapshot.getRevisedCompletionDate() != null) {
-            baselineDate = snapshot.getRevisedCompletionDate();
-        } else if (snapshot.getExpectedCompletionDate() != null) {
-            baselineDate = snapshot.getExpectedCompletionDate();
-        } else if (project.getPossessionDate() != null) {
-            baselineDate = project.getPossessionDate();
-        }
-
-        if (baselineDate == null) {
-            return 0;
-        }
-
-        LocalDate today = LocalDate.now();
-        if (!today.isAfter(baselineDate)) {
-            return 0;
-        }
-
-        return (int) ChronoUnit.DAYS.between(baselineDate, today);
+        snapshot.setDelayVsOriginalDays(timeline.delayVsOriginalDays());
+        snapshot.setDelayVsLatestReraDays(timeline.delayVsLatestReraDays());
+        snapshot.setTimelineStatus(timeline.status());
+        snapshot.setTimelineLabel(timeline.label());
+        snapshot.setTimelineHint(timeline.hint());
+        snapshot.setDelayDays("DELAYED".equals(timeline.status()) ? Math.max(timeline.delayVsLatestReraDays(), 0) : 0);
     }
 
     private Double calculatePriceAppreciationPercent(Long launchPrice, Long currentPrice) {

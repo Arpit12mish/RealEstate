@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ProjectAmenityProgressRepository extends JpaRepository<ProjectAmenityProgressEntity, Long> {
+
     List<ProjectAmenityProgressEntity> findByProjectIdOrderByDisplayOrderAscIdAsc(Long projectId);
+
+    List<ProjectAmenityProgressEntity> findByProjectIdAndActiveTrueAndPublicVisibleTrueOrderByCategoryDisplayOrderAscDisplayOrderAscIdAsc(Long projectId);
+
     Optional<ProjectAmenityProgressEntity> findByIdAndProjectId(Long id, Long projectId);
 }

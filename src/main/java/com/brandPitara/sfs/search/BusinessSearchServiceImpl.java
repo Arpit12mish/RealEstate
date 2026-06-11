@@ -110,11 +110,12 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
             int page,
             int size
     ) {
+        int safeSize = Math.min(Math.max(size, 1), 30);
 
-        // ✅ If ES is disabled, do DB fallback directly
+        // If ES is disabled, do DB fallback directly
         if (!searchEnabled) {
             log.warn("[SEARCH] ES disabled (sfs.search.enabled=false). Using DB fallback.");
-            return fallbackDbSearch(cityId, categoryId, text, page, size);
+            return fallbackDbSearch(cityId, categoryId, text, page, safeSize);
         }
 
         log.info("[ES SEARCH] cityId={} categoryId={} q='{}' userLat={} userLon={} page={} size={}",
@@ -161,8 +162,8 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
                                 if (!filter.isEmpty()) b.filter(filter);
                                 return b;
                             }))
-                            .from(page * size)
-                            .size(size)
+                            .from(page * safeSize)
+                            .size(safeSize)
                             .sort(sort),
                     BusinessSearchDocument.class);
 
@@ -171,9 +172,8 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
                     response.hits().total() != null ? response.hits().total().value() : null);
 
         } catch (Exception e) {
-            // ✅ IMPORTANT: no crash, fallback to DB
             log.error("[ES SEARCH] Failed. Falling back to DB. reason={}", e.getMessage());
-            return fallbackDbSearch(cityId, categoryId, text, page, size);
+            return fallbackDbSearch(cityId, categoryId, text, page, safeSize);
         }
 
         List<Long> ids = response.hits().hits().stream()
@@ -201,22 +201,25 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
      * DB fallback using your existing repository methods (Page-based).
      */
     private List<BusinessResponse> fallbackDbSearch(Long cityId, Long categoryId, String text, int page, int size) {
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.min(Math.max(size, 1), 30);
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+
+        String safeText = (StringUtils.hasText(text) && text.trim().length() >= 2) ? text.trim() : null;
+        boolean hasText = safeText != null;
 
         Page<BusinessEntity> p;
-
-        boolean hasText = StringUtils.hasText(text);
 
         // With category filters
         if (cityId != null && categoryId != null) {
             p = hasText
-                    ? businessRepository.findByCity_IdAndCategory_IdAndActiveTrueAndNameContainingIgnoreCase(cityId, categoryId, text.trim(), pageable)
+                    ? businessRepository.findByCity_IdAndCategory_IdAndActiveTrueAndNameContainingIgnoreCase(cityId, categoryId, safeText, pageable)
                     : businessRepository.findByCity_IdAndCategory_IdAndActiveTrue(cityId, categoryId, pageable);
 
             // City only
         } else if (cityId != null) {
             p = hasText
-                    ? businessRepository.findByCity_IdAndActiveTrueAndNameContainingIgnoreCase(cityId, text.trim(), pageable)
+                    ? businessRepository.findByCity_IdAndActiveTrueAndNameContainingIgnoreCase(cityId, safeText, pageable)
                     : businessRepository.findByCity_IdAndActiveTrue(cityId, pageable);
 
         } else {

@@ -9,12 +9,14 @@ import com.brandPitara.sfs.service.ProfileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/profile")
 @RequiredArgsConstructor
+@PreAuthorize("!hasRole('GUEST')")
 public class ProfileController {
 
     private final ProfileService profileService;

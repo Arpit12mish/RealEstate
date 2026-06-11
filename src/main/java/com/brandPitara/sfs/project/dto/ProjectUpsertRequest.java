@@ -51,6 +51,17 @@ public class ProjectUpsertRequest {
   @Min(value = 0, message = "priceMax must be 0 or greater")
   private Long priceMax;
 
+  @Min(value = 0, message = "monthlyEmiMin must be 0 or greater")
+  private Long monthlyEmiMin;
+
+  @Min(value = 0, message = "monthlyEmiMax must be 0 or greater")
+  private Long monthlyEmiMax;
+
+  @Min(value = 0, message = "averagePricePerSqft must be 0 or greater")
+  private Long averagePricePerSqft;
+
+  private LocalDate startDate;
+
   private LocalDate possessionDate;
 
   @Size(max = 50, message = "RERA number must not exceed 50 characters")

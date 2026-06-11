@@ -27,8 +27,6 @@ public class SearchItemDto {
 
     private String companyType;
 
-    private Integer priorityRank;
-
     private String location;
     private Long priceMin;
     private Long priceMax;

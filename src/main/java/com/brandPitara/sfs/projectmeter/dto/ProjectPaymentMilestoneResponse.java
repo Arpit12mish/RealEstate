@@ -14,4 +14,6 @@ public class ProjectPaymentMilestoneResponse {
     private String description;
     private Integer percentageValue;
     private String linkedStageCode;
+    private Integer displayOrder;
+    private Boolean active;
 }

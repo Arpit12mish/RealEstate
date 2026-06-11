@@ -4,10 +4,12 @@ import com.brandPitara.sfs.dashboard.audit.service.DashboardActionAuditService;
 import com.brandPitara.sfs.dashboard.common.enums.DashboardAuditAction;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewEntityType;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
+import com.brandPitara.sfs.dashboard.project.dto.DashboardProjectBuilderReassignRequest;
 import com.brandPitara.sfs.dashboard.project.dto.DashboardProjectWorkspaceResponse;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectWorkspaceService;
 import com.brandPitara.sfs.dashboard.validator.DashboardProjectValidator;
+import com.brandPitara.sfs.project.dto.ProjectPatchRequest;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.service.ProjectService;
@@ -67,6 +69,18 @@ public class DashboardProjectController {
         projectValidator.validate(request);
         dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
         ProjectResponse response = projectService.update(projectId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.PROJECT_UPDATED, ReviewEntityType.PROJECT, projectId, projectId);
+        return response;
+    }
+
+    @PatchMapping("/projects/{projectId}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public ProjectResponse patch(
+            @PathVariable Long projectId,
+            @Valid @RequestBody ProjectPatchRequest request
+    ) {
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+        ProjectResponse response = projectService.patch(projectId, request);
         dashboardActionAuditService.record(DashboardAuditAction.PROJECT_UPDATED, ReviewEntityType.PROJECT, projectId, projectId);
         return response;
     }
@@ -161,5 +175,18 @@ public class DashboardProjectController {
         dashboardActionAuditService.record(DashboardAuditAction.PROJECT_DELETED, ReviewEntityType.PROJECT, projectId, projectId);
     }
 
-    
+    /**
+     * ADMIN-only: reassign a project to a different builder.
+     * Used when a project was incorrectly assigned at creation time.
+     */
+    @PatchMapping("/projects/{projectId}/builder")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ProjectResponse reassignBuilder(
+            @PathVariable Long projectId,
+            @Valid @RequestBody DashboardProjectBuilderReassignRequest request
+    ) {
+        ProjectResponse response = projectService.reassignBuilder(projectId, request.getBuilderId());
+        dashboardActionAuditService.record(DashboardAuditAction.PROJECT_BUILDER_REASSIGNED, ReviewEntityType.PROJECT, projectId, projectId);
+        return response;
+    }
 }

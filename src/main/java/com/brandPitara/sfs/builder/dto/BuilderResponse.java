@@ -2,6 +2,8 @@ package com.brandPitara.sfs.builder.dto;
 
 import lombok.*;
 
+import java.time.OffsetDateTime;
+
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class BuilderResponse {
@@ -25,4 +27,7 @@ public class BuilderResponse {
   private boolean active;
   private boolean published;
   private int priority;
+
+  private OffsetDateTime createdAt;
+  private OffsetDateTime updatedAt;
 }

@@ -3,9 +3,7 @@ package com.brandPitara.sfs.dto;
 import lombok.Builder;
 import lombok.Data;
 
-import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.OffsetDateTime;
 
 @Data
 @Builder
@@ -54,15 +52,6 @@ public class BusinessResponse {
     // ratings
     private Double  avgRating;
     private Integer totalRatings;
-
-    private Boolean active;
-    // private LocalDateTime createdAt;
-    // private LocalDateTime updatedAt;
-    private OffsetDateTime createdAt;
-    private OffsetDateTime updatedAt;
-
-    private Boolean sponsored;
-    private Integer sponsoredPriority;
 
     private Long favoriteCount;  // total favorites across all users
     private Boolean isFavorite;  // current user has favorited this business

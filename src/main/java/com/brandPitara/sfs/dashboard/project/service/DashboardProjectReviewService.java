@@ -18,6 +18,11 @@ public interface DashboardProjectReviewService {
             ProjectReviewDecisionRequest request
     );
 
+    DashboardProjectReviewResponse rollbackApproval(
+            Long projectId,
+            ProjectReviewDecisionRequest request
+    );
+
     DashboardProjectReviewResponse reject(
             Long projectId,
             ProjectReviewDecisionRequest request

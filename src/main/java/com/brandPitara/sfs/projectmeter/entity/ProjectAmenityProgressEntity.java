@@ -2,6 +2,7 @@ package com.brandPitara.sfs.projectmeter.entity;
 
 import com.brandPitara.sfs.entity.BaseEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityCategory;
 import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -55,4 +56,36 @@ public class ProjectAmenityProgressEntity extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private Boolean verified = false;
+
+    // --- Amenity Intelligence v1 ---
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category", length = 50)
+    private ProjectAmenityCategory category;
+
+    @Column(name = "category_label", length = 100)
+    private String categoryLabel;
+
+    @Column(name = "icon_key", length = 80)
+    private String iconKey;
+
+    @Column(name = "rare", nullable = false)
+    @Builder.Default
+    private Boolean rare = false;
+
+    @Column(name = "available", nullable = false)
+    @Builder.Default
+    private Boolean available = true;
+
+    @Column(name = "public_visible", nullable = false)
+    @Builder.Default
+    private Boolean publicVisible = true;
+
+    @Column(name = "active", nullable = false)
+    @Builder.Default
+    private Boolean active = true;
+
+    @Column(name = "category_display_order", nullable = false)
+    @Builder.Default
+    private Integer categoryDisplayOrder = 0;
 }

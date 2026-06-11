@@ -134,9 +134,10 @@ public class BusinessServiceImpl implements BusinessService {
             throw new IllegalArgumentException("cityId is required");
         }
 
-        String trimmedQuery = (query != null && !query.trim().isEmpty())
-                ? query.trim()
-                : null;
+        String trimmedQuery = query != null ? query.trim() : null;
+        if (trimmedQuery != null && trimmedQuery.length() < 2) {
+            trimmedQuery = null;
+        }
 
         Page<BusinessEntity> page;
 

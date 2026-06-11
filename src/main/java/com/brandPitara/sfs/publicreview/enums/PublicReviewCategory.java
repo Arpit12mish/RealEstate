@@ -1,0 +1,19 @@
+package com.brandPitara.sfs.publicreview.enums;
+
+public enum PublicReviewCategory {
+    LUXURY_LIFESTYLE,
+    LOCATION,
+    CONNECTIVITY,
+    AMENITIES,
+    SECURITY,
+    MAINTENANCE,
+    SALES_EXPERIENCE,
+    CRM_RESPONSE,
+    POSSESSION_DELAY,
+    CONSTRUCTION_QUALITY,
+    AFTER_SALES,
+    REFUND_PAYMENT,
+    GENERAL_POSITIVE,
+    GENERAL_NEGATIVE,
+    GENERAL
+}

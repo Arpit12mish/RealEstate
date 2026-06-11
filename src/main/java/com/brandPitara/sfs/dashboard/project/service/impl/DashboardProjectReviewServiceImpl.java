@@ -98,8 +98,14 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
         ProjectEntity project = getProjectOrThrow(projectId);
 
         ReviewStatus oldStatus = normalizeStatus(project.getReviewStatus());
+        boolean isAdmin = currentUser.getRole() != null && currentUser.getRole().isAdmin();
 
-        if (oldStatus != ReviewStatus.PENDING_REVIEW) {
+        if (oldStatus == ReviewStatus.APPROVED) {
+            throw new IllegalStateException("Project is already approved.");
+        }
+
+        // Reviewers can only act on projects in PENDING_REVIEW; admins can approve from any status.
+        if (!isAdmin && oldStatus != ReviewStatus.PENDING_REVIEW) {
             throw new IllegalStateException(
                     "Project can be approved only from PENDING_REVIEW status. Current status: " + oldStatus
             );
@@ -130,6 +136,53 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
                 oldStatus,
                 ReviewStatus.APPROVED,
                 ReviewActionType.APPROVED,
+                remarks,
+                currentUser
+        );
+
+        contentVersionService.bump(KEY_PROJECTS);
+        contentVersionService.bump(KEY_HOME);
+
+        return DashboardProjectReviewResponse.from(saved);
+    }
+
+    @Override
+    @Transactional
+    public DashboardProjectReviewResponse rollbackApproval(
+            Long projectId,
+            ProjectReviewDecisionRequest request
+    ) {
+        DashboardUserEntity currentUser = currentUserService.getCurrentUserOrThrow();
+        ProjectEntity project = getProjectOrThrow(projectId);
+
+        ReviewStatus oldStatus = normalizeStatus(project.getReviewStatus());
+
+        if (oldStatus != ReviewStatus.APPROVED) {
+            throw new IllegalStateException(
+                    "Project approval can be rolled back only from APPROVED status. Current status: " + oldStatus
+            );
+        }
+
+        String remarks = request != null ? clean(request.getRemarks()) : null;
+
+        if (!StringUtils.hasText(remarks)) {
+            throw new IllegalArgumentException("Rollback remarks are required");
+        }
+
+        project.setReviewStatus(ReviewStatus.PENDING_REVIEW);
+        project.setReviewedByDashboardUserId(null);
+        project.setReviewedAt(null);
+        project.setReviewRemarks(remarks);
+        project.setPublished(false);
+
+        ProjectEntity saved = projectRepository.save(project);
+
+        reviewHistoryService.record(
+                ReviewEntityType.PROJECT,
+                saved.getId(),
+                oldStatus,
+                ReviewStatus.PENDING_REVIEW,
+                ReviewActionType.APPROVAL_ROLLED_BACK,
                 remarks,
                 currentUser
         );

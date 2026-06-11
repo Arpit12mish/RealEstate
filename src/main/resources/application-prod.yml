@@ -1,0 +1,9 @@
+app:
+  logging:
+    path: /var/log/sfs/app
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

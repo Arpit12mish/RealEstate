@@ -11,11 +11,17 @@ import lombok.Getter;
 public class AllowedProjectActionsDto {
 
     private boolean canEdit;
+    private boolean canSubmitReview;
     private boolean canSubmitForReview;
     private boolean canApprove;
+    private boolean canRollbackApproval;
     private boolean canReject;
+    private boolean canReopen;
     private boolean canDelete;
     private boolean canPublish;
+    private boolean canMarkFieldIssue;
+    private boolean canMarkIssueFixed;
+    private boolean canRecalculateSnapshot;
 
     public static AllowedProjectActionsDto compute(
             DashboardProjectReviewResponse review,
@@ -26,7 +32,7 @@ public class AllowedProjectActionsDto {
         }
 
         DashboardRole role = user.getRole();
-        ReviewStatus status = review.getReviewStatus();
+        ReviewStatus status = review.getReviewStatus() != null ? review.getReviewStatus() : ReviewStatus.DRAFT;
 
         boolean isAdmin = role == DashboardRole.ADMIN;
         boolean isReviewer = role == DashboardRole.REVIEWER;
@@ -42,15 +48,30 @@ public class AllowedProjectActionsDto {
 
         boolean canEdit = isAdmin || (isOwner && editableStatus);
         boolean canSubmit = isAdmin || (isOwner && editableStatus);
-        boolean canApproveOrReject = (isAdmin || isReviewer) && status == ReviewStatus.PENDING_REVIEW;
+        // Admins can approve from any non-approved status; reviewers only from PENDING_REVIEW.
+        boolean canApprove = isAdmin
+                ? status != ReviewStatus.APPROVED
+                : isReviewer && status == ReviewStatus.PENDING_REVIEW;
+        boolean canRollbackApproval = (isAdmin || isReviewer) && status == ReviewStatus.APPROVED;
+        boolean canReject = (isAdmin || isReviewer) && status == ReviewStatus.PENDING_REVIEW;
+        boolean canReopen = (isAdmin || isReviewer) && status == ReviewStatus.REJECTED;
+        boolean canPublish = isAdmin && (status == ReviewStatus.APPROVED || Boolean.TRUE.equals(review.getPublished()));
+        boolean canMarkFieldIssue = (isAdmin || isReviewer) && status == ReviewStatus.PENDING_REVIEW;
+        boolean canMarkIssueFixed = isAdmin || (isOwner && editableStatus);
 
         return AllowedProjectActionsDto.builder()
                 .canEdit(canEdit)
+                .canSubmitReview(canSubmit)
                 .canSubmitForReview(canSubmit)
-                .canApprove(canApproveOrReject)
-                .canReject(canApproveOrReject)
+                .canApprove(canApprove)
+                .canRollbackApproval(canRollbackApproval)
+                .canReject(canReject)
+                .canReopen(canReopen)
                 .canDelete(isAdmin)
-                .canPublish(isAdmin)
+                .canPublish(canPublish)
+                .canMarkFieldIssue(canMarkFieldIssue)
+                .canMarkIssueFixed(canMarkIssueFixed)
+                .canRecalculateSnapshot(canEdit)
                 .build();
     }
 }

@@ -45,7 +45,6 @@ public class CompanyPublicServiceImpl implements CompanyPublicService {
         .description(c.getDescription())
         .phone(c.getPhone())
         .whatsapp(c.getWhatsapp())
-        .email(c.getEmail())
         .build();
   }
 }

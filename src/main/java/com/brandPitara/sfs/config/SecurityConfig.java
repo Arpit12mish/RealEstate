@@ -30,23 +30,12 @@ public class SecurityConfig {
     private final DashboardAuthenticationEntryPoint dashboardAuthenticationEntryPoint;
     private final DashboardAccessDeniedHandler dashboardAccessDeniedHandler;
 
-    /**
-     * Dashboard security chain.
-     *
-     * Handles only:
-     * /api/dashboard/**
-     *
-     * Uses:
-     * DashboardJwtAuthenticationFilter
-     * DashboardAuthenticationEntryPoint
-     * DashboardAccessDeniedHandler
-     */
     @Bean
     @Order(1)
     public SecurityFilterChain dashboardFilterChain(HttpSecurity http) throws Exception {
 
         http
-            .securityMatcher("/api/dashboard/**")
+            .securityMatcher("/api/dashboard/**", "/api/admin/**")
             .csrf(csrf -> csrf.disable())
             .cors(Customizer.withDefaults())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -55,16 +44,10 @@ public class SecurityConfig {
                 .accessDeniedHandler(dashboardAccessDeniedHandler)
             )
             .authorizeHttpRequests(auth -> auth
-
-                // Allow CORS preflight requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                // Public dashboard auth APIs
                 .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/refresh").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/logout").permitAll()
-
-                // All other dashboard APIs require DASHBOARD JWT
                 .anyRequest().authenticated()
             );
 
@@ -76,15 +59,6 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * Existing app/mobile security chain.
-     *
-     * Handles everything except /api/dashboard/**.
-     *
-     * Uses:
-     * JwtRequestFilter
-     * JwtAuthenticationEntryPoint
-     */
     @Bean
     @Order(2)
     public SecurityFilterChain appFilterChain(HttpSecurity http) throws Exception {
@@ -95,15 +69,8 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
             .authorizeHttpRequests(auth -> auth
-
-                // Allow CORS preflight requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                // Error dispatch path — must be permitted so Tomcat's internal
-                // /error forward (after sendError) does not trigger a second 401
                 .requestMatchers("/error").permitAll()
-
-                // Public health & docs
                 .requestMatchers(
                     "/api/health",
                     "/actuator/health",
@@ -111,23 +78,12 @@ public class SecurityConfig {
                     "/swagger-ui/**",
                     "/swagger-ui.html"
                 ).permitAll()
-
-                // Existing mobile auth APIs
                 .requestMatchers("/api/auth/**").permitAll()
-
-                // Public location resolve API
                 .requestMatchers(HttpMethod.POST, "/api/location/resolve").permitAll()
-
-                // Public city APIs for manual city selector/search
                 .requestMatchers(HttpMethod.GET, "/api/cities/**").permitAll()
-
-                // Public app content APIs
                 .requestMatchers(HttpMethod.GET, "/api/app-content/**").permitAll()
-
-                // Public provider APIs
                 .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
-
-                // Public listing / search / calculators
+                .requestMatchers(HttpMethod.GET, "/api/builders/**").permitAll()
                 .requestMatchers(
                     HttpMethod.GET,
                     "/api/public/**",
@@ -137,8 +93,6 @@ public class SecurityConfig {
                     "/api/public/interior-cost/**",
                     "/api/search/**"
                 ).permitAll()
-
-                // Everything else requires existing USER/GUEST JWT
                 .anyRequest().authenticated()
             );
 

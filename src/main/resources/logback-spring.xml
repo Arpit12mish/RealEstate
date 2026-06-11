@@ -2,17 +2,18 @@
 <configuration>
 
     <!-- ================================================================
-         SFS Production Logging — logback-spring.xml
-         Log dir: /var/log/sfs  (override via env SFS_LOG_DIR)
-         Profile "local" → console only (DEBUG)
-         All other profiles → console + 5 rolling file appenders (JSON)
+         SFS Logging — logback-spring.xml
+         Log dir: ./logs (local)  |  /var/log/sfs/app (prod)
+         Controlled by app.logging.path in profile-specific yml.
+         Profile "local"  → DEBUG + console + file appenders under ./logs
+         Profile "!local" → INFO  + console + file appenders (JSON)
          ================================================================ -->
 
     <springProperty scope="context" name="APP_NAME"  source="spring.application.name" defaultValue="sfs"/>
     <springProperty scope="context" name="APP_ENV"   source="spring.profiles.active"  defaultValue="unknown"/>
 
-    <!-- Honour env-var SFS_LOG_DIR; fall back to /var/log/sfs -->
-    <property name="LOG_DIR" value="${SFS_LOG_DIR:-/var/log/sfs}"/>
+    <!-- local → ./logs  |  prod → /var/log/sfs/app  (set via app.logging.path) -->
+    <springProperty scope="context" name="LOG_DIR" source="app.logging.path" defaultValue="./logs"/>
 
     <!-- ============================================================
          CONSOLE APPENDER  (human-readable, always active)
@@ -30,9 +31,9 @@
 
     <!-- ── sfs-api.log ─────────────────────────────────────────── -->
     <appender name="API_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/app/sfs-api.log</file>
+        <file>${LOG_DIR}/sfs-api.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/archive/sfs-api.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/archived/sfs-api.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>100MB</maxFileSize>
             <maxHistory>14</maxHistory>
             <totalSizeCap>2GB</totalSizeCap>
@@ -47,12 +48,12 @@
 
     <!-- ── sfs-error.log ───────────────────────────────────────── -->
     <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/app/sfs-error.log</file>
+        <file>${LOG_DIR}/sfs-error.log</file>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
         </filter>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/archive/sfs-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/archived/sfs-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>100MB</maxFileSize>
             <maxHistory>30</maxHistory>
             <totalSizeCap>3GB</totalSizeCap>
@@ -67,9 +68,9 @@
 
     <!-- ── sfs-security.log ────────────────────────────────────── -->
     <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/app/sfs-security.log</file>
+        <file>${LOG_DIR}/sfs-security.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/archive/sfs-security.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/archived/sfs-security.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>50MB</maxFileSize>
             <maxHistory>60</maxHistory>
             <totalSizeCap>3GB</totalSizeCap>
@@ -82,9 +83,9 @@
 
     <!-- ── sfs-audit.log ───────────────────────────────────────── -->
     <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/app/sfs-audit.log</file>
+        <file>${LOG_DIR}/sfs-audit.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/archive/sfs-audit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/archived/sfs-audit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>50MB</maxFileSize>
             <maxHistory>180</maxHistory>
             <totalSizeCap>5GB</totalSizeCap>
@@ -99,9 +100,9 @@
 
     <!-- ── sfs-app.log ─────────────────────────────────────────── -->
     <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_DIR}/app/sfs-app.log</file>
+        <file>${LOG_DIR}/sfs-app.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_DIR}/archive/sfs-app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <fileNamePattern>${LOG_DIR}/archived/sfs-app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>100MB</maxFileSize>
             <maxHistory>14</maxHistory>
             <totalSizeCap>2GB</totalSizeCap>

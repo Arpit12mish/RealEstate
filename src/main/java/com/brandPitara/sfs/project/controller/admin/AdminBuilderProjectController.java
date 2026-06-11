@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.project.controller.admin;
 
 import com.brandPitara.sfs.project.dto.ProjectResponse;
+import com.brandPitara.sfs.project.dto.ProjectPatchRequest;
 import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.service.ProjectService;
 import jakarta.validation.Valid;
@@ -26,6 +27,12 @@ public class AdminBuilderProjectController {
   @PreAuthorize("hasRole('ADMIN')")
   public ProjectResponse update(@PathVariable Long projectId, @RequestBody ProjectUpsertRequest request) {
     return projectService.update(projectId, request);
+  }
+
+  @PatchMapping("/projects/{projectId}")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ProjectResponse patch(@PathVariable Long projectId, @Valid @RequestBody ProjectPatchRequest request) {
+    return projectService.patch(projectId, request);
   }
 
   @PatchMapping("/projects/{projectId}/published")

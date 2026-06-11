@@ -38,3 +38,8 @@ src/main/resources/application.yml
 .env
 src/main/resources/application.yml
 src/main/resources/application-local.yml
+
+### Local logs — never commit ###
+logs/
+*.log
+app.jar

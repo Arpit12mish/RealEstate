@@ -61,6 +61,12 @@ public class ProjectEntity extends BaseEntity {
   private Long priceMin;
   private Long priceMax;
 
+  private Long monthlyEmiMin;
+  private Long monthlyEmiMax;
+  private Long averagePricePerSqft;
+
+  private LocalDate startDate;
+
   private LocalDate possessionDate;
 
   @Column(length = 60)

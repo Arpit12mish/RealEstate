@@ -113,10 +113,18 @@ public class BrandServiceImpl implements BrandService {
 
   @Override
   @Transactional(readOnly = true)
-  public BrandResponse getById(Long id) {
+  public BrandResponse adminGetById(Long id) {
     BrandEntity entity = brandRepository.findByIdAndDeletedFalse(id)
         .orElseThrow(() -> new EntityNotFoundException("Brand not found: " + id));
     return toResponse(entity);
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public BrandPublicResponse getById(Long id) {
+    BrandEntity entity = brandRepository.findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(id)
+        .orElseThrow(() -> new EntityNotFoundException("Brand not found: " + id));
+    return toPublicResponse(entity);
   }
 
   @Override
@@ -139,10 +147,10 @@ public class BrandServiceImpl implements BrandService {
 
   @Override
   @Transactional(readOnly = true)
-  public Page<BrandResponse> listPublished(Pageable pageable) {
+  public Page<BrandPublicResponse> listPublished(Pageable pageable) {
     return brandRepository
         .findByPublishedTrueAndActiveTrueAndDeletedFalse(pageable)
-        .map(this::toResponse);
+        .map(this::toPublicResponse);
   }
 
   @Override
@@ -183,7 +191,7 @@ public class BrandServiceImpl implements BrandService {
       throw new EntityNotFoundException("Brand not found: " + brandId);
     }
 
-    BrandResponse brandDto = toResponse(brand);
+    BrandPublicResponse brandDto = toPublicResponse(brand);
 
     List<BrandMediaResponse> banners = brandMediaRepository
         .findByBrandIdAndPlacementAndDeletedFalseAndActiveTrueOrderBySortOrderAsc(brandId, Placement.BANNER)
@@ -207,6 +215,15 @@ public class BrandServiceImpl implements BrandService {
   }
 
   // ---------- helpers ----------
+
+  private BrandPublicResponse toPublicResponse(BrandEntity e) {
+    return BrandPublicResponse.builder()
+        .id(e.getId())
+        .name(e.getName())
+        .logoUrl(e.getLogoUrl())
+        .description(e.getDescription())
+        .build();
+  }
 
   private BrandResponse toResponse(BrandEntity e) {
     return BrandResponse.builder()

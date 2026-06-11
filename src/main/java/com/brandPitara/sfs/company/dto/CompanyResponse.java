@@ -18,5 +18,4 @@ public class CompanyResponse {
 
   private String phone;
   private String whatsapp;
-  private String email;
 }

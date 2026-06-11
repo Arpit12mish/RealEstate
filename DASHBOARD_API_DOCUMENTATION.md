@@ -368,10 +368,25 @@ POST /api/dashboard/builders/{builderId}/projects
 UPCOMING, UNDER_CONSTRUCTION, READY_TO_MOVE, COMPLETED
 ```
 
-**`propertyTypes` values:**
-```
-APARTMENT, VILLA, PLOT, COMMERCIAL, STUDIO, PENTHOUSE, ROW_HOUSE, FARMHOUSE
-```
+**`propertyTypes` values (29 total, use metadata endpoint for authoritative list):**
+
+`propertyTypes` is an optional `Set<String>` — send `null` or omit to leave unchanged; send `[]` to clear; send `["VALUE"]` to replace.
+Invalid enum values return `400 BAD_REQUEST`. Duplicate values in the array are silently deduplicated.
+
+The metadata endpoint `GET /api/dashboard/project-metadata/property-types` returns all values with `value`, `label`, and `group`.
+
+| Group | Values |
+|---|---|
+| **Residential** | `RESIDENTIAL`, `APARTMENT`, `STUDIO`, `VILLA`, `INDEPENDENT_HOUSE`, `BUILDER_FLOOR`, `ROW_HOUSE`, `PENTHOUSE`, `DUPLEX`, `FARMHOUSE` |
+| **Land / Plot** | `PLOT`, `RESIDENTIAL_PLOT`, `COMMERCIAL_PLOT`, `AGRICULTURAL_LAND` |
+| **Commercial** | `COMMERCIAL`, `OFFICE_SPACE`, `RETAIL_SHOP`, `SHOWROOM`, `FOOD_COURT`, `CO_WORKING_SPACE` |
+| **Mixed Use / Hospitality** | `MIXED_USE`, `SERVICED_APARTMENT`, `HOTEL`, `RESORT` |
+| **Industrial / Institutional** | `INDUSTRIAL`, `WAREHOUSE`, `FACTORY`, `INSTITUTIONAL` |
+| **Other** | `OTHER` |
+
+> **Broad umbrella values** (`RESIDENTIAL`, `COMMERCIAL`, `MIXED_USE`, `INDUSTRIAL`, `OTHER`) are valid selectable tags — use them when the project covers a broad category or the exact subtype is unknown. They appear as the first selectable item in their respective groups in the metadata response.
+
+> **DB note:** The stale PostgreSQL CHECK constraint (`project_property_types_property_type_check`) that restricted values to only the original 4 was dropped by migration `V92__fix_project_property_types_check_constraint.sql`. All 29 enum values are now fully persisted.
 
 **Example:**
 ```json
@@ -449,7 +464,7 @@ PATCH /api/dashboard/projects/{projectId}/published?value=true
 
 **Access:** A only
 
-> Normally triggered automatically on approval. Direct use is for admin overrides.
+> Normally triggered automatically on approval. Direct `value=true` use is an admin override and requires `reviewStatus = APPROVED`; DRAFT, PENDING_REVIEW, RECHECK, and REJECTED projects cannot be directly published. `value=false` can be used by admins to unpublish.
 
 ---
 
@@ -909,9 +924,31 @@ POST /api/dashboard/projects/{projectId}/reject
 
 ---
 
+#### Rollback Approval
+
+If a reviewer/admin approved a project by mistake, this moves it back to `PENDING_REVIEW` and unpublishes it from public/mobile APIs.
+
+```
+POST /api/dashboard/projects/{projectId}/approval/rollback
+```
+
+**Access:** A, R
+
+**Request Body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `remarks` | string | ✅ | max 2000 chars | Reason for rolling back approval |
+
+**Status transition:** `APPROVED → PENDING_REVIEW`
+
+**Side effects:** `published=false`, public/mobile visibility removed until approval happens again.
+
+---
+
 #### Reopen Project
 
-Re-opens a previously rejected/approved project back to DRAFT state.
+Re-opens a rejected project back to DRAFT state.
 
 ```
 POST /api/dashboard/projects/{projectId}/reopen
@@ -954,6 +991,20 @@ GET /api/dashboard/projects/{projectId}/workspace
 The Project Meter is a detailed analytics section for each project. It powers trust scores, progress bars, and financial breakdowns in the app.
 
 **Base path:** `/api/dashboard/projects/{projectId}/meter`
+
+---
+
+### 5.0 Meter Detail
+
+Returns the full project meter detail for dashboard screens. This endpoint uses dashboard authentication and can load draft, unpublished, or unapproved projects; use the public meter endpoint only for public/mobile app reads.
+
+```
+GET /api/dashboard/projects/{projectId}/meter
+```
+
+**Access:** A, R, DE
+
+**Response:** `ProjectMeterDetailResponse` with `summary`, `construction`, `landLicense`, `approvals`, `priceInsights`, `propertyRates`, `paymentPlan`, `estimatedCost`, `landUtilization`, `locationRadar`, `amenities`, and `builderCredibility`.
 
 ---
 
@@ -1083,7 +1134,7 @@ LAND_LICENSE, APPROVAL_NOC
 
 **`status` values:**
 ```
-OBTAINED, PENDING, NOT_APPLICABLE, EXPIRED
+OBTAINED, PENDING, NOT_APPLICABLE, EXPIRED, VERIFIED, APPROVED, SUBMITTED
 ```
 
 **Example:**
@@ -1120,6 +1171,53 @@ GET /api/dashboard/projects/{projectId}/meter/compliance-items
 
 **Access:** A, R, DE
 
+Returns a flat list sorted by `itemGroup ASC, displayOrder ASC, id ASC`. Frontend should group client-side by `itemGroup`.
+
+**Response (array of):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Item ID |
+| `itemGroup` | string (enum) | Compliance group (e.g. `ENVIRONMENTAL`) — use for client-side grouping |
+| `itemKey` | string | Internal identifier (e.g. `ENVIRONMENTAL_CLEARANCE`) |
+| `itemLabel` | string | Display name (e.g. "Environmental Clearance") |
+| `status` | string (enum) | `OBTAINED`, `PENDING`, `NOT_APPLICABLE`, `EXPIRED`, `VERIFIED`, `APPROVED`, `SUBMITTED` |
+| `valueText` | string \| null | Optional text value (e.g. registration number) |
+| `documentUrl` | string \| null | Link to supporting document |
+| `remarks` | string \| null | Free-text remarks |
+| `displayOrder` | number | Sort order within its group |
+| `verified` | boolean | Whether the item has been admin-verified |
+
+**Example response:**
+```json
+[
+  {
+    "id": 12,
+    "itemGroup": "ENVIRONMENTAL",
+    "itemKey": "ENVIRONMENTAL_CLEARANCE",
+    "itemLabel": "Environmental Clearance",
+    "status": "PENDING",
+    "valueText": null,
+    "documentUrl": null,
+    "remarks": "Environment clearance pending.",
+    "displayOrder": 3,
+    "verified": false
+  },
+  {
+    "id": 7,
+    "itemGroup": "RERA",
+    "itemKey": "RERA_REGISTRATION",
+    "itemLabel": "RERA Registration",
+    "status": "OBTAINED",
+    "valueText": "MH/2024/001234",
+    "documentUrl": "https://cdn.yourdomain.com/docs/rera-cert.pdf",
+    "remarks": null,
+    "displayOrder": 1,
+    "verified": true
+  }
+]
+```
+
 ---
 
 #### Delete Compliance Item
@@ -1132,9 +1230,9 @@ DELETE /api/dashboard/projects/{projectId}/meter/compliance-items/{itemId}
 
 ---
 
-### 5.3 Amenities
+### 5.3 Amenities (Amenity Intelligence v1)
 
-Tracks which amenities (swimming pool, gym, clubhouse, etc.) are promised and how complete they are.
+Tracks which amenities are promised and how far along they are, with category grouping, icon hints, and smart display rules.
 
 #### Add Amenity
 
@@ -1148,30 +1246,75 @@ POST /api/dashboard/projects/{projectId}/meter/amenities
 
 | Field | Type | Required | Constraints | Description |
 |-------|------|----------|-------------|-------------|
-| `amenityCode` | string | ✅ | max 80 chars | Internal code (e.g. `SWIMMING_POOL`) |
-| `amenityLabel` | string | ✅ | max 120 chars | Display name (e.g. "Swimming Pool") |
-| `status` | string (enum) | ✅ | See values below | Completion status |
-| `progressPercent` | number | ❌ | 0–100 | Build progress if under construction |
-| `weightPercent` | number | ❌ | 0–100 | Weight in overall amenity score |
-| `displayOrder` | number | ✅ | 0–999 | Sort order |
-| `remarks` | string | ❌ | max 500 chars | Notes |
-| `verified` | boolean | ❌ | — | Reviewer-verified |
+| `amenityCode` | string | ✅ | max 80 chars | Internal code — use suggestion codes or custom snake_case |
+| `amenityLabel` | string | ✅ | max 120 chars | Display name (e.g. "Clubhouse (15,000 sq ft)") |
+| `status` | string (enum) | ✅ | See values below | Current build/availability status |
+| `progressPercent` | number | ❌ | 0–100 | Build progress % (used when `status` is `IN_PROGRESS`) |
+| `weightPercent` | number | ❌ | 0–100 | Weight in amenity completion score; 0 = excluded from score |
+| `displayOrder` | number | ✅ | 0–999 | Sort order within its category group |
+| `remarks` | string | ❌ | max 500 chars | Internal notes |
+| `verified` | boolean | ❌ | — | Reviewer-verified flag |
+| `category` | string (enum) | ❌ | See values below | Amenity category for grouping |
+| `categoryLabel` | string | ❌ | max 100 chars | Override label for the category group (falls back to enum default) |
+| `iconKey` | string | ❌ | max 80 chars | UI icon hint (e.g. `pool`, `gym`) — use suggestion catalog values |
+| `rare` | boolean | ❌ | default `false` | Show "Rare" badge on public card |
+| `available` | boolean | ❌ | default `true` | `false` = not physically available (e.g. no lake nearby); excluded from score |
+| `publicVisible` | boolean | ❌ | default `true` | Show on public project page |
+| `active` | boolean | ❌ | default `true` | Soft-delete / hide from all views |
+| `categoryDisplayOrder` | number | ❌ | 0–999, default `0` | Sort order of this category group; lower = shown first |
 
 **`status` values:**
 ```
-PLANNED, UNDER_CONSTRUCTION, COMPLETED, NOT_AVAILABLE
+NOT_STARTED   — promised but not yet started
+PLANNED       — planning/design phase
+IN_PROGRESS   — under active construction (use progressPercent)
+COMPLETED     — fully delivered
+NOT_AVAILABLE — not available; excluded from completion score
 ```
 
-**Example:**
+**`category` values (13 options):**
+```
+LIFESTYLE, SPORTS, WELLNESS, SECURITY, CONVENIENCE, COMMUNITY,
+KIDS_FAMILY, GREEN_SUSTAINABILITY, NATURAL, PARKING_TRANSPORT,
+PET_FRIENDLY, COMMERCIAL_RETAIL, OTHER
+```
+
+> **Score exclusion rule:** amenities with `available: false` OR `status: NOT_AVAILABLE` are excluded from the completion percentage calculation. Use `NOT_AVAILABLE` for promised amenities that didn't materialise; use `available: false` for natural/geographic amenities (lake, forest) not present at this location.
+
+**Example — standard amenity:**
 ```json
 {
-  "amenityCode": "CLUBHOUSE",
+  "amenityCode": "clubhouse",
   "amenityLabel": "Clubhouse (15,000 sq ft)",
-  "status": "UNDER_CONSTRUCTION",
+  "status": "IN_PROGRESS",
   "progressPercent": 60,
   "weightPercent": 15,
-  "displayOrder": 2,
+  "displayOrder": 1,
+  "category": "LIFESTYLE",
+  "iconKey": "clubhouse",
+  "rare": false,
+  "available": true,
+  "publicVisible": true,
+  "active": true,
+  "categoryDisplayOrder": 1,
   "verified": false
+}
+```
+
+**Example — natural amenity not present at this location:**
+```json
+{
+  "amenityCode": "lake_view",
+  "amenityLabel": "Lake View",
+  "status": "NOT_AVAILABLE",
+  "displayOrder": 1,
+  "category": "NATURAL",
+  "iconKey": "lake",
+  "rare": true,
+  "available": false,
+  "publicVisible": true,
+  "active": true,
+  "categoryDisplayOrder": 9
 }
 ```
 
@@ -1185,15 +1328,19 @@ PUT /api/dashboard/projects/{projectId}/meter/amenities/{amenityId}
 
 **Access:** A, DE
 
+Same fields as Add Amenity. All fields are optional; only provided (non-null) fields are updated.
+
 ---
 
-#### List Amenities
+#### List Amenities (Dashboard — all records)
 
 ```
 GET /api/dashboard/projects/{projectId}/meter/amenities
 ```
 
 **Access:** A, R, DE
+
+Returns all amenity records for the project including inactive/hidden ones. Each item includes the full set of intelligence fields.
 
 ---
 
@@ -1204,6 +1351,131 @@ DELETE /api/dashboard/projects/{projectId}/meter/amenities/{amenityId}
 ```
 
 **Access:** A only
+
+---
+
+#### Public Response Shape (Grouped)
+
+The public `GET /api/projects/{id}/meter` response returns amenities in two parallel structures under the `amenities` key:
+
+```json
+{
+  "amenities": {
+    "completionPercent": 72,
+    "groups": [
+      {
+        "category": "LIFESTYLE",
+        "categoryLabel": "Lifestyle Amenities",
+        "displayOrder": 1,
+        "items": [
+          {
+            "id": 1,
+            "amenityCode": "clubhouse",
+            "amenityLabel": "Clubhouse",
+            "status": "COMPLETED",
+            "progressPercent": 100,
+            "weightPercent": 15,
+            "displayOrder": 1,
+            "category": "LIFESTYLE",
+            "categoryLabel": "Lifestyle Amenities",
+            "iconKey": "clubhouse",
+            "rare": false,
+            "available": true,
+            "publicVisible": true,
+            "active": true,
+            "categoryDisplayOrder": 1,
+            "verified": true
+          }
+        ]
+      }
+    ],
+    "items": [ /* same items, flattened — kept for backward compatibility */ ]
+  }
+}
+```
+
+**UI display rules:**
+- Show **"Rare" badge** when `rare: true`
+- Render as **greyed-out / disabled** when `available: false` or `status: NOT_AVAILABLE`
+- Omit items where `publicVisible: false` or `active: false`
+- Group items by `category`; sort groups by `categoryDisplayOrder` then `category` name
+- Within a group, sort items by `displayOrder` then `id`
+
+---
+
+#### Metadata: Amenity Categories
+
+```
+GET /api/dashboard/project-metadata/amenity-categories
+```
+
+**Access:** A, R, DE
+
+Returns all 13 amenity categories with their recommended display order:
+
+```json
+[
+  { "value": "LIFESTYLE",            "label": "Lifestyle Amenities",   "displayOrder": 1  },
+  { "value": "SPORTS",               "label": "Sports Amenities",       "displayOrder": 2  },
+  { "value": "WELLNESS",             "label": "Wellness Amenities",     "displayOrder": 3  },
+  { "value": "SECURITY",             "label": "Security & Safety",      "displayOrder": 4  },
+  { "value": "CONVENIENCE",          "label": "Convenience Amenities",  "displayOrder": 5  },
+  { "value": "COMMUNITY",            "label": "Community Spaces",       "displayOrder": 6  },
+  { "value": "KIDS_FAMILY",          "label": "Kids & Family",          "displayOrder": 7  },
+  { "value": "GREEN_SUSTAINABILITY", "label": "Green & Sustainability", "displayOrder": 8  },
+  { "value": "NATURAL",              "label": "Natural Amenities",      "displayOrder": 9  },
+  { "value": "PARKING_TRANSPORT",    "label": "Parking & Transport",    "displayOrder": 10 },
+  { "value": "PET_FRIENDLY",         "label": "Pet Friendly",           "displayOrder": 11 },
+  { "value": "COMMERCIAL_RETAIL",    "label": "Commercial / Retail",    "displayOrder": 12 },
+  { "value": "OTHER",                "label": "Other Amenities",        "displayOrder": 99 }
+]
+```
+
+---
+
+#### Metadata: Amenity Suggestions Catalog
+
+```
+GET /api/dashboard/project-metadata/amenity-suggestions
+```
+
+**Access:** A, R, DE
+
+Returns a curated catalog of ~55 common amenities. Use `amenityCode` and `iconKey` values as-is when creating amenity records. `rare: true` indicates the amenity is uncommon enough to show a "Rare" badge.
+
+**Response shape per item:**
+```json
+{
+  "amenityCode": "swimming_pool",
+  "amenityLabel": "Swimming Pool",
+  "category": "LIFESTYLE",
+  "categoryLabel": "Lifestyle Amenities",
+  "iconKey": "pool",
+  "rare": false
+}
+```
+
+**Sample entries:**
+
+| Code | Label | Category | Rare |
+|------|-------|----------|------|
+| `swimming_pool` | Swimming Pool | LIFESTYLE | — |
+| `clubhouse` | Clubhouse | LIFESTYLE | — |
+| `rooftop_lounge` | Rooftop Lounge | LIFESTYLE | ✅ |
+| `gym` | Gymnasium | SPORTS | — |
+| `tennis_court` | Tennis Court | SPORTS | — |
+| `squash_court` | Squash Court | SPORTS | ✅ |
+| `yoga_deck` | Yoga Deck | WELLNESS | — |
+| `spa` | Spa | WELLNESS | — |
+| `steam_sauna` | Steam & Sauna | WELLNESS | ✅ |
+| `cctv` | CCTV Surveillance | SECURITY | — |
+| `panic_button` | Panic Button / SOS | SECURITY | ✅ |
+| `ev_charging` | EV Charging Station | PARKING_TRANSPORT | ✅ |
+| `lake_view` | Lake View | NATURAL | ✅ |
+| `solar_power` | Solar Power | GREEN_SUSTAINABILITY | ✅ |
+| `pet_park` | Pet Park | PET_FRIENDLY | ✅ |
+
+Full list returned by the endpoint; table above is a representative sample.
 
 ---
 
@@ -1240,6 +1512,18 @@ POST /api/dashboard/projects/{projectId}/meter/price-history
 }
 ```
 
+**Response (POST / PUT):**
+```json
+{
+  "id": 101,
+  "yearLabel": "2022",
+  "projectPrice": 7200,
+  "averageAreaPrice": 6800,
+  "displayOrder": 1,
+  "verified": true
+}
+```
+
 ---
 
 #### Update Price History Point
@@ -1250,6 +1534,8 @@ PUT /api/dashboard/projects/{projectId}/meter/price-history/{priceHistoryId}
 
 **Access:** A, DE
 
+Same request body as POST. Returns updated point with `id`.
+
 ---
 
 #### List Price History
@@ -1259,6 +1545,49 @@ GET /api/dashboard/projects/{projectId}/meter/price-history
 ```
 
 **Access:** A, R, DE
+
+Returns flat list sorted by `displayOrder ASC, id ASC`.
+
+**Response (array of):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | number | Point ID — required for Edit/Delete actions |
+| `yearLabel` | string | Time period label (e.g. `"2024"` or `"2024-06"`) |
+| `projectPrice` | number | Project price per sq ft (INR) |
+| `averageAreaPrice` | number \| null | Average locality price for comparison |
+| `displayOrder` | number | Render order (chronological, oldest first) |
+| `verified` | boolean | Reviewer-verified flag |
+
+**Example response:**
+```json
+[
+  {
+    "id": 31,
+    "yearLabel": "2024",
+    "projectPrice": 24300,
+    "averageAreaPrice": null,
+    "displayOrder": 1,
+    "verified": false
+  },
+  {
+    "id": 32,
+    "yearLabel": "2025",
+    "projectPrice": 16350,
+    "averageAreaPrice": null,
+    "displayOrder": 2,
+    "verified": false
+  },
+  {
+    "id": 33,
+    "yearLabel": "2026",
+    "projectPrice": 18850,
+    "averageAreaPrice": null,
+    "displayOrder": 3,
+    "verified": false
+  }
+]
+```
 
 ---
 
@@ -3279,6 +3608,507 @@ The resulting project enters the normal `DRAFT → PENDING_REVIEW` workflow — 
 
 ---
 
+## 16. Dashboard Mobile Preview
+
+### Purpose
+
+Dashboard users (ADMIN, REVIEWER, DATA_ENTRY) can preview how a project's saved data will appear in the mobile/public app **before** the project is published or approved.
+
+> **Important — Saved data only:** The preview reflects data that has already been saved to the database. Save all dashboard forms before refreshing the mobile preview. Unsaved edits will not appear.
+
+> **Public APIs are not changed.** Unpublished and unapproved projects remain invisible to the public. This endpoint is strictly dashboard-authenticated.
+
+---
+
+### 16.1 Combined Mobile Preview
+
+```
+GET /api/dashboard/projects/{projectId}/mobile-preview
+```
+
+**Access:** ADMIN, REVIEWER, DATA_ENTRY
+
+Returns three data blocks — `card`, `detail`, `meter` — matching exactly what the mobile app renders, plus a `meta` block with diagnostic warnings and missing sections.
+
+**Path Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `projectId` | Long | ID of the project to preview |
+
+**Response Shape**
+
+```json
+{
+  "meta": {
+    "projectId": 42,
+    "projectName": "M3M Jewel",
+    "reviewStatus": "DRAFT",
+    "published": false,
+    "active": true,
+    "previewMode": "DASHBOARD",
+    "generatedAt": "2026-06-05T10:30:00Z",
+    "warnings": [
+      "Project is not published",
+      "Project review status is DRAFT — must be APPROVED before public visibility",
+      "Project has no brochure PDF",
+      "Project has no price history"
+    ],
+    "missingSections": [
+      "BROCHURE",
+      "PRICE_HISTORY"
+    ]
+  },
+  "card": {
+    "projectId": 42,
+    "projectName": "M3M Jewel",
+    "projectSlug": "m3m-jewel",
+    "builderId": 7,
+    "builderName": "M3M Group",
+    "builderLogoUrl": "https://cdn.example.com/logos/m3m.png",
+    "coverImageUrl": "https://cdn.example.com/projects/m3m-jewel/cover.jpg",
+    "addressLine": "Sector 113",
+    "cityName": "Gurgaon",
+    "priceMin": 6500000,
+    "priceMax": 18000000,
+    "constructionProgressPercent": 52,
+    "appreciationPercent": 26.15,
+    "constructionStartDate": "2023-04-12",
+    "timelineStatus": "DELAYED",
+    "delayDays": 102,
+    "lastUpdatedAt": "2026-05-01T09:00:00Z"
+  },
+  "detail": {
+    "id": 42,
+    "name": "M3M Jewel",
+    "slug": "m3m-jewel",
+    "builderId": 7,
+    "builderName": "M3M Group",
+    "builderLogoUrl": "https://cdn.example.com/logos/m3m.png",
+    "reraNumber": "HRERA-123-2026",
+    "addressLine": "Sector 113",
+    "cityName": "Gurgaon",
+    "priceMin": 6500000,
+    "priceMax": 18000000,
+    "coverMediaUrl": "https://cdn.example.com/projects/m3m-jewel/cover.jpg",
+    "brochureUrl": null,
+    "pricing": {
+      "minPrice": 6500000,
+      "maxPrice": 18000000,
+      "averageAreaPrice": 7800,
+      "estimatedMonthlyEmiMin": 45127,
+      "estimatedMonthlyEmiMax": 100000,
+      "appreciationPercent": 26.15
+    },
+    "floorPlanGroups": [
+      {
+        "groupKey": "RETAIL_UNIT",
+        "groupLabel": "Retail Unit",
+        "items": [ { "id": 1, "title": "Lower Ground Floor", "carpetAreaSqft": 67.80, "price": 6500000 } ]
+      }
+    ],
+    "amenities": {
+      "completionPercent": 74,
+      "groups": [ { "category": "LIFESTYLE", "categoryLabel": "Lifestyle & Convenience", "items": [] } ]
+    }
+  },
+  "meter": {
+    "summary": {
+      "projectId": 42,
+      "constructionProgressPercent": 52,
+      "delayDays": 102,
+      "constructionStartDate": "2023-04-12",
+      "expectedCompletionDate": "2025-12-31",
+      "verified": false
+    },
+    "construction": {
+      "projectId": 42,
+      "overallProgressPercent": 52,
+      "delayDays": 102,
+      "stages": []
+    },
+    "landLicense": { "items": [] },
+    "approvals": {
+      "items": [
+        { "id": 1, "itemGroup": "APPROVAL_NOC", "itemKey": "RERA", "itemLabel": "RERA Registration",
+          "status": "OBTAINED", "valueText": "GRG-1336-2023", "verified": true }
+      ]
+    },
+    "priceInsights": {
+      "launchPrice": 6500,
+      "currentPrice": 8200,
+      "appreciationPercent": 26.15,
+      "averageAreaPrice": 7800
+    },
+    "propertyRates": [],
+    "paymentPlan": [
+      { "id": 1, "milestoneCode": "BOOKING", "milestoneLabel": "Booking Amount",
+        "description": "Payable at booking confirmation.", "percentageValue": 10 }
+    ],
+    "estimatedCost": {
+      "totalCost": 4800000000,
+      "landCost": 1600000000,
+      "constructionCost": 2200000000,
+      "infrastructureCost": 600000000,
+      "otherCost": 400000000
+    },
+    "landUtilization": {
+      "totalLandAreaSqm": 53450.0,
+      "commercialAreaSqm": 8200.0,
+      "parksAreaSqm": 6400.0
+    },
+    "locationRadar": {
+      "metroScore": 9.0,
+      "educationScore": 7.5,
+      "healthcareScore": 7.0,
+      "retailScore": 8.5,
+      "jobScore": 8.5,
+      "leisureScore": 7.0,
+      "finalScore": 8.4,
+      "appreciationPercent3Y": 18.0,
+      "scoreSummary": "Strong metro connectivity, premium catchment, growing office and retail ecosystem."
+    },
+    "amenities": {
+      "completionPercent": 74,
+      "groups": []
+    },
+    "builderCredibility": {
+      "builderId": 7,
+      "builderName": "M3M Group",
+      "credibilityScore": 61,
+      "credibilityLabel": "Moderate",
+      "projectsTrackedCount": 4,
+      "onTrackRecordPercent": 25.0,
+      "promisesMetPercent": 71.0,
+      "summary": "Moderate Confidence based on 4 tracked public projects.",
+      "confidenceLabel": "Moderate Confidence"
+    }
+  }
+}
+```
+
+---
+
+### 16.2 Meta Block — Warnings and Missing Sections
+
+The `meta.warnings` list contains human-readable strings for the dashboard user. The `meta.missingSections` list contains machine-readable keys for the frontend to highlight missing content.
+
+**Possible `missingSections` values**
+
+| Key | Meaning |
+|-----|---------|
+| `COVER_IMAGE` | No active cover image uploaded |
+| `BROCHURE` | No brochure PDF uploaded |
+| `RERA_REGISTRATION` | `reraNumber` field is blank |
+| `FLOOR_PLANS` | No active floor plans |
+| `AMENITIES` | No public-visible active amenities |
+| `CONSTRUCTION_PROGRESS` | No construction stages added |
+| `COMPLIANCE_ITEMS` | No land/license AND no approval/NOC items |
+| `PRICE_HISTORY` | No price history points |
+| `PAYMENT_PLAN` | No active payment milestones |
+| `ESTIMATED_COST` | No cost breakdown or total cost |
+| `LAND_UTILIZATION` | No land utilization data |
+| `LOCATION_APPRECIATION_RADAR` | No location score data |
+| `BUILDER_CREDIBILITY` | Builder credibility could not be computed |
+
+---
+
+### 16.3 Card Block — Mobile Project Card Fields
+
+The `card` block maps directly to the mobile project listing card:
+
+| Card Field | Source |
+|-----------|--------|
+| `coverImageUrl` | First active cover IMAGE in media |
+| `projectName` | `project.name` |
+| `addressLine` + `cityName` | `project.addressLine`, `project.city.name` |
+| `builderName` + `builderLogoUrl` | `project.builder` |
+| `timelineStatus` | `"DELAYED"` if `delayDays > 0`, else `"ON_TRACK"` |
+| `delayDays` | Snapshot `delayDays` or computed from possession date |
+| `constructionProgressPercent` | Snapshot or weighted stage calculation |
+| `appreciationPercent` | Snapshot `priceAppreciationPercent` |
+| `constructionStartDate` | Snapshot `constructionStartDate` or `project.startDate` |
+| `priceMin` / `priceMax` | `project.priceMin`, `project.priceMax` |
+
+---
+
+### 16.4 Detail Block — Mobile Project Detail Screen
+
+The `detail` block maps to the mobile project detail screen. Key nested objects:
+
+| Section | Field Path | Mobile Screen |
+|---------|-----------|--------------|
+| Hero | `coverMediaUrl`, `name`, `addressLine`, `reraNumber` | Header |
+| Starting price | `priceMin` | Header |
+| Brochure | `brochureUrl` | "View Brochure" button |
+| Pricing | `pricing.*` | Pricing section |
+| Floor plans | `floorPlanGroups[].items` | Floor Plans section |
+| Glimpses | `glimpses[]` | Image gallery |
+| Amenities | `amenities.groups[]` | Amenities section |
+| Location | `location.*` | Location section |
+| Connectivity | `connectivity.*` | Connectivity section |
+
+---
+
+### 16.5 Meter Block — Project Meter Screens
+
+The `meter` block maps to the full project meter screen:
+
+| Mobile Section | Meter Field Path |
+|---------------|-----------------|
+| Construction Progress | `construction.overallProgressPercent`, `.delayDays`, `.stages[]` |
+| Builder Credibility | `builderCredibility.*` |
+| Land & License | `landLicense.items[]` |
+| Approvals / NOC | `approvals.items[]` |
+| Price Insights | `priceInsights.*` |
+| Property Rates chart | `propertyRates[]` |
+| Payment Plan | `paymentPlan[]` |
+| Estimated Cost | `estimatedCost.*` |
+| Land Utilization | `landUtilization.*` |
+| Location Radar | `locationRadar.*` |
+| Amenities | `amenities.*` |
+
+---
+
+### 16.6 Access Rules
+
+| Role | Can Preview |
+|------|------------|
+| ADMIN | All projects |
+| REVIEWER | All projects |
+| DATA_ENTRY | All non-deleted projects |
+
+> DATA_ENTRY users can preview any project at the GET level. Write operations (create/update) on project data remain restricted by the existing ownership policy.
+
+---
+
+## 17. Dashboard Data Gap Fixes
+
+### 17.1 Verify / Clear Verification on Meter Snapshot
+
+Sets the `verified` flag on the project meter snapshot. Verified snapshots contribute to the Builder Credibility "Verification Confidence" score.
+
+```
+PATCH /api/dashboard/projects/{projectId}/meter/snapshot/verify
+```
+
+**Access:** `ADMIN`, `REVIEWER`
+
+**Request body:**
+```json
+{ "verified": true }
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `verified` | Boolean | yes | `true` marks snapshot as verified; `false` clears verification |
+
+**Behavior:**
+- Returns `404` with message `"Project meter snapshot not found. Recalculate snapshot first."` if snapshot does not exist.
+- When `verified = true`: sets `lastVerifiedAt = now()`.
+- When `verified = false`: sets `lastVerifiedAt = null`.
+
+**Response:**
+```json
+{
+  "projectId": 42,
+  "section": "SNAPSHOT",
+  "message": "Project meter snapshot marked as verified"
+}
+```
+
+**Prerequisite:** Run `POST /meter/snapshot/recalculate` first.
+
+---
+
+### 17.2 Reassign Project Builder (Admin Only)
+
+Reassigns a project to a different builder. Use when a project was incorrectly associated at creation.
+
+```
+PATCH /api/dashboard/projects/{projectId}/builder
+```
+
+**Access:** `ADMIN` only
+
+**Request body:**
+```json
+{ "builderId": 12 }
+```
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `builderId` | Long | yes | Target builder must exist and not be soft-deleted |
+
+**Response:** Full `ProjectResponse` with updated `builderId` and `builderName`.
+
+**Errors:**
+- `404` — project not found or deleted
+- `404` — builder not found or deleted
+- `403` — REVIEWER or DATA_ENTRY calling this endpoint
+
+---
+
+### 17.3 Dashboard Floor Plan Insights (DATA_ENTRY / REVIEWER Access)
+
+Mirrors the existing `/api/admin/` floor plan insight CRUD, but accessible to all dashboard roles at the dashboard path.
+
+```
+GET    /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/insights
+POST   /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/insights
+PUT    /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/insights/{insightId}
+DELETE /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/insights/{insightId}
+```
+
+| Method | Access |
+|--------|--------|
+| GET | ADMIN, REVIEWER, DATA_ENTRY |
+| POST | ADMIN, DATA_ENTRY |
+| PUT | ADMIN, DATA_ENTRY |
+| DELETE | ADMIN only |
+
+POST/PUT ownership check applies (DATA_ENTRY can only edit their own projects).
+
+**Request / Response:** Same `FloorPlanInsightUpsertRequest` / `FloorPlanInsightResponse` as the admin path.
+
+**insightsAvailable auto-sync:** `floorPlan.insightsAvailable` is automatically recalculated after every POST, PUT, and DELETE. It is set to `true` when at least one `publicVisible=true, active=true, deleted=false` insight exists; `false` otherwise. No manual flag setting required.
+
+---
+
+### 17.4 Dashboard Floor Plan Room Dimensions (DATA_ENTRY / REVIEWER Access)
+
+Mirrors the existing `/api/admin/` room dimension CRUD at the dashboard path.
+
+```
+GET    /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/rooms
+POST   /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/rooms
+PUT    /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/rooms/{roomId}
+DELETE /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/rooms/{roomId}
+```
+
+| Method | Access |
+|--------|--------|
+| GET | ADMIN, REVIEWER, DATA_ENTRY |
+| POST | ADMIN, DATA_ENTRY |
+| PUT | ADMIN, DATA_ENTRY |
+| DELETE | ADMIN only |
+
+POST/PUT ownership check applies.
+
+**Request / Response:** Same `FloorPlanRoomDimensionUpsertRequest` / `FloorPlanRoomDimensionResponse` as the admin path.
+
+---
+
+### 17.5 Payment Milestone Response — displayOrder + active
+
+`ProjectPaymentMilestoneResponse` now includes two previously missing fields:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `displayOrder` | Integer | Sort order of the milestone |
+| `active` | Boolean | Whether the milestone is active/visible |
+
+These fields were accepted in POST/PUT requests and persisted, but silently omitted from all responses. Now returned in all GET, POST, and PUT responses for payment milestones (`/api/dashboard/projects/{id}/meter/payment-milestones`).
+
+---
+
+### 17.6 Price Insights — Auto-derive from Price History + Manual Override
+
+#### Background
+
+`ProjectMeterSnapshotEntity` stores four price insight fields (`launchPrice`, `currentPrice`, `averageAreaPrice`, `priceAppreciationPercent`) but previously had no write path — all four were always null until now.
+
+#### Part A — Auto-derive during Snapshot Recalculation
+
+**Endpoint:** `POST /api/dashboard/projects/{projectId}/meter/snapshot/recalculate`
+
+After this change, the recalculation engine checks whether price history records exist for the project:
+
+**If price history exists (ordered by `displayOrder ASC, id ASC`):**
+
+| Snapshot Field | Derived From |
+|---|---|
+| `launchPrice` | `projectPrice` of the **first** price history record |
+| `currentPrice` | `projectPrice` of the **last** price history record |
+| `averageAreaPrice` | `averageAreaPrice` of the **last** non-null price history record; fallback to `project.averagePricePerSqft`; fallback to existing snapshot value |
+| `priceAppreciationPercent` | `((currentPrice − launchPrice) / launchPrice) × 100`, rounded to 2 decimal places; null if launchPrice is null or 0 |
+
+**If no price history exists:**
+
+Existing manually-set `launchPrice`, `currentPrice`, and `averageAreaPrice` on the snapshot are **preserved unchanged**. Appreciation is still recalculated from the preserved values.
+
+**Workflow recommendation:** Add price history points via `POST /api/dashboard/projects/{id}/meter/price-history`, then trigger recalculation to auto-populate price insights.
+
+#### Part B — Manual Price Insights Override
+
+**Endpoint:** `PATCH /api/dashboard/projects/{projectId}/meter/price-insights`
+
+**Roles:** ADMIN, REVIEWER
+
+**Purpose:** Manually set price insight values on the snapshot — useful when no price history exists or when business requires a specific override.
+
+**Request:**
+```json
+{
+  "launchPrice": 6500,
+  "currentPrice": 8200,
+  "averageAreaPrice": 7800
+}
+```
+
+| Field | Type | Required | Validation |
+|---|---|---|---|
+| `launchPrice` | Long | No | >= 0 if present |
+| `currentPrice` | Long | No | >= 0 if present |
+| `averageAreaPrice` | Long | No | >= 0 if present |
+
+All three fields are optional. Only provided fields are updated; omitted fields remain unchanged on the snapshot. Appreciation is recalculated inline after any update using the snapshot's current `launchPrice` and `currentPrice`.
+
+**404 condition:** If no snapshot exists yet for the project, returns 404 with message: `"Project meter snapshot not found for project {id}. Recalculate snapshot first."`
+
+**Response:**
+```json
+{
+  "projectId": 42,
+  "section": "PRICE_INSIGHTS",
+  "message": "Price insights updated successfully"
+}
+```
+
+**Appreciation formula:**
+```
+appreciationPercent = ((currentPrice - launchPrice) / launchPrice) * 100
+```
+Rounded to 2 decimal places. Returns `null` if `launchPrice` is null or 0.
+
+**Example — test case 1:**
+
+Price history for project 42:
+- 2021: projectPrice=6500, averageAreaPrice=5000, displayOrder=1
+- 2025: projectPrice=8200, averageAreaPrice=7800, displayOrder=5
+
+After `POST /api/dashboard/projects/42/meter/snapshot/recalculate`:
+```json
+{
+  "priceInsights": {
+    "launchPrice": 6500,
+    "currentPrice": 8200,
+    "averageAreaPrice": 7800,
+    "appreciationPercent": 26.15
+  }
+}
+```
+
+**Example — test case 2 (no history, manual override):**
+
+`PATCH /api/dashboard/projects/42/meter/price-insights`
+```json
+{ "launchPrice": 6500, "currentPrice": 8200, "averageAreaPrice": 7800 }
+```
+Result: snapshot fields set, appreciationPercent = 26.15.
+
+---
+
 ## Quick Reference: Who Can Do What
 
 | Section | ADMIN | REVIEWER | DATA_ENTRY |
@@ -3298,6 +4128,14 @@ The resulting project enters the normal `DRAFT → PENDING_REVIEW` workflow — 
 | Delete Highlights / Floor Plans / Connectivity | ✅ | ❌ | ❌ |
 | Add/Update Meter Data | ✅ | ❌ | ✅ |
 | Recalculate Meter Snapshot | ✅ | ✅ | ❌ |
+| Verify Meter Snapshot | ✅ | ✅ | ❌ |
+| Reassign Project Builder | ✅ | ❌ | ❌ |
+| Floor Plan Insights (read) | ✅ | ✅ | ✅ |
+| Floor Plan Insights (create/update) | ✅ | ❌ | ✅ |
+| Floor Plan Insights (delete) | ✅ | ❌ | ❌ |
+| Floor Plan Rooms (read) | ✅ | ✅ | ✅ |
+| Floor Plan Rooms (create/update) | ✅ | ❌ | ✅ |
+| Floor Plan Rooms (delete) | ✅ | ❌ | ❌ |
 | Submit Project for Review | ✅ | ❌ | ✅ |
 | Approve / Reject Project | ✅ | ✅ | ❌ |
 | Flag Field Issues | ✅ | ✅ | ❌ |

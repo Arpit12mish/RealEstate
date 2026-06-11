@@ -57,7 +57,7 @@ public class AdminBrandController {
   @GetMapping("/{id}")
 @PreAuthorize("hasRole('ADMIN')")
 public BrandResponse getById(@PathVariable Long id) {
-  return brandService.getById(id);
+  return brandService.adminGetById(id);
 }
 
 @GetMapping

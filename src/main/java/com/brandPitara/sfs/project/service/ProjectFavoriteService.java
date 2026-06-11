@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.project.service;
 
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
+import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +21,10 @@ public interface ProjectFavoriteService {
     void enrichProjects(List<ProjectResponse> projects);
 
     void enrichProject(ProjectResponse project);
+
+    void enrichPublicProjects(List<ProjectPublicResponse> projects);
+
+    void enrichPublicProject(ProjectPublicResponse project);
 
     void enrichProjectCards(List<ProjectCardDto> cards);
 }

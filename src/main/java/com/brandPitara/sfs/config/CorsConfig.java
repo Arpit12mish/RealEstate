@@ -15,9 +15,13 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        config.setAllowedOrigins(List.of(
+        config.setAllowedOriginPatterns(List.of(
+                "https://sfs-dashboard.vercel.app",
+                "https://*.vercel.app",
                 "http://localhost:3000",
-                "http://127.0.0.1:3000"
+                "http://127.0.0.1:3000",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173"
         ));
 
         config.setAllowedMethods(List.of(
@@ -36,11 +40,14 @@ public class CorsConfig {
                 "Origin",
                 "X-Requested-With",
                 "X-Request-Id",
-                "X-Correlation-Id"
+                "X-Correlation-Id",
+                "Cache-Control",
+                "Pragma"
         ));
 
         config.setExposedHeaders(List.of(
-                "Authorization"
+                "Authorization",
+                "X-Request-Id"
         ));
 
         config.setAllowCredentials(true);

@@ -3,6 +3,8 @@ package com.brandPitara.sfs.dashboard.common.exception;
 import com.brandPitara.sfs.dashboard.common.response.DashboardApiErrorResponse;
 import com.brandPitara.sfs.dashboard.common.response.DashboardFieldErrorResponse;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.brandPitara.sfs.observability.LogEvents;
 import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.observability.LoggingConstants;
@@ -29,7 +31,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -163,10 +167,37 @@ public class DashboardExceptionHandler {
             HttpServletRequest request
     ) {
         logStructured("warn", LogEvents.DATABASE_ERROR, request, null,
-                Map.of("message", "Data integrity violation"));
+                Map.of("message", cleanMessage(ex.getMostSpecificCause().getMessage(), "Data integrity violation")));
         return ResponseEntity.status(HttpStatus.CONFLICT).body(
                 build(HttpStatus.CONFLICT, "DASHBOARD_DATA_CONFLICT",
-                        "Data conflict occurred. Duplicate or invalid relational data may already exist.", request)
+                        resolveDataIntegrityMessage(ex), request)
+        );
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<DashboardApiErrorResponse> handleResponseStatus(
+            ResponseStatusException ex,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
+
+        String code = switch (status) {
+            case CONFLICT -> "DASHBOARD_DATA_CONFLICT";
+            case NOT_FOUND -> "DASHBOARD_RESOURCE_NOT_FOUND";
+            case FORBIDDEN -> "DASHBOARD_ACCESS_DENIED";
+            case BAD_REQUEST -> "DASHBOARD_INVALID_WORKFLOW";
+            default -> status.is5xxServerError()
+                    ? "DASHBOARD_INTERNAL_ERROR"
+                    : "DASHBOARD_REQUEST_FAILED";
+        };
+
+        if (status.is5xxServerError()) {
+            logStructured("error", LogEvents.SERVER_ERROR, request, ex, Map.of());
+        }
+
+        return ResponseEntity.status(status).body(
+                build(status, code, cleanMessage(ex.getReason(), status.getReasonPhrase()), request)
         );
     }
 
@@ -178,7 +209,7 @@ public class DashboardExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 build(HttpStatus.BAD_REQUEST, "DASHBOARD_INVALID_JSON",
-                        "Invalid request body. Please check JSON format and enum values.", request)
+                        resolveUnreadableBodyMessage(ex), request)
         );
     }
 
@@ -307,6 +338,83 @@ public class DashboardExceptionHandler {
     private String cleanMessage(String message, String fallback) {
         if (message == null || message.isBlank()) return fallback;
         return message.trim();
+    }
+
+    private String resolveDataIntegrityMessage(DataIntegrityViolationException ex) {
+        String cause = extractFullCauseMessage(ex);
+        if (cause != null) {
+            String lower = cause.toLowerCase();
+            if (lower.contains("project") && lower.contains("slug")) {
+                return "Project slug already exists. Choose a unique slug.";
+            }
+            if (lower.contains("project_property_types")) {
+                return "Project property types contain duplicate or invalid values.";
+            }
+            if (lower.contains("rera")) {
+                return "Project RERA number conflicts with existing data.";
+            }
+            if (lower.contains("stage_code") || lower.contains("uk_project_stage_code")) {
+                return "A construction stage with this code already exists for the project.";
+            }
+            if (lower.contains("compliance") && lower.contains("item_key")) {
+                return "A compliance item with this key already exists for the project.";
+            }
+        }
+        return "Data conflict occurred. Duplicate or invalid relational data may already exist.";
+    }
+
+    private String resolveUnreadableBodyMessage(HttpMessageNotReadableException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof InvalidFormatException invalidFormat
+                && invalidFormat.getTargetType() != null
+                && invalidFormat.getTargetType().isEnum()) {
+            String field = invalidFormat.getPath().stream()
+                    .map(JsonMappingException.Reference::getFieldName)
+                    .filter(name -> name != null && !name.isBlank())
+                    .reduce((first, second) -> second)
+                    .orElse("value");
+
+            Object rejected = invalidFormat.getValue();
+            return "Invalid value for field '" + field + "': " + rejected
+                    + ". Allowed values: "
+                    + String.join(", ", enumValues(invalidFormat.getTargetType()));
+        }
+        return "Invalid request body. Please check JSON format and enum values.";
+    }
+
+    /**
+     * Extracts the most descriptive error message from the exception chain,
+     * including JDBC SQLException.getNextException() which Hibernate uses
+     * for batch statement failures (not reachable via getCause()).
+     */
+    private String extractFullCauseMessage(DataIntegrityViolationException ex) {
+        // Walk getCause() chain first (standard approach)
+        Throwable t = ex;
+        while (t != null) {
+            String msg = t.getMessage();
+            if (msg != null && !msg.isBlank()) {
+                String lower = msg.toLowerCase();
+                if (lower.contains("violates") || lower.contains("duplicate") || lower.contains("constraint")) {
+                    return msg;
+                }
+            }
+            // For JDBC SQLExceptions, also check getNextException() chain,
+            // which is how PostgreSQL JDBC wraps batch update errors.
+            if (t instanceof SQLException sqlEx) {
+                SQLException next = sqlEx.getNextException();
+                while (next != null) {
+                    String nextMsg = next.getMessage();
+                    if (nextMsg != null && !nextMsg.isBlank()) {
+                        return nextMsg;
+                    }
+                    next = next.getNextException();
+                }
+            }
+            t = t.getCause();
+        }
+        // Fallback to getMostSpecificCause
+        Throwable specific = ex.getMostSpecificCause();
+        return specific != null ? specific.getMessage() : null;
     }
 
     private String resolveRequestId(HttpServletRequest request) {

@@ -1,7 +1,8 @@
 package com.brandPitara.sfs.project.controller.publicapi;
 
 import com.brandPitara.sfs.project.dto.ProjectMediaResponse;
-import com.brandPitara.sfs.project.dto.ProjectResponse;
+import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
+import com.brandPitara.sfs.project.enums.UnitConfigurationType;
 import com.brandPitara.sfs.project.service.ProjectMediaService;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +21,7 @@ public class ProjectPublicController {
   private final ProjectMediaService projectMediaService;
 
   @GetMapping("/{projectId}")
-  public ProjectResponse get(@PathVariable Long projectId) {
+  public ProjectPublicResponse get(@PathVariable Long projectId) {
     return projectService.publicGet(projectId);
   }
 
@@ -30,7 +31,7 @@ public class ProjectPublicController {
   }
 
   @GetMapping("/feature")
-  public Page<ProjectResponse> featured(
+  public Page<ProjectPublicResponse> featured(
       @RequestParam(required = false) Long builderId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "10") int size
@@ -42,5 +43,21 @@ public class ProjectPublicController {
     );
 
     return projectService.publicFeatured(builderId, pageable);
+  }
+
+  @GetMapping("/browse")
+  public Page<ProjectPublicResponse> browse(
+      @RequestParam(required = false) List<UnitConfigurationType> unitConfigurations,
+      @RequestParam(required = false) Long cityId,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size
+  ) {
+    Pageable pageable = PageRequest.of(
+        page,
+        Math.min(size, 50),
+        Sort.by("priority").ascending().and(Sort.by("id").descending())
+    );
+
+    return projectService.publicBrowse(unitConfigurations, cityId, pageable);
   }
 }

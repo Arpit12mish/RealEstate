@@ -5,6 +5,7 @@ import com.brandPitara.sfs.entity.UserFavoriteEntity;
 import com.brandPitara.sfs.enums.FavoriteTargetType;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
+import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
@@ -176,6 +177,36 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
     public void enrichProject(ProjectResponse project) {
         if (project == null || project.getId() == null) return;
         enrichProjects(List.of(project));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichPublicProjects(List<ProjectPublicResponse> projects) {
+        if (projects == null || projects.isEmpty()) return;
+
+        List<Long> projectIds = projects.stream()
+                .map(ProjectPublicResponse::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (ProjectPublicResponse project : projects) {
+            Long id = project.getId();
+            project.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            project.setIsFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichPublicProject(ProjectPublicResponse project) {
+        if (project == null || project.getId() == null) return;
+        enrichPublicProjects(List.of(project));
     }
 
     @Override

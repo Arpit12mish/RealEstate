@@ -4,5 +4,8 @@ public enum ProjectComplianceStatus {
     OBTAINED,
     PENDING,
     NOT_APPLICABLE,
-    EXPIRED
+    EXPIRED,
+    VERIFIED,
+    APPROVED,
+    SUBMITTED
 }

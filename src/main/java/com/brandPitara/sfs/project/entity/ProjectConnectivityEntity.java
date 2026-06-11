@@ -30,6 +30,16 @@ public class ProjectConnectivityEntity extends BaseEntity {
   @Column(name = "map_image_url", columnDefinition = "text")
   private String mapImageUrl;
 
+  @Column(columnDefinition = "text")
+  private String summary;
+
+  @Column(name = "default_radius_meters")
+  private Integer defaultRadiusMeters;
+
+  @Column(name = "search_enabled", nullable = false)
+  @Builder.Default
+  private Boolean searchEnabled = true;
+
   @Column(nullable = false)
   @Builder.Default
   private Boolean active = true;

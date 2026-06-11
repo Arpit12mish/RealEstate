@@ -43,7 +43,8 @@ public class DashboardJwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path == null || !path.startsWith("/api/dashboard/");
+        if (path == null) return true;
+        return !path.startsWith("/api/dashboard/") && !path.startsWith("/api/admin/");
     }
 
     @Override

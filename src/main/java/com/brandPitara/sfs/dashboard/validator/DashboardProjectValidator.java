@@ -12,6 +12,8 @@ public class DashboardProjectValidator {
         }
 
         validatePriceRange(request);
+        validateEmiRange(request);
+        validateAveragePricePerSqft(request);
         validateCoordinatesPaired(request);
     }
 
@@ -23,6 +25,25 @@ public class DashboardProjectValidator {
             throw new IllegalArgumentException(
                 "priceMin (" + priceMin + ") must not exceed priceMax (" + priceMax + ")"
             );
+        }
+    }
+
+    private void validateEmiRange(ProjectUpsertRequest request) {
+        Long emiMin = request.getMonthlyEmiMin();
+        Long emiMax = request.getMonthlyEmiMax();
+
+        if (emiMin != null && emiMax != null && emiMin > emiMax) {
+            throw new IllegalArgumentException(
+                "monthlyEmiMin (" + emiMin + ") must not exceed monthlyEmiMax (" + emiMax + ")"
+            );
+        }
+    }
+
+    private void validateAveragePricePerSqft(ProjectUpsertRequest request) {
+        Long avg = request.getAveragePricePerSqft();
+
+        if (avg != null && avg < 0) {
+            throw new IllegalArgumentException("averagePricePerSqft must be 0 or greater");
         }
     }
 

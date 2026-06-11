@@ -1,11 +1,13 @@
 package com.brandPitara.sfs.project.dto;
 
+import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.project.enums.ProjectStatus;
 import com.brandPitara.sfs.project.enums.PropertyType;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenitiesResponse;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Set;
 
@@ -36,10 +38,16 @@ public class ProjectResponse {
   private Long priceMin;
   private Long priceMax;
 
+  private Long monthlyEmiMin;
+  private Long monthlyEmiMax;
+  private Long averagePricePerSqft;
+
+  private LocalDate startDate;
   private LocalDate possessionDate;
   private String reraNumber;
 
   private ProjectStatus status;
+  private ReviewStatus reviewStatus;
   private Set<PropertyType> propertyTypes;
 
   private boolean active;
@@ -54,6 +62,9 @@ public class ProjectResponse {
 
   private Long favoriteCount;
   private Boolean isFavorite;
+
+  private OffsetDateTime createdAt;
+  private OffsetDateTime updatedAt;
 
   // --- aggregated sections for normal project screen ---
   private ProjectPricingSummaryResponse pricing;

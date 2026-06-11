@@ -25,6 +25,10 @@ public class DashboardActionAuditEntryDto {
     private String ipAddress;
     private String userAgent;
     private OffsetDateTime createdAt;
+    private OffsetDateTime performedAt;
+    private Long performedByUserId;
+    private String performedByUserName;
+    private DashboardRole performedByUserRole;
 
     public static DashboardActionAuditEntryDto from(DashboardActionAuditEntity e) {
         return DashboardActionAuditEntryDto.builder()
@@ -40,6 +44,10 @@ public class DashboardActionAuditEntryDto {
                 .ipAddress(e.getIpAddress())
                 .userAgent(e.getUserAgent())
                 .createdAt(e.getCreatedAt())
+                .performedAt(e.getCreatedAt())
+                .performedByUserId(e.getDashboardUserId())
+                .performedByUserName(e.getDashboardUserName())
+                .performedByUserRole(e.getDashboardUserRole())
                 .build();
     }
 }

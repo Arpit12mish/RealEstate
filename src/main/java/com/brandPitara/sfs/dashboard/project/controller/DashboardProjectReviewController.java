@@ -58,6 +58,17 @@ public class DashboardProjectReviewController {
         return response;
     }
 
+    @PostMapping("/{projectId}/approval/rollback")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER')")
+    public DashboardProjectReviewResponse rollbackApproval(
+            @PathVariable Long projectId,
+            @RequestBody ProjectReviewDecisionRequest request
+    ) {
+        DashboardProjectReviewResponse response = dashboardProjectReviewService.rollbackApproval(projectId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.PROJECT_APPROVAL_ROLLED_BACK, ReviewEntityType.PROJECT, projectId, projectId);
+        return response;
+    }
+
     @PostMapping("/{projectId}/reject")
     @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER')")
     public DashboardProjectReviewResponse reject(

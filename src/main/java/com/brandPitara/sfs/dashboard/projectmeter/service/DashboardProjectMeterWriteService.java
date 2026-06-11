@@ -42,4 +42,10 @@ public interface DashboardProjectMeterWriteService {
     ProjectLocationRadarResponse upsertLocationScore(Long projectId, DashboardProjectLocationScoreRequest request);
 
     DashboardProjectMeterWriteResponse recalculateSnapshot(Long projectId);
+
+    DashboardProjectMeterWriteResponse verifySnapshot(Long projectId, DashboardProjectMeterSnapshotVerifyRequest request);
+
+    DashboardProjectMeterWriteResponse updateTimeline(Long projectId, DashboardProjectTimelineRequest request);
+
+    DashboardProjectMeterWriteResponse updatePriceInsights(Long projectId, DashboardProjectPriceInsightsRequest request);
 }

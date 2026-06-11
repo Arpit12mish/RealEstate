@@ -55,4 +55,28 @@ public class AdminProjectConnectivityController {
   public void deletePlace(@PathVariable Long projectId, @PathVariable Long placeId) {
     projectConnectivityService.softDeletePlace(projectId, placeId);
   }
+
+  @GetMapping("/connectivity/provider-categories")
+  @PreAuthorize("hasAnyRole('ADMIN','DATA_ENTRY')")
+  public List<ConnectivityProviderCategoryMetaResponse> providerCategories() {
+    return projectConnectivityService.providerCategories();
+  }
+
+  @PostMapping("/{projectId}/connectivity/provider-search")
+  @PreAuthorize("hasAnyRole('ADMIN','DATA_ENTRY')")
+  public ConnectivityProviderSearchResponse providerSearch(
+      @PathVariable Long projectId,
+      @Valid @RequestBody ConnectivityProviderSearchRequest request
+  ) {
+    return projectConnectivityService.providerSearch(projectId, request);
+  }
+
+  @PostMapping("/{projectId}/connectivity/places/bulk")
+  @PreAuthorize("hasAnyRole('ADMIN','DATA_ENTRY')")
+  public ProjectConnectivityPlaceBulkSaveResponse bulkSavePlaces(
+      @PathVariable Long projectId,
+      @Valid @RequestBody ProjectConnectivityPlaceBulkUpsertRequest request
+  ) {
+    return projectConnectivityService.bulkSavePlaces(projectId, request);
+  }
 }

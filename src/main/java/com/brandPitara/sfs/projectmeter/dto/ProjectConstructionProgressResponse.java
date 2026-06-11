@@ -13,5 +13,6 @@ public class ProjectConstructionProgressResponse {
     private Long projectId;
     private Integer overallProgressPercent;
     private Integer delayDays;
+    private ProjectTimelineResponse timeline;
     private List<ProjectConstructionStageResponse> stages;
 }

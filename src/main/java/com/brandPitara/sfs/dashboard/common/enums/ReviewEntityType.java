@@ -10,7 +10,14 @@ public enum ReviewEntityType {
     PROJECT_CONNECTIVITY_PLACE,
     PROJECT_METER,
     PROJECT_METER_SNAPSHOT,
+
     BUILDER,
+    BUILDER_IMPROVEMENT_PROFILE,
+    BUILDER_IMPROVEMENT_ACTION,
+    BUILDER_IMPROVEMENT_ISSUE,
+    BUILDER_AFTER_SALES_UPGRADE,
+    BUILDER_IMPROVEMENT_TIMELINE,
+
     COMPANY,
     PROMO_BANNER,
     APP_CONTENT,
@@ -26,5 +33,13 @@ public enum ReviewEntityType {
                 || this == PROJECT_CONNECTIVITY_PLACE
                 || this == PROJECT_METER
                 || this == PROJECT_METER_SNAPSHOT;
+    }
+
+    public boolean isBuilderImprovementRelated() {
+        return this == BUILDER_IMPROVEMENT_PROFILE
+                || this == BUILDER_IMPROVEMENT_ACTION
+                || this == BUILDER_IMPROVEMENT_ISSUE
+                || this == BUILDER_AFTER_SALES_UPGRADE
+                || this == BUILDER_IMPROVEMENT_TIMELINE;
     }
 }

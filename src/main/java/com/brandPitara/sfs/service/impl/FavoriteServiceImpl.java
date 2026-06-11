@@ -158,11 +158,6 @@ public class FavoriteServiceImpl implements FavoriteService {
 
                 .avgRating(b.getAvgRating())
                 .totalRatings(b.getTotalRatings())
-
-                .active(b.getActive())
-
-                .sponsored(b.getSponsored())
-                .sponsoredPriority(b.getSponsoredPriority())
                 .build();
     }
 

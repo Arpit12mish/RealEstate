@@ -13,4 +13,5 @@ public interface ProjectFloorPlanService {
 
   List<ProjectFloorPlanResponse> adminList(Long projectId);
   List<ProjectFloorPlanResponse> publicList(Long projectId);
+  List<ProjectFloorPlanResponse> dashboardPreviewList(Long projectId);
 }

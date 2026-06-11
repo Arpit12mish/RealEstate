@@ -1,8 +1,10 @@
 package com.brandPitara.sfs.builder.service;
 
 import com.brandPitara.sfs.builder.dto.BuilderCardResponse;
+import com.brandPitara.sfs.builder.dto.BuilderPublicResponse;
 import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
+import com.brandPitara.sfs.builder.dto.UpdateBuilderLogoRequest;
 
 import java.util.List;
 
@@ -16,6 +18,8 @@ public interface BuilderService {
 
   BuilderResponse update(Long id, BuilderUpsertRequest request);
 
+  BuilderResponse updateLogo(Long id, UpdateBuilderLogoRequest request);
+
   BuilderResponse setPublished(Long id, boolean published);
 
   void softDelete(Long id);
@@ -25,9 +29,9 @@ public interface BuilderService {
   Page<BuilderResponse> adminList(Boolean published, Boolean active, Pageable pageable);
 
   // Public
-  Page<BuilderResponse> listPublished(Pageable pageable);
+  Page<BuilderPublicResponse> listPublished(Pageable pageable);
 
-  BuilderResponse publicGetById(Long id);
+  BuilderPublicResponse publicGetById(Long id);
 
   List<BuilderCardResponse> publicHomeBuilders(Long cityId, int limit);
 

@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.dashboard.projectmeter.service.impl;
 
 import com.brandPitara.sfs.dashboard.projectmeter.dto.*;
+import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
 import com.brandPitara.sfs.dashboard.projectmeter.service.DashboardProjectMeterWriteService;
 import com.brandPitara.sfs.dashboard.validator.DashboardProjectMeterValidator;
 import com.brandPitara.sfs.exception.NotFoundException;
@@ -8,8 +9,10 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.projectmeter.dto.*;
 import com.brandPitara.sfs.projectmeter.entity.*;
+import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityCategory;
 import com.brandPitara.sfs.projectmeter.mapper.ProjectMeterMapper;
 import com.brandPitara.sfs.projectmeter.repository.*;
+import java.time.OffsetDateTime;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterSnapshotRecalculationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ import java.util.List;
 public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMeterWriteService {
 
     private final ProjectRepository projectRepository;
+    private final ProjectMeterSnapshotRepository projectMeterSnapshotRepository;
     private final ProjectConstructionStageRepository stageRepository;
     private final ProjectComplianceItemRepository complianceRepository;
     private final ProjectAmenityProgressRepository amenityRepository;
@@ -185,6 +189,14 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
                 .displayOrder(request.getDisplayOrder())
                 .remarks(clean(request.getRemarks()))
                 .verified(Boolean.TRUE.equals(request.getVerified()))
+                .category(request.getCategory())
+                .categoryLabel(clean(request.getCategoryLabel()))
+                .iconKey(clean(request.getIconKey()))
+                .rare(Boolean.TRUE.equals(request.getRare()))
+                .available(request.getAvailable() == null ? true : request.getAvailable())
+                .publicVisible(request.getPublicVisible() == null ? true : request.getPublicVisible())
+                .active(request.getActive() == null ? true : request.getActive())
+                .categoryDisplayOrder(request.getCategoryDisplayOrder() != null ? request.getCategoryDisplayOrder() : 0)
                 .build();
 
         return toAmenityResponse(amenityRepository.save(entity));
@@ -204,6 +216,14 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
         entity.setDisplayOrder(request.getDisplayOrder());
         entity.setRemarks(clean(request.getRemarks()));
         entity.setVerified(Boolean.TRUE.equals(request.getVerified()));
+        if (request.getCategory() != null) entity.setCategory(request.getCategory());
+        if (request.getCategoryLabel() != null) entity.setCategoryLabel(clean(request.getCategoryLabel()));
+        if (request.getIconKey() != null) entity.setIconKey(clean(request.getIconKey()));
+        if (request.getRare() != null) entity.setRare(request.getRare());
+        if (request.getAvailable() != null) entity.setAvailable(request.getAvailable());
+        if (request.getPublicVisible() != null) entity.setPublicVisible(request.getPublicVisible());
+        if (request.getActive() != null) entity.setActive(request.getActive());
+        if (request.getCategoryDisplayOrder() != null) entity.setCategoryDisplayOrder(request.getCategoryDisplayOrder());
 
         return toAmenityResponse(amenityRepository.save(entity));
     }
@@ -425,6 +445,124 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
                 .build();
     }
 
+    @Override
+    @Transactional
+    public DashboardProjectMeterWriteResponse verifySnapshot(Long projectId, DashboardProjectMeterSnapshotVerifyRequest request) {
+        assertProjectExists(projectId);
+        com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity snapshot =
+                projectMeterSnapshotRepository.findByProjectId(projectId)
+                        .orElseThrow(() -> new NotFoundException(
+                                "Project meter snapshot not found for project " + projectId
+                                + ". Recalculate snapshot first."));
+
+        boolean verified = Boolean.TRUE.equals(request.getVerified());
+        snapshot.setVerified(verified);
+        snapshot.setLastVerifiedAt(verified ? OffsetDateTime.now() : null);
+        projectMeterSnapshotRepository.save(snapshot);
+
+        String msg = verified
+                ? "Project meter snapshot marked as verified"
+                : "Project meter snapshot verification cleared";
+        return DashboardProjectMeterWriteResponse.builder()
+                .projectId(projectId)
+                .section("SNAPSHOT")
+                .message(msg)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DashboardProjectMeterWriteResponse updateTimeline(Long projectId, DashboardProjectTimelineRequest request) {
+        ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+
+        ProjectMeterSnapshotEntity snapshot = projectMeterSnapshotRepository.findByProjectId(projectId)
+                .orElseGet(() -> ProjectMeterSnapshotEntity.builder()
+                        .project(project)
+                        .constructionStartDate(project.getStartDate())
+                        .expectedCompletionDate(project.getPossessionDate())
+                        .originalCompletionDate(project.getPossessionDate())
+                        .latestReraCompletionDate(project.getPossessionDate())
+                        .build());
+
+        snapshot.setOriginalCompletionDate(request.getOriginalCompletionDate());
+        snapshot.setLatestReraCompletionDate(request.getLatestReraCompletionDate());
+        snapshot.setActualCompletionDate(request.getActualCompletionDate());
+        snapshot.setReraExtensionCount(request.getReraExtensionCount() != null ? request.getReraExtensionCount() : 0);
+
+        if (snapshot.getExpectedCompletionDate() == null) {
+            snapshot.setExpectedCompletionDate(request.getOriginalCompletionDate());
+        }
+        snapshot.setRevisedCompletionDate(request.getLatestReraCompletionDate());
+
+        ProjectMeterMapper.TimelineComputed timeline = ProjectMeterMapper.computeTimeline(
+                snapshot.getOriginalCompletionDate(),
+                snapshot.getLatestReraCompletionDate(),
+                snapshot.getActualCompletionDate(),
+                snapshot.getReraExtensionCount()
+        );
+
+        snapshot.setDelayVsOriginalDays(timeline.delayVsOriginalDays());
+        snapshot.setDelayVsLatestReraDays(timeline.delayVsLatestReraDays());
+        snapshot.setTimelineStatus(timeline.status());
+        snapshot.setTimelineLabel(timeline.label());
+        snapshot.setTimelineHint(timeline.hint());
+        snapshot.setDelayDays("DELAYED".equals(timeline.status()) ? Math.max(timeline.delayVsLatestReraDays(), 0) : 0);
+        snapshot.setComputedAt(OffsetDateTime.now());
+
+        projectMeterSnapshotRepository.save(snapshot);
+
+        return DashboardProjectMeterWriteResponse.builder()
+                .projectId(projectId)
+                .section("TIMELINE")
+                .message("Project RERA timeline saved")
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public DashboardProjectMeterWriteResponse updatePriceInsights(Long projectId, DashboardProjectPriceInsightsRequest request) {
+        assertProjectExists(projectId);
+        ProjectMeterSnapshotEntity snapshot = projectMeterSnapshotRepository.findByProjectId(projectId)
+                .orElseThrow(() -> new NotFoundException(
+                        "Project meter snapshot not found for project " + projectId
+                        + ". Recalculate snapshot first."));
+
+        if (request.getLaunchPrice() != null) {
+            snapshot.setLaunchPrice(request.getLaunchPrice());
+        }
+        if (request.getCurrentPrice() != null) {
+            snapshot.setCurrentPrice(request.getCurrentPrice());
+        }
+        if (request.getAverageAreaPrice() != null) {
+            snapshot.setAverageAreaPrice(request.getAverageAreaPrice());
+        }
+
+        Long launchPrice = snapshot.getLaunchPrice();
+        Long currentPrice = snapshot.getCurrentPrice();
+        snapshot.setPriceAppreciationPercent(calculatePriceAppreciationPercent(launchPrice, currentPrice));
+
+        projectMeterSnapshotRepository.save(snapshot);
+
+        return DashboardProjectMeterWriteResponse.builder()
+                .projectId(projectId)
+                .section("PRICE_INSIGHTS")
+                .message("Price insights updated successfully")
+                .build();
+    }
+
+    private Double calculatePriceAppreciationPercent(Long launchPrice, Long currentPrice) {
+        if (launchPrice == null || currentPrice == null || launchPrice <= 0) {
+            return null;
+        }
+        java.math.BigDecimal launch = java.math.BigDecimal.valueOf(launchPrice);
+        java.math.BigDecimal current = java.math.BigDecimal.valueOf(currentPrice);
+        return current.subtract(launch)
+                .multiply(java.math.BigDecimal.valueOf(100))
+                .divide(launch, 2, java.math.RoundingMode.HALF_UP)
+                .doubleValue();
+    }
+
     private ProjectEntity getProject(Long projectId) {
         return projectRepository.findByIdAndDeletedFalse(projectId)
                 .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
@@ -437,34 +575,53 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
     private ProjectComplianceItemResponse toComplianceItemResponse(ProjectComplianceItemEntity entity) {
         return ProjectComplianceItemResponse.builder()
                 .id(entity.getId())
+                .itemGroup(entity.getItemGroup())
                 .itemKey(entity.getItemKey())
                 .itemLabel(entity.getItemLabel())
                 .status(entity.getStatus())
                 .valueText(entity.getValueText())
                 .documentUrl(entity.getDocumentUrl())
                 .remarks(entity.getRemarks())
+                .displayOrder(entity.getDisplayOrder())
                 .verified(entity.getVerified())
                 .build();
     }
 
     private ProjectAmenityItemResponse toAmenityResponse(ProjectAmenityProgressEntity entity) {
+        ProjectAmenityCategory cat = entity.getCategory();
+        String catLabel = entity.getCategoryLabel();
+        if (catLabel == null || catLabel.isBlank()) {
+            catLabel = cat != null ? cat.toLabel() : ProjectAmenityCategory.OTHER.toLabel();
+        }
         return ProjectAmenityItemResponse.builder()
                 .id(entity.getId())
                 .amenityCode(entity.getAmenityCode())
                 .amenityLabel(entity.getAmenityLabel())
+                .category(cat)
+                .categoryLabel(catLabel)
+                .iconKey(entity.getIconKey())
+                .rare(entity.getRare())
+                .available(entity.getAvailable())
                 .status(entity.getStatus())
                 .progressPercent(entity.getProgressPercent())
                 .weightPercent(entity.getWeightPercent())
+                .displayOrder(entity.getDisplayOrder())
+                .categoryDisplayOrder(entity.getCategoryDisplayOrder())
                 .remarks(entity.getRemarks())
                 .verified(entity.getVerified())
+                .publicVisible(entity.getPublicVisible())
+                .active(entity.getActive())
                 .build();
     }
 
     private ProjectPriceHistoryPointResponse toPriceHistoryResponse(ProjectPriceHistoryEntity entity) {
         return ProjectPriceHistoryPointResponse.builder()
+                .id(entity.getId())
                 .yearLabel(entity.getYearLabel())
                 .projectPrice(entity.getProjectPrice())
                 .averageAreaPrice(entity.getAverageAreaPrice())
+                .displayOrder(entity.getDisplayOrder())
+                .verified(entity.getVerified())
                 .build();
     }
 
@@ -476,6 +633,8 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
                 .description(entity.getDescription())
                 .percentageValue(entity.getPercentageValue())
                 .linkedStageCode(entity.getLinkedStageCode() != null ? entity.getLinkedStageCode().name() : null)
+                .displayOrder(entity.getDisplayOrder())
+                .active(entity.getActive())
                 .build();
     }
 

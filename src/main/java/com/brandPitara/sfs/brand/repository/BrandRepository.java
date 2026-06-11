@@ -15,6 +15,8 @@ public interface BrandRepository extends JpaRepository<BrandEntity, Long> {
 
   Optional<BrandEntity> findByIdAndDeletedFalse(Long id);
 
+  Optional<BrandEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
+
   Page<BrandEntity> findByDeletedFalse(Pageable pageable);
 
   Page<BrandEntity> findByPublishedAndDeletedFalse(boolean published, Pageable pageable);

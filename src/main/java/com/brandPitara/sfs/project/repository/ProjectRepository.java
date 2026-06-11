@@ -2,6 +2,7 @@ package com.brandPitara.sfs.project.repository;
 
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.enums.UnitConfigurationType;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,11 +14,14 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 
 public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
 
   Optional<ProjectEntity> findByIdAndDeletedFalse(Long id);
+
+  Optional<ProjectEntity> findBySlug(String slug);
+
+  Optional<ProjectEntity> findBySlugAndIdNot(String slug, Long id);
 
   Page<ProjectEntity> findByDeletedFalse(Pageable pageable);
 
@@ -59,6 +63,23 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
   List<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
       Collection<Long> ids,
       ReviewStatus reviewStatus
+  );
+
+  // Paginated ID-IN browse (used for unit configuration filter).
+  @EntityGraph(attributePaths = {"builder", "city"})
+  Page<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+      Collection<Long> ids,
+      ReviewStatus reviewStatus,
+      Pageable pageable
+  );
+
+  // Paginated ID-IN browse filtered by city.
+  @EntityGraph(attributePaths = {"builder", "city"})
+  Page<ProjectEntity> findByIdInAndCityIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
+      Collection<Long> ids,
+      Long cityId,
+      ReviewStatus reviewStatus,
+      Pageable pageable
   );
 
   // Existing method kept for backward compatibility.
@@ -203,4 +224,24 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
   long countByDeletedFalseAndReviewStatus(ReviewStatus reviewStatus);
 
   long countByDeletedFalseAndSubmittedAtBetween(OffsetDateTime start, OffsetDateTime end);
+
+  @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p
+      where p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and (:cityId is null or p.city.id = :cityId)
+        and exists (
+          select 1 from ProjectFloorPlanEntity fp
+          where fp.project = p
+            and fp.unitConfigurationType in :types
+            and fp.active = true and fp.deleted = false
+        )
+  """)
+  Page<ProjectEntity> browsePublicByUnitConfiguration(
+      @Param("reviewStatus") ReviewStatus reviewStatus,
+      @Param("cityId") Long cityId,
+      @Param("types") List<UnitConfigurationType> types,
+      Pageable pageable
+  );
 }

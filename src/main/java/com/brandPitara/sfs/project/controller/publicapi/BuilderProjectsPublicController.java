@@ -1,6 +1,6 @@
 package com.brandPitara.sfs.project.controller.publicapi;
 
-import com.brandPitara.sfs.project.dto.ProjectResponse;
+import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
@@ -14,7 +14,7 @@ public class BuilderProjectsPublicController {
   private final ProjectService projectService;
 
   @GetMapping("/{builderId}/projects")
-  public Page<ProjectResponse> list(
+  public Page<ProjectPublicResponse> list(
       @PathVariable Long builderId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size

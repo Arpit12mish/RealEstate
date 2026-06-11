@@ -48,6 +48,23 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
         .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
         .active(request.getActive() != null ? request.getActive() : true)
         .deleted(false)
+        .unitConfigurationType(request.getUnitConfigurationType())
+        .price(request.getPrice())
+        .saleableAreaSqft(request.getSaleableAreaSqft())
+        .carpetAreaSqft(request.getCarpetAreaSqft())
+        .builtUpAreaSqft(request.getBuiltUpAreaSqft())
+        .superAreaSqft(request.getSuperAreaSqft())
+        .floorHeightMeters(request.getFloorHeightMeters())
+        .carpetEfficiencyPercent(request.getCarpetEfficiencyPercent())
+        .bedrooms(request.getBedrooms())
+        .bathrooms(request.getBathrooms())
+        .balconies(request.getBalconies())
+        .facing(clean(request.getFacing()))
+        .directionSummary(clean(request.getDirectionSummary()))
+        .towerName(clean(request.getTowerName()))
+        .floorRange(clean(request.getFloorRange()))
+        .keyPlanImageUrl(clean(request.getKeyPlanImageUrl()))
+        .featured(Boolean.TRUE.equals(request.getFeatured()))
         .build();
 
     ProjectFloorPlanEntity saved = projectFloorPlanRepository.save(entity);
@@ -80,6 +97,24 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     if (request.getDescription() != null) entity.setDescription(clean(request.getDescription()));
     if (request.getSortOrder() != null) entity.setSortOrder(request.getSortOrder());
     if (request.getActive() != null) entity.setActive(request.getActive());
+
+    if (request.getUnitConfigurationType() != null) entity.setUnitConfigurationType(request.getUnitConfigurationType());
+    if (request.getPrice() != null) entity.setPrice(request.getPrice());
+    if (request.getSaleableAreaSqft() != null) entity.setSaleableAreaSqft(request.getSaleableAreaSqft());
+    if (request.getCarpetAreaSqft() != null) entity.setCarpetAreaSqft(request.getCarpetAreaSqft());
+    if (request.getBuiltUpAreaSqft() != null) entity.setBuiltUpAreaSqft(request.getBuiltUpAreaSqft());
+    if (request.getSuperAreaSqft() != null) entity.setSuperAreaSqft(request.getSuperAreaSqft());
+    if (request.getFloorHeightMeters() != null) entity.setFloorHeightMeters(request.getFloorHeightMeters());
+    if (request.getCarpetEfficiencyPercent() != null) entity.setCarpetEfficiencyPercent(request.getCarpetEfficiencyPercent());
+    if (request.getBedrooms() != null) entity.setBedrooms(request.getBedrooms());
+    if (request.getBathrooms() != null) entity.setBathrooms(request.getBathrooms());
+    if (request.getBalconies() != null) entity.setBalconies(request.getBalconies());
+    if (request.getFacing() != null) entity.setFacing(clean(request.getFacing()));
+    if (request.getDirectionSummary() != null) entity.setDirectionSummary(clean(request.getDirectionSummary()));
+    if (request.getTowerName() != null) entity.setTowerName(clean(request.getTowerName()));
+    if (request.getFloorRange() != null) entity.setFloorRange(clean(request.getFloorRange()));
+    if (request.getKeyPlanImageUrl() != null) entity.setKeyPlanImageUrl(clean(request.getKeyPlanImageUrl()));
+    if (request.getFeatured() != null) entity.setFeatured(request.getFeatured());
 
     ProjectFloorPlanEntity saved = projectFloorPlanRepository.save(entity);
 
@@ -148,6 +183,18 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
+
+    return projectFloorPlanRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(projectId)
+        .stream()
+        .map(ProjectFloorPlanMapper::toResponse)
+        .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public List<ProjectFloorPlanResponse> dashboardPreviewList(Long projectId) {
+    projectRepository.findByIdAndDeletedFalse(projectId)
+        .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     return projectFloorPlanRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(projectId)
         .stream()

@@ -1,11 +1,8 @@
 package com.brandPitara.sfs.dashboard.projectmeter.dto;
 
+import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityCategory;
 import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityStatus;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -24,10 +21,10 @@ public class DashboardProjectAmenityRequest {
     @NotNull
     private ProjectAmenityStatus status;
 
-    @Min(0) @Max(value = 100, message ="progressPercent must be between 0 and 100")
+    @Min(0) @Max(value = 100, message = "progressPercent must be between 0 and 100")
     private Integer progressPercent;
 
-    @Min(0) @Max(value = 100, message ="weightPercent must be between 0 and 100")
+    @Min(0) @Max(value = 100, message = "weightPercent must be between 0 and 100")
     private Integer weightPercent;
 
     @NotNull
@@ -36,5 +33,24 @@ public class DashboardProjectAmenityRequest {
 
     @Size(max = 500)
     private String remarks;
+
     private Boolean verified;
+
+    // --- Amenity Intelligence v1 ---
+
+    private ProjectAmenityCategory category;
+
+    @Size(max = 100)
+    private String categoryLabel;
+
+    @Size(max = 80)
+    private String iconKey;
+
+    private Boolean rare;
+    private Boolean available;
+    private Boolean publicVisible;
+    private Boolean active;
+
+    @Min(0) @Max(999)
+    private Integer categoryDisplayOrder;
 }

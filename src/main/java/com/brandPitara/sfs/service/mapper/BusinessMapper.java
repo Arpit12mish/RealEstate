@@ -99,17 +99,9 @@ public final class BusinessMapper {
                 .topRated(e.getTopRated())
                 .nearAndFast(e.getNearAndFast())
 
-                // sponsored (money feature)
-                .sponsored(e.getSponsored())
-                .sponsoredPriority(e.getSponsoredPriority())
-
-                // rating + status
+                // rating
                 .avgRating(e.getAvgRating())
                 .totalRatings(e.getTotalRatings())
-                .active(e.getActive())
-
-                .createdAt(e.getCreatedAt())
-                .updatedAt(e.getUpdatedAt())
                 .build();
     }
 }

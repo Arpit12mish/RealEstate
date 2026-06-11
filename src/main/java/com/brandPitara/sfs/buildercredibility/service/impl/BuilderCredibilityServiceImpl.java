@@ -18,6 +18,7 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectConstructionStageRepos
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -70,7 +71,7 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
     public BuilderCredibilitySummaryResponse publicGetCredibilitySummary(Long builderId) {
         BuilderEntity builder = getPublicBuilder(builderId);
         BuilderCredibilityComputed computed = computeCredibility(builder);
@@ -660,8 +661,8 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
 
     private double complianceStatusScore(ProjectComplianceStatus status, Boolean verified) {
         double base = switch (status) {
-            case OBTAINED -> 90.0;
-            case PENDING -> 40.0;
+            case OBTAINED, VERIFIED, APPROVED -> 90.0;
+            case PENDING, SUBMITTED -> 40.0;
             case NOT_APPLICABLE -> 100.0;
             case EXPIRED -> 10.0;
         };

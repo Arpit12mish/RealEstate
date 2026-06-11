@@ -1,0 +1,15 @@
+{
+  "name": "sfs-api-test-scripts",
+  "version": "1.0.0",
+  "description": "Node.js API test scripts for the SFS dashboard backend",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test:dashboard:data-entry":    "node scripts/dashboard-data-entry-api-test.js",
+    "test:dashboard:state-machine": "node scripts/dashboard-state-machine-test.js",
+    "test:dashboard:admin":         "node scripts/dashboard-admin-api-test.js",
+    "test:dashboard:reviewer":      "node scripts/dashboard-reviewer-api-test.js",
+    "test:dashboard:all":           "node scripts/dashboard-data-entry-api-test.js && node scripts/dashboard-state-machine-test.js && node scripts/dashboard-admin-api-test.js && node scripts/dashboard-reviewer-api-test.js"
+  }
+}

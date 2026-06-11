@@ -5,6 +5,7 @@ import com.brandPitara.sfs.calculator.stampduty.dto.StampDutyUpsertRequest;
 import com.brandPitara.sfs.calculator.stampduty.service.StampDutyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/stamp-duty")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminStampDutyController {
 
     private final StampDutyService stampDutyService;

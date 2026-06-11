@@ -11,5 +11,6 @@ import java.util.List;
 @Builder
 public class ProjectAmenitiesResponse {
     private Integer completionPercent;
+    private List<ProjectAmenityGroupResponse> groups;
     private List<ProjectAmenityItemResponse> items;
 }

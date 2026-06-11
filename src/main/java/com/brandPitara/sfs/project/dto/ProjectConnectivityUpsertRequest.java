@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.project.dto;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.*;
 
@@ -18,6 +20,15 @@ public class ProjectConnectivityUpsertRequest {
 
   @Size(max = 500)
   private String mapImageUrl;
+
+  @Size(max = 2000)
+  private String summary;
+
+  @Min(100)
+  @Max(50000)
+  private Integer defaultRadiusMeters;
+
+  private Boolean searchEnabled;
 
   private Boolean active;
 }

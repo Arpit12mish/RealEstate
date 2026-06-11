@@ -1,6 +1,5 @@
 package com.brandPitara.sfs.controller;
 
-import com.brandPitara.sfs.dto.BusinessCreateRequest;
 import com.brandPitara.sfs.dto.BusinessEventRequest;
 import com.brandPitara.sfs.dto.BusinessResponse;
 import com.brandPitara.sfs.dto.PageResponse;
@@ -9,11 +8,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/businesses")
@@ -23,14 +21,15 @@ public class BusinessController {
     private final BusinessService businessService;
 
     @PostMapping
-    public BusinessResponse create(@Valid @RequestBody BusinessCreateRequest request) {
-        return businessService.createBusiness(request);
+    public void create() {
+        throw new ResponseStatusException(HttpStatus.GONE,
+                "Business creation via this API is disabled. Provider profiles are managed through /api/onboarding.");
     }
 
     @PutMapping("/{id}")
-    public BusinessResponse update(@PathVariable Long id,
-                                   @Valid @RequestBody BusinessCreateRequest request) {
-        return businessService.updateBusiness(id, request);
+    public void update(@PathVariable Long id) {
+        throw new ResponseStatusException(HttpStatus.GONE,
+                "Business updates via this API are disabled.");
     }
 
     @GetMapping("/{id}")
@@ -47,34 +46,19 @@ public class BusinessController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "recent") String sort
     ) {
-        int pageSize = Math.min(size, 50); // hard cap
-
+        int pageSize = Math.min(size, 50);
         Pageable pageable = PageRequest.of(page, pageSize, resolveSort(sort));
-
         return businessService.listBusinesses(cityId, categoryId, query, pageable);
     }
 
-    /**
-     * Maps sort key from API to Spring Sort.
-     * Allowed values:
-     *  - ratingDesc (default for rating)
-     *  - ratingAsc
-     *  - nameAsc
-     *  - nameDesc
-     *  - recent (default overall)
-     */
     private Sort resolveSort(String sortKey) {
-        if (sortKey == null) {
-            sortKey = "recent";
-        }
-
+        if (sortKey == null) sortKey = "recent";
         return switch (sortKey) {
             case "ratingDesc" -> Sort.by(Sort.Direction.DESC, "avgRating");
             case "ratingAsc"  -> Sort.by(Sort.Direction.ASC, "avgRating");
             case "nameAsc"    -> Sort.by(Sort.Direction.ASC, "name");
             case "nameDesc"   -> Sort.by(Sort.Direction.DESC, "name");
-            case "recent"     -> Sort.by(Sort.Direction.DESC, "createdAt");
-            default           -> Sort.by(Sort.Direction.DESC, "createdAt"); // safe fallback
+            default           -> Sort.by(Sort.Direction.DESC, "createdAt");
         };
     }
 
@@ -83,5 +67,4 @@ public class BusinessController {
                            @Valid @RequestBody BusinessEventRequest request) {
         businessService.recordBusinessEvent(id, request);
     }
-
 }

@@ -7,6 +7,7 @@ import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipSe
 import com.brandPitara.sfs.dashboard.projectmeter.dto.*;
 import com.brandPitara.sfs.dashboard.projectmeter.service.DashboardProjectMeterWriteService;
 import com.brandPitara.sfs.projectmeter.dto.*;
+import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,8 +21,15 @@ import java.util.List;
 public class DashboardProjectMeterController {
 
     private final DashboardProjectMeterWriteService service;
+    private final ProjectMeterService projectMeterService;
     private final DashboardProjectOwnershipService dashboardProjectOwnershipService;
     private final DashboardActionAuditService dashboardActionAuditService;
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
+    public ProjectMeterDetailResponse getDashboardMeterDetail(@PathVariable Long projectId) {
+        return projectMeterService.dashboardGetMeterDetail(projectId);
+    }
 
     @GetMapping("/construction-stages")
     @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
@@ -277,10 +285,47 @@ public class DashboardProjectMeterController {
     }
 
     @PostMapping("/snapshot/recalculate")
-    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
     public DashboardProjectMeterWriteResponse recalculateSnapshot(@PathVariable Long projectId) {
         DashboardProjectMeterWriteResponse response = service.recalculateSnapshot(projectId);
         dashboardActionAuditService.record(DashboardAuditAction.SNAPSHOT_RECALCULATED, ReviewEntityType.PROJECT_METER_SNAPSHOT, projectId, projectId);
+        return response;
+    }
+
+    @PatchMapping("/snapshot/verify")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER')")
+    public DashboardProjectMeterWriteResponse verifySnapshot(
+            @PathVariable Long projectId,
+            @Valid @RequestBody DashboardProjectMeterSnapshotVerifyRequest request
+    ) {
+        DashboardProjectMeterWriteResponse response = service.verifySnapshot(projectId, request);
+        DashboardAuditAction action = Boolean.TRUE.equals(request.getVerified())
+                ? DashboardAuditAction.SNAPSHOT_VERIFIED
+                : DashboardAuditAction.SNAPSHOT_UNVERIFIED;
+        dashboardActionAuditService.record(action, ReviewEntityType.PROJECT_METER_SNAPSHOT, projectId, projectId);
+        return response;
+    }
+
+    @PatchMapping("/timeline")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public DashboardProjectMeterWriteResponse updateTimeline(
+            @PathVariable Long projectId,
+            @Valid @RequestBody DashboardProjectTimelineRequest request
+    ) {
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+        DashboardProjectMeterWriteResponse response = service.updateTimeline(projectId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.SNAPSHOT_RECALCULATED, ReviewEntityType.PROJECT_METER_SNAPSHOT, projectId, projectId);
+        return response;
+    }
+
+    @PatchMapping("/price-insights")
+    @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
+    public DashboardProjectMeterWriteResponse updatePriceInsights(
+            @PathVariable Long projectId,
+            @Valid @RequestBody DashboardProjectPriceInsightsRequest request
+    ) {
+        DashboardProjectMeterWriteResponse response = service.updatePriceInsights(projectId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.PRICE_INSIGHTS_UPDATED, ReviewEntityType.PROJECT_METER_SNAPSHOT, projectId, projectId);
         return response;
     }
 }

@@ -8,7 +8,7 @@ import java.util.List;
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class BrandDetailPageResponse {
-  private BrandResponse brand;                 // includes promo fields already
+  private BrandPublicResponse brand;
   private String offerLine;                    // can be brand.description snippet or derived
   private List<BrandMediaResponse> banners;    // placement=BANNER
   private List<BrandMediaResponse> gallery;    // placement=GALLERY (optional)

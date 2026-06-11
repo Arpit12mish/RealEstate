@@ -42,6 +42,34 @@ public class ProjectMeterSnapshotEntity extends BaseEntity {
     @Column(name = "revised_completion_date")
     private LocalDate revisedCompletionDate;
 
+    @Column(name = "original_completion_date")
+    private LocalDate originalCompletionDate;
+
+    @Column(name = "latest_rera_completion_date")
+    private LocalDate latestReraCompletionDate;
+
+    @Column(name = "actual_completion_date")
+    private LocalDate actualCompletionDate;
+
+    @Column(name = "rera_extension_count", nullable = false)
+    @Builder.Default
+    private Integer reraExtensionCount = 0;
+
+    @Column(name = "delay_vs_original_days")
+    private Integer delayVsOriginalDays;
+
+    @Column(name = "delay_vs_latest_rera_days")
+    private Integer delayVsLatestReraDays;
+
+    @Column(name = "timeline_status", length = 40)
+    private String timelineStatus;
+
+    @Column(name = "timeline_label", columnDefinition = "text")
+    private String timelineLabel;
+
+    @Column(name = "timeline_hint", columnDefinition = "text")
+    private String timelineHint;
+
     @Column(name = "compliance_score")
     private Integer complianceScore;
 

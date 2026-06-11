@@ -13,6 +13,16 @@ public class ProjectConnectivityResponse {
   private Long projectId;
   private String title;
   private String subtitle;
+  private String summary;
   private String mapImageUrl;
+
+  private Double projectLatitude;
+  private Double projectLongitude;
+  private String projectAddress;
+
+  private Integer defaultRadiusMeters;
+  private Boolean searchEnabled;
+
   private List<ProjectConnectivityPlaceResponse> places;
+  private List<ProjectConnectivityCategoryResponse> categories;
 }

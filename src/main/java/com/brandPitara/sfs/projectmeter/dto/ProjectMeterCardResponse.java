@@ -29,10 +29,14 @@ public class ProjectMeterCardResponse {
 
     private Integer constructionProgressPercent;
     private Double appreciationPercent;
-    private LocalDate constructionStartDate;
+    private LocalDate startedOn;
 
     private String timelineStatus;
+    private String timelineLabel;
+    private String timelineHint;
+    private ProjectTimelineResponse timeline;
     private Integer delayDays;
+    private boolean delayed;
 
     private OffsetDateTime lastUpdatedAt;
 }

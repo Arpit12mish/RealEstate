@@ -1,9 +1,12 @@
 package com.brandPitara.sfs.project.entity;
 
 import com.brandPitara.sfs.entity.BaseEntity;
+import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityType;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "project_connectivity_place")
@@ -50,4 +53,47 @@ public class ProjectConnectivityPlaceEntity extends BaseEntity {
   @Column(nullable = false)
   @Builder.Default
   private Boolean deleted = false;
+
+  // Map intelligence fields
+  @Column(name = "latitude")
+  private Double latitude;
+
+  @Column(name = "longitude")
+  private Double longitude;
+
+  @Column(name = "distance_meters")
+  private Integer distanceMeters;
+
+  @Column(name = "duration_seconds")
+  private Integer durationSeconds;
+
+  @Column(name = "duration_label", length = 80)
+  private String durationLabel;
+
+  @Column(name = "external_place_id", length = 180)
+  private String externalPlaceId;
+
+  @Column(name = "provider", length = 40)
+  private String provider;
+
+  @Column(name = "rating", precision = 3, scale = 2)
+  private BigDecimal rating;
+
+  @Column(name = "user_rating_count")
+  private Integer userRatingCount;
+
+  @Column(name = "address", columnDefinition = "text")
+  private String address;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "category", length = 40)
+  private ProjectConnectivityCategory category;
+
+  @Column(name = "verified", nullable = false)
+  @Builder.Default
+  private Boolean verified = false;
+
+  @Column(name = "featured", nullable = false)
+  @Builder.Default
+  private Boolean featured = false;
 }

@@ -18,6 +18,7 @@ public interface ProjectSearchRepository extends Repository<ProjectEntity, Long>
         where p.active = true
           and p.published = true
           and p.deleted = false
+          and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
           and (:cityId is null or c.id = :cityId)
           and (
                 lower(p.name) like lower(concat(:query, '%'))

@@ -17,6 +17,7 @@ public class ProjectMeterSummaryResponse {
     private LocalDate constructionStartDate;
     private LocalDate expectedCompletionDate;
     private LocalDate revisedCompletionDate;
+    private ProjectTimelineResponse timeline;
     private Boolean verified;
 
     private OffsetDateTime computedAt;

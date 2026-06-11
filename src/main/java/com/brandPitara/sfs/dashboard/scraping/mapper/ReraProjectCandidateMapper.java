@@ -466,8 +466,10 @@ public class ReraProjectCandidateMapper {
                 || lower.contains("underconstruction") || lower.contains("in progress")) {
             return ProjectStatus.UNDER_CONSTRUCTION;
         }
-        if (lower.contains("ready to move") || lower.contains("readytomove")
-                || lower.contains("completed") || lower.contains("complete")) {
+        if (lower.contains("completed") || lower.contains("complete")) {
+            return ProjectStatus.COMPLETED;
+        }
+        if (lower.contains("ready to move") || lower.contains("readytomove")) {
             return ProjectStatus.READY_TO_MOVE;
         }
         if (lower.contains("upcoming") || lower.contains("proposed")
@@ -479,21 +481,112 @@ public class ReraProjectCandidateMapper {
 
     private Set<PropertyType> normalizePropertyTypes(String raw) {
         Set<PropertyType> types = new LinkedHashSet<>();
-        if (raw == null) return types;
-        String lower = raw.toLowerCase();
-        if (lower.contains("apartment") || lower.contains("flat")
-                || lower.contains("group housing") || lower.contains("residential")) {
+        if (raw == null || raw.isBlank()) return types;
+        String lower = raw.toLowerCase(java.util.Locale.ROOT);
+
+        // --- Residential sub-types (specific before generic) ---
+        if (lower.contains("serviced apartment")) {
+            types.add(PropertyType.SERVICED_APARTMENT);
             types.add(PropertyType.APARTMENT);
         }
-        if (lower.contains("plot") || lower.contains("plotted")) {
-            types.add(PropertyType.PLOT);
+        if (!types.contains(PropertyType.APARTMENT)
+                && (lower.contains("apartment") || lower.contains("flat") || lower.contains("group housing"))) {
+            types.add(PropertyType.APARTMENT);
         }
-        if (lower.contains("commercial")) {
-            types.add(PropertyType.COMMERCIAL);
+        if (lower.contains("studio")) {
+            types.add(PropertyType.STUDIO);
         }
         if (lower.contains("villa")) {
             types.add(PropertyType.VILLA);
         }
+        if (lower.contains("row house") || lower.contains("rowhouse")) {
+            types.add(PropertyType.ROW_HOUSE);
+        }
+        if (lower.contains("penthouse")) {
+            types.add(PropertyType.PENTHOUSE);
+        }
+        if (lower.contains("duplex")) {
+            types.add(PropertyType.DUPLEX);
+        }
+        if (lower.contains("farmhouse") || lower.contains("farm house")) {
+            types.add(PropertyType.FARMHOUSE);
+        }
+        if (lower.contains("builder floor")) {
+            types.add(PropertyType.BUILDER_FLOOR);
+        }
+        if (lower.contains("independent house") || lower.contains("independent home")) {
+            types.add(PropertyType.INDEPENDENT_HOUSE);
+        }
+        // RESIDENTIAL is the broad umbrella — add when raw mentions "residential" generically
+        if (lower.contains("residential")) {
+            types.add(PropertyType.RESIDENTIAL);
+        }
+
+        // --- Land / Plot (specific before generic) ---
+        if (lower.contains("residential plot")) {
+            types.add(PropertyType.RESIDENTIAL_PLOT);
+            types.add(PropertyType.PLOT);
+        }
+        if (lower.contains("commercial plot")) {
+            types.add(PropertyType.COMMERCIAL_PLOT);
+            types.add(PropertyType.PLOT);
+        }
+        if (lower.contains("agricultural") || lower.contains("agriculture")) {
+            types.add(PropertyType.AGRICULTURAL_LAND);
+        }
+        if (!types.contains(PropertyType.PLOT)
+                && (lower.contains("plot") || lower.contains("plotted"))) {
+            types.add(PropertyType.PLOT);
+        }
+
+        // --- Commercial sub-types (specific before generic) ---
+        if (lower.contains("co-working") || lower.contains("coworking")) {
+            types.add(PropertyType.CO_WORKING_SPACE);
+        }
+        if (lower.contains("food court")) {
+            types.add(PropertyType.FOOD_COURT);
+        }
+        if (lower.contains("showroom")) {
+            types.add(PropertyType.SHOWROOM);
+        }
+        if (lower.contains("retail") || lower.contains("shop")) {
+            types.add(PropertyType.RETAIL_SHOP);
+        }
+        if (lower.contains("office")) {
+            types.add(PropertyType.OFFICE_SPACE);
+        }
+        if (lower.contains("commercial")) {
+            types.add(PropertyType.COMMERCIAL);
+        }
+
+        // --- Mixed Use / Hospitality ---
+        if (lower.contains("mixed use") || lower.contains("mixed-use")) {
+            types.add(PropertyType.MIXED_USE);
+        }
+        if (lower.contains("hotel")) {
+            types.add(PropertyType.HOTEL);
+        }
+        if (lower.contains("resort")) {
+            types.add(PropertyType.RESORT);
+        }
+
+        // --- Industrial / Institutional ---
+        if (lower.contains("warehouse")) {
+            types.add(PropertyType.WAREHOUSE);
+            types.add(PropertyType.INDUSTRIAL);
+        }
+        if (lower.contains("factory")) {
+            types.add(PropertyType.FACTORY);
+            types.add(PropertyType.INDUSTRIAL);
+        }
+        if (!types.contains(PropertyType.INDUSTRIAL) && lower.contains("industrial")) {
+            types.add(PropertyType.INDUSTRIAL);
+        }
+        if (lower.contains("institutional") || lower.contains("school")
+                || lower.contains("college") || lower.contains("hospital project")) {
+            types.add(PropertyType.INSTITUTIONAL);
+        }
+
         return types;
     }
 

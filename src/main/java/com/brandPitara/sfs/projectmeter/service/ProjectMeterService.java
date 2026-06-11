@@ -12,5 +12,6 @@ public interface ProjectMeterService {
     ProjectMeterSummaryResponse adminGetMeterSummary(Long projectId);
     ProjectConstructionProgressResponse publicGetConstructionProgress(Long projectId);
     ProjectMeterDetailResponse publicGetMeterDetail(Long projectId);
+    ProjectMeterDetailResponse dashboardGetMeterDetail(Long projectId);
     Page<ProjectMeterCardResponse> publicListMeterCards(Long cityId, Pageable pageable);
 }

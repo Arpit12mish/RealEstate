@@ -16,11 +16,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -77,6 +79,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 
+    // ── 400 Bad JSON / invalid enum ──────────────────────────────────────────
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest req
+    ) {
+        return build(HttpStatus.BAD_REQUEST, "Invalid request body. Check JSON format and enum values.", req);
+    }
+
     // ── 400 Illegal arg ──────────────────────────────────────────────────────
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleIllegalArgument(
@@ -117,6 +128,18 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ex.getMessage(), req);
     }
 
+    // ── ResponseStatusException (pass-through status) ────────────────────────
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException ex, HttpServletRequest req) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) status = HttpStatus.INTERNAL_SERVER_ERROR;
+        String message = ex.getReason() != null ? ex.getReason() : status.getReasonPhrase();
+        if (status.is5xxServerError()) {
+            logStructured(ERROR_LOG, "error", LogEvents.SERVER_ERROR, req, ex, Map.of());
+        }
+        return build(status, message, req);
+    }
+
     // ── 409 Conflict ─────────────────────────────────────────────────────────
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleConstraint(
@@ -125,7 +148,15 @@ public class GlobalExceptionHandler {
     ) {
         logStructured(ERROR_LOG, "warn", LogEvents.DATABASE_ERROR, req, null,
                 Map.of("message", "Data integrity violation"));
-        return build(HttpStatus.CONFLICT, "Constraint violation", req);
+        return build(HttpStatus.CONFLICT, resolveConstraintMessage(ex), req);
+    }
+
+    private String resolveConstraintMessage(DataIntegrityViolationException ex) {
+        String cause = ex.getMostSpecificCause().getMessage();
+        if (cause != null && cause.contains("uq_public_review_place_target_google")) {
+            return "This Google place is already attached to this project.";
+        }
+        return "Constraint violation";
     }
 
     // ── 500 Unexpected ───────────────────────────────────────────────────────

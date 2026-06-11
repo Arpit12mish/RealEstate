@@ -9,6 +9,7 @@ public enum ReviewActionType {
     FIELD_MARKED_WRONG,
     FIELD_MARKED_FIXED,
     APPROVED,
+    APPROVAL_ROLLED_BACK,
     REJECTED,
     REOPENED,
     MOVED_TO_RECHECK,

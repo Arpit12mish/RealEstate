@@ -5,6 +5,7 @@ import com.brandPitara.sfs.calculator.circlerate.dto.CircleRateUpsertRequest;
 import com.brandPitara.sfs.calculator.circlerate.service.CircleRateService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin/circle-rates")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
 public class AdminCircleRateController {
 
     private final CircleRateService circleRateService;
