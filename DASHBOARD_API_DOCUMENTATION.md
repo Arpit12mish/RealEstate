@@ -356,6 +356,7 @@ POST /api/dashboard/builders/{builderId}/projects
 | `longitude` | number | ❌ | -180.0 to 180.0 | Project GPS longitude |
 | `priceMin` | number | ❌ | ≥ 0 | Minimum price (in INR, no decimals) |
 | `priceMax` | number | ❌ | ≥ 0 | Maximum price (in INR, no decimals) |
+| `startDate` / `projectStartDate` | string | ❌ | `YYYY-MM-DD` format | Project start date. `projectStartDate` is accepted as an alias; backend persists this as core `project.start_date`. |
 | `possessionDate` | string | ❌ | `YYYY-MM-DD` format | Expected possession / handover date |
 | `reraNumber` | string | ❌ | max 50 chars | RERA registration number |
 | `status` | string (enum) | ❌ | See values below | Current construction status |
@@ -400,6 +401,7 @@ The metadata endpoint `GET /api/dashboard/project-metadata/property-types` retur
   "longitude": 77.7500,
   "priceMin": 8500000,
   "priceMax": 25000000,
+  "projectStartDate": "2023-04-01",
   "possessionDate": "2026-12-31",
   "reraNumber": "PRM/KA/RERA/1251/309/PR/171017/002270",
   "status": "UNDER_CONSTRUCTION",
@@ -1946,19 +1948,35 @@ POST /api/dashboard/cities
 | Field | Type | Required | Constraints | Description |
 |-------|------|----------|-------------|-------------|
 | `name` | string | ✅ | max 150 chars | City name (e.g. "Bengaluru") |
+| `slug` | string | ❌ | max 180 chars | Stable public slug. If omitted, generated from name |
 | `state` | string | ❌ | max 150 chars | State name (e.g. "Karnataka") |
 | `countryCode` | string | ❌ | max 10 chars | ISO country code (e.g. `IN`) |
 | `latitude` | number | ❌ | -90.0 to 90.0 | City center GPS latitude |
 | `longitude` | number | ❌ | -180.0 to 180.0 | City center GPS longitude |
+| `coverImageUrl` | string | ❌ | max 500 chars | City/location card cover image URL |
+| `active` | boolean | ❌ | defaults `true` | Whether city is active |
+| `homepageFeatured` | boolean | ❌ | defaults `false` | Whether city can appear in homepage Trending Cities |
+| `displayOrder` | number | ❌ | 0–9999 | Homepage display priority |
+| `growthPercent` | number | ❌ | -100.0 to 9999.0 | Optional manually managed city growth/appreciation badge |
+
+Public Trending Cities responses also include `comingSoon`, derived from `projectCount == 0`. Frontend should render the label text for that state.
+
+City cover images should normally be uploaded through `POST /api/dashboard/media/presign-upload` using `uploadType: "CITY_COVER_IMAGE"`, then saved using `PATCH /api/dashboard/cities/{cityId}/cover-image`. Direct `coverImageUrl` entry is still supported for rare admin/manual cases.
 
 **Example:**
 ```json
 {
   "name": "Bengaluru",
+  "slug": "bengaluru",
   "state": "Karnataka",
   "countryCode": "IN",
   "latitude": 12.9716,
-  "longitude": 77.5946
+  "longitude": 77.5946,
+  "coverImageUrl": "https://cdn.sfs.com/cities/bengaluru.webp",
+  "active": true,
+  "homepageFeatured": true,
+  "displayOrder": 1,
+  "growthPercent": 12.4
 }
 ```
 
@@ -1971,6 +1989,27 @@ PUT /api/dashboard/cities/{cityId}
 ```
 
 **Access:** A only
+
+---
+
+### Update City Cover Image
+
+```
+PATCH /api/dashboard/cities/{cityId}/cover-image
+```
+
+**Access:** A, DE
+
+Use this after a city cover image has been uploaded to S3 via the media presign endpoint.
+
+**Request Body:**
+```json
+{
+  "coverImageUrl": "https://cdn.squarefootstory.com/dashboard/cities/7/cover/2d41f6f2-8172-4b11-9a4e-650aa45caa7f.webp"
+}
+```
+
+**Response:** Updated `CityResponse`.
 
 ---
 
@@ -2584,6 +2623,7 @@ POST /api/dashboard/media/presign-upload
 | `fileSizeBytes` | number | ✅ | ≥ 1 | File size in bytes (used for validation) |
 | `projectId` | number | ❌ | Required when uploadType is project-related | Project this upload belongs to |
 | `builderId` | number | ❌ | Required when uploadType is `BUILDER_LOGO` | Builder this logo belongs to |
+| `cityId` | number | ❌ | Required when uploadType is `CITY_COVER_IMAGE` | City this cover image belongs to |
 
 **`uploadType` values and when to use each:**
 
@@ -2594,6 +2634,7 @@ POST /api/dashboard/media/presign-upload
 | `CONNECTIVITY_MAP` | Location map image for connectivity section | `projectId` |
 | `BROCHURE_PDF` | Project brochure PDF | `projectId` |
 | `BUILDER_LOGO` | Builder's logo image | `builderId` |
+| `CITY_COVER_IMAGE` | City/location cover image for homepage/trending city cards | `cityId` |
 
 **Example:**
 ```json
@@ -2618,6 +2659,39 @@ POST /api/dashboard/media/presign-upload
   }
 }
 ```
+
+**City cover image example:**
+```json
+{
+  "uploadType": "CITY_COVER_IMAGE",
+  "contentType": "image/webp",
+  "fileSizeBytes": 524288,
+  "cityId": 7
+}
+```
+
+**City cover image response shape:**
+```json
+{
+  "uploadUrl": "https://s3-presigned-url...",
+  "storageKey": "dashboard/cities/7/cover/2d41f6f2-8172-4b11-9a4e-650aa45caa7f.webp",
+  "publicUrl": "https://cdn.squarefootstory.com/dashboard/cities/7/cover/2d41f6f2-8172-4b11-9a4e-650aa45caa7f.webp",
+  "expiresInSeconds": 300,
+  "requiredHeaders": {
+    "Content-Type": "image/webp",
+    "Cache-Control": "public, max-age=31536000, immutable"
+  }
+}
+```
+
+**City cover upload flow:**
+1. Create the city without `coverImageUrl`, or choose an existing city.
+2. Call `POST /api/dashboard/media/presign-upload` with `uploadType: "CITY_COVER_IMAGE"` and `cityId`.
+3. Upload the file directly to S3 using `PUT uploadUrl` with `requiredHeaders` exactly as returned.
+4. Save `publicUrl` using `PATCH /api/dashboard/cities/{cityId}/cover-image`, or include it in `PUT /api/dashboard/cities/{cityId}`.
+5. The public app consumes `coverImageUrl` from `GET /api/cities`, `GET /api/public/home`, or `GET /api/public/cities/trending`.
+
+For `CITY_COVER_IMAGE`, only `image/jpeg`, `image/jpg`, `image/png`, and `image/webp` are allowed. PDF uploads are rejected.
 
 **Performing the S3 PUT:**
 ```ts
@@ -3673,7 +3747,8 @@ Returns three data blocks — `card`, `detail`, `meter` — matching exactly wha
     "priceMax": 18000000,
     "constructionProgressPercent": 52,
     "appreciationPercent": 26.15,
-    "constructionStartDate": "2023-04-12",
+    "projectStartDate": "2023-04-12",
+    "startedOn": "2023-04-12",
     "timelineStatus": "DELAYED",
     "delayDays": 102,
     "lastUpdatedAt": "2026-05-01T09:00:00Z"
@@ -3827,7 +3902,8 @@ The `card` block maps directly to the mobile project listing card:
 | `delayDays` | Snapshot `delayDays` or computed from possession date |
 | `constructionProgressPercent` | Snapshot or weighted stage calculation |
 | `appreciationPercent` | Snapshot `priceAppreciationPercent` |
-| `constructionStartDate` | Snapshot `constructionStartDate` or `project.startDate` |
+| `projectStartDate` | Core `project.startDate` |
+| `startedOn` | Backward-compatible alias of `projectStartDate` for mobile cards |
 | `priceMin` / `priceMax` | `project.priceMin`, `project.priceMax` |
 
 ---

@@ -32,6 +32,9 @@ public class HomeSectionConfigEntity extends BaseEntity {
   @Column(length = 150)
   private String title;
 
+  @Column(length = 255)
+  private String subtitle;
+
   @Column(nullable = false)
   @Builder.Default
   private Boolean enabled = true;

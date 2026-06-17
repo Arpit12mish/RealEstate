@@ -6,7 +6,8 @@ public enum DashboardMediaUploadType {
     BUILDER_LOGO,
     FLOOR_PLAN_IMAGE,
     CONNECTIVITY_MAP,
-    BROCHURE_PDF;
+    BROCHURE_PDF,
+    CITY_COVER_IMAGE;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -25,5 +26,9 @@ public enum DashboardMediaUploadType {
 
     public boolean isBuilderScoped() {
         return this == BUILDER_LOGO;
+    }
+
+    public boolean isCityScoped() {
+        return this == CITY_COVER_IMAGE;
     }
 }

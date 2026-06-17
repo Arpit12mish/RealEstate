@@ -1,10 +1,13 @@
 package com.brandPitara.sfs.config;
 
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.filter.CorsFilter;
 
 import java.util.List;
 
@@ -33,17 +36,7 @@ public class CorsConfig {
                 "OPTIONS"
         ));
 
-        config.setAllowedHeaders(List.of(
-                "Authorization",
-                "Content-Type",
-                "Accept",
-                "Origin",
-                "X-Requested-With",
-                "X-Request-Id",
-                "X-Correlation-Id",
-                "Cache-Control",
-                "Pragma"
-        ));
+        config.setAllowedHeaders(List.of("*"));
 
         config.setExposedHeaders(List.of(
                 "Authorization",
@@ -54,9 +47,22 @@ public class CorsConfig {
         config.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
-        source.registerCorsConfiguration("/actuator/**", config);
+        source.registerCorsConfiguration("/**", config);
 
         return source;
+    }
+
+    /**
+     * Registered as a plain servlet filter (outside Spring Security's filter chain) at
+     * the highest possible precedence so that CORS headers, including preflight
+     * responses, are always present even if an error/auth-entry-point response is
+     * written before Spring Security's own CORS handling would otherwise apply.
+     */
+    @Bean
+    public FilterRegistrationBean<CorsFilter> corsFilterRegistration(CorsConfigurationSource corsConfigurationSource) {
+        FilterRegistrationBean<CorsFilter> registration =
+                new FilterRegistrationBean<>(new CorsFilter(corsConfigurationSource));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return registration;
     }
 }

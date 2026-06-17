@@ -24,6 +24,8 @@ public class ProjectCardMapper {
         .builderLogoUrl(e.getBuilder() != null ? e.getBuilder().getLogoUrl() : null)
         .coverMediaUrl(picked.coverMediaUrl())
         .coverMediaType(picked.coverMediaType())
+        .projectStartDate(e.getStartDate())
+        .startedOn(e.getStartDate())
         .propertyTypes(e.getPropertyTypes())
         .build();
   }

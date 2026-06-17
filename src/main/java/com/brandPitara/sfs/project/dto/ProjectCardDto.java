@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.project.dto;
 
 import lombok.*;
+import java.time.LocalDate;
 import java.util.Set;
 
 @Getter
@@ -25,6 +26,9 @@ public class ProjectCardDto {
 
   private String coverMediaUrl;
   private String coverMediaType;
+
+  private LocalDate projectStartDate;
+  private LocalDate startedOn;
 
   private Set<?> propertyTypes;
 

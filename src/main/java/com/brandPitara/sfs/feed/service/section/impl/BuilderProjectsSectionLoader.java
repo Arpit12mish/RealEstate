@@ -48,7 +48,8 @@ public class BuilderProjectsSectionLoader implements FeedSectionLoader {
           b.name as builder_name,
           b.logo_url as builder_logo_url,
           p.cover_media_url as cover_media_url,
-          p.cover_media_type as cover_media_type
+          p.cover_media_type as cover_media_type,
+          p.start_date as start_date
         from project p
         left join city c on c.id = p.city_id
         left join builder b on b.id = p.builder_id
@@ -75,6 +76,8 @@ public class BuilderProjectsSectionLoader implements FeedSectionLoader {
             .builderLogoUrl(rs.getString("builder_logo_url"))
             .coverMediaUrl(rs.getString("cover_media_url"))
             .coverMediaType(rs.getString("cover_media_type"))
+            .projectStartDate(rs.getObject("start_date", java.time.LocalDate.class))
+            .startedOn(rs.getObject("start_date", java.time.LocalDate.class))
             .build(),
         ctx.entityId(),
         limit

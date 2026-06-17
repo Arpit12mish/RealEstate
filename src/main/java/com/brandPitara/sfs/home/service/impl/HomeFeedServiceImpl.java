@@ -149,6 +149,8 @@ public class HomeFeedServiceImpl implements HomeFeedService {
         }
     );
 
+    sections = moveTrendingCitiesAfterProjectAnalytics(sections);
+
     String cityName = resolveCityName(resolvedCityId);
 
     return HomeFeedResponse.builder()
@@ -200,6 +202,43 @@ public class HomeFeedServiceImpl implements HomeFeedService {
             screen,
             homeCategoryId
         );
+  }
+
+  static List<HomeSectionDto<?>> moveTrendingCitiesAfterProjectAnalytics(List<HomeSectionDto<?>> sections) {
+    if (sections == null || sections.isEmpty()) {
+      return sections;
+    }
+
+    int projectAnalyticsIndex = indexOfSectionType(sections, HomeSectionType.PROJECT_ANALYTICS);
+    int trendingCitiesIndex = indexOfSectionType(sections, HomeSectionType.TRENDING_CITIES);
+
+    if (
+        projectAnalyticsIndex < 0
+            || trendingCitiesIndex < 0
+            || trendingCitiesIndex == projectAnalyticsIndex + 1
+    ) {
+      return sections;
+    }
+
+    List<HomeSectionDto<?>> ordered = new ArrayList<>(sections);
+    HomeSectionDto<?> trendingCities = ordered.remove(trendingCitiesIndex);
+    int insertAfterIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS);
+    ordered.add(insertAfterIndex + 1, trendingCities);
+    return ordered;
+  }
+
+  private static int indexOfSectionType(
+      List<HomeSectionDto<?>> sections,
+      HomeSectionType sectionType
+  ) {
+    for (int i = 0; i < sections.size(); i++) {
+      HomeSectionDto<?> section = sections.get(i);
+      if (section != null && section.getType() == sectionType) {
+        return i;
+      }
+    }
+
+    return -1;
   }
 
   private String resolveCityName(Long resolvedCityId) {

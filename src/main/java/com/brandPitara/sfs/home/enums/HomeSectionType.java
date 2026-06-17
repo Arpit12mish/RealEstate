@@ -13,6 +13,7 @@ public enum HomeSectionType {
   TOP_DISTRIBUTORS,
   PROJECT_PLAN,
   PROJECT_ANALYTICS,
+  TRENDING_CITIES,
   COMPANIES,
 
   // ✅ NEW (this is your BrandCarousel UI)

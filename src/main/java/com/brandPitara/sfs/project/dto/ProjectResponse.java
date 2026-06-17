@@ -73,4 +73,8 @@ public class ProjectResponse {
   private ProjectConnectivityResponse connectivity;
   private List<ProjectMediaResponse> glimpses;
   private ProjectAmenitiesResponse amenities;
+
+  public LocalDate getProjectStartDate() {
+    return startDate;
+  }
 }

@@ -29,6 +29,7 @@ public class ProjectMeterCardResponse {
 
     private Integer constructionProgressPercent;
     private Double appreciationPercent;
+    private LocalDate projectStartDate;
     private LocalDate startedOn;
 
     private String timelineStatus;

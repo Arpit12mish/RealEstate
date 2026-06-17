@@ -33,6 +33,8 @@ public class SearchMapper {
                 .priceMin(p.getPriceMin())
                 .priceMax(p.getPriceMax())
                 .priceLabel(buildPriceLabel(p.getPriceMin(), p.getPriceMax()))
+                .projectStartDate(p.getStartDate())
+                .startedOn(p.getStartDate())
                 .tags(tags)
                 .build();
     }

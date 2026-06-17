@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.project.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.brandPitara.sfs.project.enums.ProjectStatus;
 import com.brandPitara.sfs.project.enums.PropertyType;
 import jakarta.validation.constraints.DecimalMax;
@@ -58,6 +59,7 @@ public class ProjectPatchRequest {
   @Min(value = 0, message = "averagePricePerSqft must be 0 or greater")
   private Long averagePricePerSqft;
 
+  @JsonAlias("projectStartDate")
   private LocalDate startDate;
 
   private LocalDate possessionDate;

@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.dbsearch.dto;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import lombok.*;
@@ -31,5 +32,7 @@ public class SearchItemDto {
     private Long priceMin;
     private Long priceMax;
     private String priceLabel;
+    private LocalDate projectStartDate;
+    private LocalDate startedOn;
     private List<String> tags;
 }

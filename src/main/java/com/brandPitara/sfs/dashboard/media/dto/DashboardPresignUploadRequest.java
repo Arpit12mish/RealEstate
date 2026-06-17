@@ -26,5 +26,8 @@ public record DashboardPresignUploadRequest(
         Long projectId,
 
         // Required when uploadType is BUILDER_LOGO
-        Long builderId
+        Long builderId,
+
+        // Required when uploadType is CITY_COVER_IMAGE
+        Long cityId
 ) {}

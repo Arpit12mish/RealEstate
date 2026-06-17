@@ -2,6 +2,7 @@ package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.dto.CityResponse;
 import com.brandPitara.sfs.entity.CityEntity;
+import com.brandPitara.sfs.mapper.CityMapper;
 import com.brandPitara.sfs.repository.CityRepository;
 import com.brandPitara.sfs.service.CityService;
 import lombok.RequiredArgsConstructor;
@@ -28,18 +29,7 @@ public class CityServiceImpl implements CityService {
         }
 
         return cities.stream()
-                .map(this::toResponse)
+                .map(CityMapper::toResponse)
                 .toList();
-    }
-
-    private CityResponse toResponse(CityEntity e) {
-        return CityResponse.builder()
-                .id(e.getId())
-                .name(e.getName())
-                .state(e.getState())
-                .countryCode(e.getCountryCode())
-                .latitude(e.getLatitude())
-                .longitude(e.getLongitude())
-                .build();
     }
 }

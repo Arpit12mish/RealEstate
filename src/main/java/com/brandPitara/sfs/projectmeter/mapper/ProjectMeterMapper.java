@@ -89,11 +89,8 @@ public final class ProjectMeterMapper {
             .priceMax(project.getPriceMax())
             .constructionProgressPercent(snapshot != null ? snapshot.getConstructionProgressPercent() : 0)
             .appreciationPercent(snapshot != null ? snapshot.getPriceAppreciationPercent() : null)
-            .startedOn(
-                snapshot != null && snapshot.getConstructionStartDate() != null
-                    ? snapshot.getConstructionStartDate()
-                    : project.getStartDate()
-            )
+            .projectStartDate(project.getStartDate())
+            .startedOn(project.getStartDate())
             .timelineStatus(timelineStatus)
             .timelineLabel(timeline != null ? timeline.getTimelineLabel() : null)
             .timelineHint(timeline != null ? timeline.getTimelineHint() : null)

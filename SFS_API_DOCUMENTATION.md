@@ -489,6 +489,7 @@ curl -X PATCH \
   "monthlyEmiMin": 45000,
   "monthlyEmiMax": 90000,
   "averagePricePerSqft": 8500,
+  "projectStartDate": "2023-04-01",
   "possessionDate": "2026-12-31",
   "reraNumber": "PRM/KA/RERA/1251/309/PR/2021/123456",
   "status": "UNDER_CONSTRUCTION",
@@ -1253,7 +1254,8 @@ These are static/enum metadata endpoints, no database call — fast response.
   "contentType": "image/jpeg",
   "fileSizeBytes": 524288,
   "projectId": 42,
-  "builderId": null
+  "builderId": null,
+  "cityId": null
 }
 ```
 
@@ -1266,6 +1268,7 @@ These are static/enum metadata endpoints, no database call — fast response.
 | `CONNECTIVITY_MAP` | Project | Requires `projectId` |
 | `BROCHURE_PDF` | Project | Requires `projectId`; only PDF allowed |
 | `BUILDER_LOGO` | Builder | Requires `builderId` |
+| `CITY_COVER_IMAGE` | City | Requires `cityId`; image only |
 
 **Allowed `contentType` values:**
 - `image/jpeg`
@@ -1290,9 +1293,24 @@ These are static/enum metadata endpoints, no database call — fast response.
 **S3 Upload Flow:**
 1. Call presign endpoint → get `uploadUrl` and `requiredHeaders`
 2. `PUT` the file bytes directly to `uploadUrl` — must include all `requiredHeaders`
-3. Use `publicUrl` as the `imageUrl` / `url` / `logoUrl` in the entity update
+3. Use `publicUrl` as the `imageUrl` / `url` / `logoUrl` / `coverImageUrl` in the entity update
 
 **Common 403 issue:** The `Content-Type` header sent in the S3 PUT must exactly match the `contentType` used in the presign request.
+
+**City cover upload flow:**
+1. Create the city without `coverImageUrl`, or select an existing city.
+2. Call `POST /api/dashboard/media/presign-upload`:
+```json
+{
+  "uploadType": "CITY_COVER_IMAGE",
+  "contentType": "image/webp",
+  "fileSizeBytes": 524288,
+  "cityId": 7
+}
+```
+3. Upload the file to S3 using `PUT uploadUrl` and all `requiredHeaders`.
+4. Save `publicUrl` using `PATCH /api/dashboard/cities/{cityId}/cover-image`, or through `PUT /api/dashboard/cities/{cityId}`.
+5. Public APIs expose it as `coverImageUrl` from `GET /api/cities`, `GET /api/public/home`, and `GET /api/public/cities/trending`.
 
 ---
 
@@ -1304,6 +1322,7 @@ These are static/enum metadata endpoints, no database call — fast response.
 |--------|------|--------|-------------|
 | POST | `/` | ADMIN | Create city |
 | PUT | `/{cityId}` | ADMIN | Update city |
+| PATCH | `/{cityId}/cover-image` | ADMIN, DATA_ENTRY | Update only city cover image URL after S3 upload |
 | DELETE | `/{cityId}` | ADMIN | Delete city |
 | GET | `/{cityId}` | ADMIN, REVIEWER, DATA_ENTRY | Get city |
 | GET | `/` | ADMIN, REVIEWER, DATA_ENTRY | List cities (optional `?query=` search) |
@@ -1312,10 +1331,27 @@ These are static/enum metadata endpoints, no database call — fast response.
 ```json
 {
   "name": "Bangalore",
-  "stateName": "Karnataka",
+  "state": "Karnataka",
   "countryCode": "IN",
   "slug": "bangalore",
-  "active": true
+  "latitude": 12.9716,
+  "longitude": 77.5946,
+  "coverImageUrl": "https://cdn.sfs.com/cities/bangalore.webp",
+  "active": true,
+  "homepageFeatured": true,
+  "displayOrder": 1,
+  "growthPercent": 12.4
+}
+```
+
+**Update cover image only:**
+```http
+PATCH /api/dashboard/cities/7/cover-image
+```
+
+```json
+{
+  "coverImageUrl": "https://cdn.squarefootstory.com/dashboard/cities/7/cover/2d41f6f2-8172-4b11-9a4e-650aa45caa7f.webp"
 }
 ```
 
@@ -2086,6 +2122,8 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 
 **Response `200`:** `Page<ProjectMeterCardResponse>`
 
+Each card includes `projectStartDate` and the backward-compatible `startedOn` field, both sourced from core `project.start_date`. Project Meter construction/stage dates remain separate meter data.
+
 ---
 
 ### 5.12 Cities (Public)
@@ -2094,6 +2132,40 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 
 **Access:** Public  
 **All city GET endpoints are public.**
+
+#### GET `/api/public/cities/trending?limit=10`
+
+**Access:** Public  
+Returns image-based active homepage city/location cards. Counts are sourced from approved public projects only.
+
+```json
+[
+  {
+    "id": 7,
+    "name": "Mumbai",
+    "slug": "mumbai",
+    "state": "Maharashtra",
+    "countryCode": "IN",
+    "coverImageUrl": "https://cdn.sfs.com/cities/mumbai.webp",
+    "projectCount": 8420,
+    "growthPercent": 12.4,
+    "displayOrder": 1,
+    "comingSoon": false
+  }
+]
+```
+
+The same cards can be returned inside `GET /api/public/home` as a section:
+
+```json
+{
+  "type": "TRENDING_CITIES",
+  "key": "TRENDING_CITIES",
+  "title": "Trending Cities",
+  "subtitle": "Hot real estate markets",
+  "items": []
+}
+```
 
 ---
 
@@ -2719,6 +2791,7 @@ GYMS, OFFICES, RESTAURANTS, BANKS, DAILY_NEEDS, LIFESTYLE, SAFETY, SEARCH
 | POST | /api/dashboard/media/presign-upload | ADMIN, DE | Presign upload |
 | POST | /api/dashboard/cities | ADMIN | Create city |
 | PUT | /api/dashboard/cities/{id} | ADMIN | Update city |
+| PATCH | /api/dashboard/cities/{id}/cover-image | ADMIN, DE | Update city cover image |
 | DELETE | /api/dashboard/cities/{id} | ADMIN | Delete |
 | GET | /api/dashboard/cities/{id} | All roles | Get city |
 | GET | /api/dashboard/cities | All roles | List cities |

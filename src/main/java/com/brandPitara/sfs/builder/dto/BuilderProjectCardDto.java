@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.builder.dto;
 
 import lombok.*;
+import java.time.LocalDate;
 
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
@@ -22,4 +23,7 @@ public class BuilderProjectCardDto {
 
   private String coverMediaUrl;
   private String coverMediaType; // IMAGE/VIDEO (string)
+
+  private LocalDate projectStartDate;
+  private LocalDate startedOn;
 }

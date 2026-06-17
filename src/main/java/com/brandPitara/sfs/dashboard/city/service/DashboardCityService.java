@@ -11,6 +11,8 @@ public interface DashboardCityService {
 
     CityResponse update(Long cityId, DashboardCityUpsertRequest request);
 
+    CityResponse updateCoverImage(Long cityId, String coverImageUrl);
+
     void delete(Long cityId);
 
     CityResponse get(Long cityId);

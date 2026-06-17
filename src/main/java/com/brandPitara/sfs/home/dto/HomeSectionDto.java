@@ -13,5 +13,6 @@ public class HomeSectionDto<T> {
   private HomeSectionType type;
   private String key;           // ✅ new future-proof key (ABOUT, REVIEWS, ...)
   private String title;
+  private String subtitle;
   private List<T> items;
 }

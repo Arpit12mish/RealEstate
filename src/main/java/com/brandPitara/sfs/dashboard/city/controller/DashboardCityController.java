@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.dashboard.city.controller;
 
 import com.brandPitara.sfs.dashboard.audit.service.DashboardActionAuditService;
+import com.brandPitara.sfs.dashboard.city.dto.DashboardCityCoverImageUpdateRequest;
 import com.brandPitara.sfs.dashboard.city.dto.DashboardCityUpsertRequest;
 import com.brandPitara.sfs.dashboard.city.service.DashboardCityService;
 import com.brandPitara.sfs.dashboard.common.enums.DashboardAuditAction;
@@ -38,6 +39,17 @@ public class DashboardCityController {
             @Valid @RequestBody DashboardCityUpsertRequest request
     ) {
         CityResponse response = cityService.update(cityId, request);
+        auditService.record(DashboardAuditAction.CITY_UPDATED, ReviewEntityType.CITY, cityId, null);
+        return response;
+    }
+
+    @PatchMapping("/{cityId}/cover-image")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public CityResponse updateCoverImage(
+            @PathVariable Long cityId,
+            @Valid @RequestBody DashboardCityCoverImageUpdateRequest request
+    ) {
+        CityResponse response = cityService.updateCoverImage(cityId, request.getCoverImageUrl());
         auditService.record(DashboardAuditAction.CITY_UPDATED, ReviewEntityType.CITY, cityId, null);
         return response;
     }
