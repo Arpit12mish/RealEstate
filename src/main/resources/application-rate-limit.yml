@@ -1,0 +1,142 @@
+# Phase 1 + Phase 1.5 API rate-limiting configuration (com.brandPitara.sfs.ratelimit).
+#
+# Tracked in git - contains no secrets, only limits/keys/toggles for the
+# Bucket4j-backed rate limiter. Previously lived inline in application.yml, but
+# that file is gitignored (it holds real DB/AWS/Twilio/etc. credentials), so
+# this non-secret config was never actually reaching production/CI via git.
+#
+# Loaded via `spring.config.import: application-rate-limit.yml`, declared
+# redundantly in application.yml, application-prod.yml, and application-test.yml
+# so it loads reliably regardless of which profile is active or whether a given
+# machine even has a local (gitignored) application.yml present at all.
+sfs:
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    default-enabled: true
+    trusted-proxies:
+      - 127.0.0.1
+      - 0:0:0:0:0:0:0:1
+      - ::1
+    max-cached-body-bytes: ${RATE_LIMIT_MAX_CACHED_BODY_BYTES:32768}
+    bucket-cache:
+      maximum-size: ${RATE_LIMIT_BUCKET_CACHE_MAX_SIZE:200000}
+      expire-after-access-minutes: ${RATE_LIMIT_BUCKET_CACHE_EXPIRE_MINUTES:120}
+    policies:
+      MOBILE_OTP_REQUEST:
+        limits:
+          - keyType: PHONE
+            capacity: 3
+            refillTokens: 3
+            refillPeriodSeconds: 60
+          - keyType: PHONE
+            capacity: 10
+            refillTokens: 10
+            refillPeriodSeconds: 3600
+          - keyType: IP
+            capacity: 20
+            refillTokens: 20
+            refillPeriodSeconds: 3600
+      MOBILE_OTP_VERIFY:
+        limits:
+          - keyType: PHONE
+            capacity: 10
+            refillTokens: 10
+            refillPeriodSeconds: 60
+          - keyType: IP
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      MOBILE_TOKEN_REFRESH:
+        limits:
+          - keyType: IP_AND_TOKEN
+            capacity: 10
+            refillTokens: 10
+            refillPeriodSeconds: 60
+      MOBILE_LOGOUT:
+        limits:
+          - keyType: IP
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      MOBILE_LOGOUT_ALL:
+        limits:
+          - keyType: IP
+            capacity: 10
+            refillTokens: 10
+            refillPeriodSeconds: 60
+      MOBILE_GUEST_SESSION:
+        limits:
+          - keyType: IP_AND_INSTALLATION
+            capacity: 10
+            refillTokens: 10
+            refillPeriodSeconds: 60
+          - keyType: IP_AND_INSTALLATION
+            capacity: 100
+            refillTokens: 100
+            refillPeriodSeconds: 86400
+      PUBLIC_HOME_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_PROJECT_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_PROJECT_COMPARE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      PUBLIC_LOCATION_RESOLVE:
+        limits:
+          - keyType: IP_AND_DEVICE
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      PUBLIC_SEARCH:
+        limits:
+          - keyType: IP_AND_QUERY
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 60
+      PUBLIC_CITY_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_BUILDER_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_BUSINESS_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_PROVIDER_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_APP_CONTENT_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_CALCULATOR_READ:
+        limits:
+          - keyType: IP
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 60

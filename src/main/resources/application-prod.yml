@@ -1,3 +1,7 @@
+spring:
+  config:
+    import: "optional:classpath:application-rate-limit.yml"
+
 app:
   logging:
     path: /var/log/sfs/app

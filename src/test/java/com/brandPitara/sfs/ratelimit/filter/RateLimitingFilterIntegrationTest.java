@@ -89,6 +89,57 @@ class RateLimitingFilterIntegrationTest {
         String locationResolve() {
             return "ok";
         }
+
+        // Phase 1.5 dummy routes.
+        @GetMapping("/api/cities")
+        String cities() {
+            return "ok";
+        }
+
+        @PostMapping("/api/cities")
+        String createCity() {
+            return "ok";
+        }
+
+        @GetMapping("/api/builders/{id}")
+        String builderDetail() {
+            return "ok";
+        }
+
+        @PostMapping("/api/builders")
+        String createBuilder() {
+            return "ok";
+        }
+
+        @GetMapping("/api/businesses/{id}")
+        String businessDetail() {
+            return "ok";
+        }
+
+        @GetMapping("/api/providers/{id}")
+        String providerDetail() {
+            return "ok";
+        }
+
+        @GetMapping("/api/app-content/pages/{slug}")
+        String appContentPage() {
+            return "ok";
+        }
+
+        @GetMapping("/api/app/screen-content")
+        String appScreenContent() {
+            return "ok";
+        }
+
+        @PostMapping("/api/app/screen-content")
+        String createAppScreenContent() {
+            return "ok";
+        }
+
+        @GetMapping("/api/public/stamp-duty/cities")
+        String stampDutyCities() {
+            return "ok";
+        }
     }
 
     private static LimitConfig limit(RateLimitKeyType keyType, long capacity, long refillPeriodSeconds) {
@@ -133,6 +184,24 @@ class RateLimitingFilterIntegrationTest {
         ));
         properties.getPolicies().put(RateLimitPolicy.PUBLIC_LOCATION_RESOLVE, policy(
                 limit(RateLimitKeyType.IP_AND_DEVICE, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_CITY_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_BUILDER_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_BUSINESS_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_PROVIDER_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_APP_CONTENT_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
+        ));
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_CALCULATOR_READ, policy(
+                limit(RateLimitKeyType.IP, 2, 60)
         ));
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -331,6 +400,120 @@ class RateLimitingFilterIntegrationTest {
         mockMvc.perform(get("/api/home").with(remoteAddr("9.9.9.9")))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"));
+    }
+
+    // ── Phase 1.5: remaining public mobile/public read APIs ─────────────────────
+
+    @Test
+    void publicCityReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/cities").with(remoteAddr("15.15.15.15"))).andExpect(status().isOk());
+        mockMvc.perform(get("/api/cities").with(remoteAddr("15.15.15.15"))).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/cities").with(remoteAddr("15.15.15.15")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.policy")
+                        .value("PUBLIC_CITY_READ"));
+    }
+
+    @Test
+    void postCitiesIsNeverRateLimitedByPublicCityReadPolicy() throws Exception {
+        // Distinct from the GET policy entirely - POST has no mapped policy in
+        // Phase 1/1.5, so it must never be blocked regardless of GET traffic volume.
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/cities").with(remoteAddr("15.15.15.15"))).andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void publicBuilderReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/builders/1").with(remoteAddr("16.16.16.16"))).andExpect(status().isOk());
+        mockMvc.perform(get("/api/builders/2").with(remoteAddr("16.16.16.16"))).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/builders/3").with(remoteAddr("16.16.16.16")))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void publicBusinessReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/businesses/1").with(remoteAddr("17.17.17.17"))).andExpect(status().isOk());
+        mockMvc.perform(get("/api/businesses/2").with(remoteAddr("17.17.17.17"))).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/businesses/3").with(remoteAddr("17.17.17.17")))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void publicProviderReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/providers/1").with(remoteAddr("18.18.18.18"))).andExpect(status().isOk());
+        mockMvc.perform(get("/api/providers/2").with(remoteAddr("18.18.18.18"))).andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/providers/3").with(remoteAddr("18.18.18.18")))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void publicAppContentReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/app-content/pages/about-us").with(remoteAddr("19.19.19.19")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/app/screen-content").with(remoteAddr("19.19.19.19")))
+                .andExpect(status().isOk());
+
+        // Both routes share the same PUBLIC_APP_CONTENT_READ policy/IP bucket.
+        mockMvc.perform(get("/api/app-content/pages/contact-us").with(remoteAddr("19.19.19.19")))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void postAppScreenContentIsNeverRateLimitedByAppContentReadPolicy() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/app/screen-content").with(remoteAddr("19.19.19.19")))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void publicCalculatorReadBlocksAfterLimit() throws Exception {
+        mockMvc.perform(get("/api/public/stamp-duty/cities").with(remoteAddr("20.20.20.20")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/public/stamp-duty/cities").with(remoteAddr("20.20.20.20")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/public/stamp-duty/cities").with(remoteAddr("20.20.20.20")))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void publicBuilderReadRequestsAreNeverBodyWrapped() throws Exception {
+        // Same guarantee as PUBLIC_HOME_READ: GET routes for the new Phase 1.5
+        // policies must never go through the size-checked body-caching path.
+        MockMvc tinyLimitMockMvc = buildMockMvcWithMaxBodyBytesForBuilderRead(1);
+        String oversizedContent = "x".repeat(10_000);
+
+        tinyLimitMockMvc.perform(get("/api/builders/1").content(oversizedContent).with(remoteAddr("21.21.21.21")))
+                .andExpect(status().isOk());
+    }
+
+    private MockMvc buildMockMvcWithMaxBodyBytesForBuilderRead(long maxBodyBytes) {
+        RateLimitProperties properties = new RateLimitProperties();
+        properties.setMaxCachedBodyBytes(maxBodyBytes);
+        properties.getPolicies().put(RateLimitPolicy.PUBLIC_BUILDER_READ, policy(
+                limit(RateLimitKeyType.IP, 100, 60)
+        ));
+
+        RateLimitingFilter filter = new RateLimitingFilter(
+                new RateLimitPolicyResolver(),
+                new RateLimitKeyResolver(),
+                new ClientIpResolver(properties),
+                new InMemoryRateLimitService(properties),
+                properties,
+                new ObjectMapper(),
+                mock(JwtTokenUtil.class)
+        );
+
+        return MockMvcBuilders.standaloneSetup(new DummyRoutes())
+                .addFilters(filter)
+                .build();
     }
 
     // ── Check 2: cached body size protection ────────────────────────────────────

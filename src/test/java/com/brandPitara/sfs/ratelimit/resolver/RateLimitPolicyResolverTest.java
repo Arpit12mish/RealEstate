@@ -61,7 +61,7 @@ class RateLimitPolicyResolverTest {
 
     @Test
     void unmappedRouteResolvesToEmpty() {
-        assertThat(resolver.resolve(request("GET", "/api/builders/1"))).isEmpty();
+        assertThat(resolver.resolve(request("GET", "/api/unknown-resource/1"))).isEmpty();
         assertThat(resolver.resolve(request("DELETE", "/api/auth/request-otp"))).isEmpty();
     }
 
@@ -111,5 +111,117 @@ class RateLimitPolicyResolverTest {
     void postToSearchHasNoPhase1Policy() {
         assertThat(resolver.resolve(request("POST", "/api/search/whatever"))).isEmpty();
         assertThat(resolver.resolve(request("POST", "/api/public/search"))).isEmpty();
+    }
+
+    // ── Phase 1.5: remaining public mobile/public read APIs ─────────────────────
+
+    @Test
+    void getCitiesMapsToPublicCityRead() {
+        assertThat(resolver.resolve(request("GET", "/api/cities")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+    }
+
+    @Test
+    void getCitiesWithQueryParamsStillMapsToPublicCityRead() {
+        // Query strings are never part of HttpServletRequest#getRequestURI(), so a
+        // request for /api/cities?homepageFeatured=true resolves on the same path.
+        assertThat(resolver.resolve(request("GET", "/api/cities")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+    }
+
+    @Test
+    void postCitiesDoesNotMapToPublicCityRead() {
+        assertThat(resolver.resolve(request("POST", "/api/cities"))).isEmpty();
+    }
+
+    @Test
+    void getBuilderDetailMapsToPublicBuilderRead() {
+        assertThat(resolver.resolve(request("GET", "/api/builders/123")))
+                .contains(RateLimitPolicy.PUBLIC_BUILDER_READ);
+    }
+
+    @Test
+    void postBuildersDoesNotMapToPublicBuilderRead() {
+        assertThat(resolver.resolve(request("POST", "/api/builders"))).isEmpty();
+    }
+
+    @Test
+    void getBusinessDetailMapsToPublicBusinessRead() {
+        assertThat(resolver.resolve(request("GET", "/api/businesses/123")))
+                .contains(RateLimitPolicy.PUBLIC_BUSINESS_READ);
+    }
+
+    @Test
+    void postBusinessesDoesNotMapToPublicBusinessRead() {
+        assertThat(resolver.resolve(request("POST", "/api/businesses"))).isEmpty();
+    }
+
+    @Test
+    void getProviderDetailMapsToPublicProviderRead() {
+        assertThat(resolver.resolve(request("GET", "/api/providers/123")))
+                .contains(RateLimitPolicy.PUBLIC_PROVIDER_READ);
+    }
+
+    @Test
+    void postProvidersDoesNotMapToPublicProviderRead() {
+        assertThat(resolver.resolve(request("POST", "/api/providers"))).isEmpty();
+    }
+
+    @Test
+    void getAppContentMapsToPublicAppContentRead() {
+        assertThat(resolver.resolve(request("GET", "/api/app-content/pages/about-us")))
+                .contains(RateLimitPolicy.PUBLIC_APP_CONTENT_READ);
+    }
+
+    @Test
+    void getAppScreenContentMapsToPublicAppContentRead() {
+        assertThat(resolver.resolve(request("GET", "/api/app/screen-content")))
+                .contains(RateLimitPolicy.PUBLIC_APP_CONTENT_READ);
+    }
+
+    @Test
+    void postAppScreenContentDoesNotMapToPublicAppContentRead() {
+        assertThat(resolver.resolve(request("POST", "/api/app/screen-content"))).isEmpty();
+    }
+
+    @Test
+    void getStampDutyRoutesMapToPublicCalculatorRead() {
+        assertThat(resolver.resolve(request("GET", "/api/public/stamp-duty/cities")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/stamp-duty/buyer-types")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+    }
+
+    @Test
+    void getInteriorCostRoutesMapToPublicCalculatorRead() {
+        assertThat(resolver.resolve(request("GET", "/api/public/interior-cost/cities")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/interior-cost/bhk-types")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+    }
+
+    @Test
+    void getCircleRateAndCalculatorCardRoutesMapToPublicCalculatorRead() {
+        assertThat(resolver.resolve(request("GET", "/api/public/circle-rates/cities")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/calculators/cards")))
+                .contains(RateLimitPolicy.PUBLIC_CALCULATOR_READ);
+    }
+
+    @Test
+    void writeVerbsNeverMatchAnyOfThePhase1_5ReadPolicies() {
+        assertThat(resolver.resolve(request("PUT", "/api/cities/1"))).isEmpty();
+        assertThat(resolver.resolve(request("DELETE", "/api/builders/1"))).isEmpty();
+        assertThat(resolver.resolve(request("PATCH", "/api/businesses/1"))).isEmpty();
+        assertThat(resolver.resolve(request("PUT", "/api/providers/1"))).isEmpty();
+        assertThat(resolver.resolve(request("POST", "/api/app-content/pages/about-us"))).isEmpty();
+    }
+
+    @Test
+    void unsupportedPublicRouteResolvesToEmptyUnlessIntentionallyConfigured() {
+        // Genuinely public (per SecurityConfig's broad /api/public/** GET permitAll)
+        // but not yet mapped to a Phase 1/1.5 policy - intentionally out of scope
+        // for this PR (see deliverables: companies, architect-designers, feed, etc).
+        assertThat(resolver.resolve(request("GET", "/api/public/companies"))).isEmpty();
     }
 }

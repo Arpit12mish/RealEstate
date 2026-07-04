@@ -3,6 +3,8 @@ app:
     path: target/test-logs
 
 spring:
+  config:
+    import: "optional:classpath:application-rate-limit.yml"
   datasource:
     url:
   flyway:

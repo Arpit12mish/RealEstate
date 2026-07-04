@@ -38,7 +38,19 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.GET, "/api/public/home/**", RateLimitPolicy.PUBLIC_HOME_READ),
             new Route(HttpMethod.GET, "/api/projects/**", RateLimitPolicy.PUBLIC_PROJECT_READ),
             new Route(HttpMethod.GET, "/api/public/search/**", RateLimitPolicy.PUBLIC_SEARCH),
-            new Route(HttpMethod.GET, "/api/search/**", RateLimitPolicy.PUBLIC_SEARCH)
+            new Route(HttpMethod.GET, "/api/search/**", RateLimitPolicy.PUBLIC_SEARCH),
+
+            // Phase 1.5: remaining public mobile/public read APIs.
+            new Route(HttpMethod.GET, "/api/cities/**", RateLimitPolicy.PUBLIC_CITY_READ),
+            new Route(HttpMethod.GET, "/api/builders/**", RateLimitPolicy.PUBLIC_BUILDER_READ),
+            new Route(HttpMethod.GET, "/api/businesses/**", RateLimitPolicy.PUBLIC_BUSINESS_READ),
+            new Route(HttpMethod.GET, "/api/providers/**", RateLimitPolicy.PUBLIC_PROVIDER_READ),
+            new Route(HttpMethod.GET, "/api/app-content/**", RateLimitPolicy.PUBLIC_APP_CONTENT_READ),
+            new Route(HttpMethod.GET, "/api/app/screen-content", RateLimitPolicy.PUBLIC_APP_CONTENT_READ),
+            new Route(HttpMethod.GET, "/api/public/stamp-duty/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
+            new Route(HttpMethod.GET, "/api/public/interior-cost/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
+            new Route(HttpMethod.GET, "/api/public/circle-rates/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
+            new Route(HttpMethod.GET, "/api/public/calculators/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ)
     );
 
     public Optional<RateLimitPolicy> resolve(HttpServletRequest request) {
