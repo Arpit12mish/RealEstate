@@ -28,10 +28,13 @@ public interface CityRepository extends JpaRepository<CityEntity, Long> {
         from CityEntity c
         where c.latitude is not null
           and c.longitude is not null
+          and c.active = true
     """)
     List<CityEntity> findAllWithCoordinates();
 
     Optional<CityEntity> findFirstByNameIgnoreCase(String name);
+
+    Optional<CityEntity> findFirstByNameIgnoreCaseAndActiveTrue(String name);
 
     @Query("""
         select new com.brandPitara.sfs.dto.TrendingCityCardResponse(

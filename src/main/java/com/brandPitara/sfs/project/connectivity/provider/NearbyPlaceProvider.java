@@ -14,4 +14,6 @@ public interface NearbyPlaceProvider {
       ProjectConnectivityCategory category,
       Integer radiusMeters
   );
+
+  int getMaxRadiusMeters();
 }

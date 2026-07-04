@@ -114,6 +114,9 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
         if (isAmenitiesEmpty(detail)) {
             warnings.add("Project has no amenities");
         }
+        if (detail.getMasterPlan() == null) {
+            warnings.add("Project has no master plan");
+        }
 
         if (meter == null) {
             warnings.add("Project meter data could not be loaded");
@@ -159,6 +162,7 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
         if (!StringUtils.hasText(project.getReraNumber())) missing.add("RERA_REGISTRATION");
         if (detail.getFloorPlanGroups() == null || detail.getFloorPlanGroups().isEmpty()) missing.add("FLOOR_PLANS");
         if (isAmenitiesEmpty(detail)) missing.add("AMENITIES");
+        if (detail.getMasterPlan() == null) missing.add("MASTER_PLAN");
 
         if (meter == null) {
             missing.add("CONSTRUCTION_PROGRESS");

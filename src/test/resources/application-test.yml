@@ -1,0 +1,9 @@
+app:
+  logging:
+    path: target/test-logs
+
+spring:
+  datasource:
+    url:
+  flyway:
+    enabled: false

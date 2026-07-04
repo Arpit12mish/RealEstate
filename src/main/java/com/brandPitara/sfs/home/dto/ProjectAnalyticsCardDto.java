@@ -10,4 +10,8 @@ public class ProjectAnalyticsCardDto {
   private String title;
   private String imageUrl;
   private String caption;
+  @Builder.Default
+  private Long favoriteCount = 0L;
+  @Builder.Default
+  private Boolean isFavorite = false;
 }

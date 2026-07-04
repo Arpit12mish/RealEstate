@@ -1,10 +1,13 @@
 package com.brandPitara.sfs.builder.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import java.time.LocalDate;
 
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
+@JsonIgnoreProperties("favorite")
 public class BuilderProjectCardDto {
   private Long id;
   private String name;
@@ -26,4 +29,8 @@ public class BuilderProjectCardDto {
 
   private LocalDate projectStartDate;
   private LocalDate startedOn;
+
+  private long favoriteCount;
+  @JsonProperty("isFavorite")
+  private boolean isFavorite;
 }

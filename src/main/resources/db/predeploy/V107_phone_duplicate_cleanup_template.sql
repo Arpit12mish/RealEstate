@@ -1,0 +1,84 @@
+-- V107 phone duplicate cleanup template.
+--
+-- This file is intentionally non-destructive by default. Every example below is
+-- commented out. Do not run any statement until a human has reviewed the
+-- duplicate group, chosen an approved survivor user, and confirmed dependent
+-- table handling with the business/team that owns the data.
+--
+-- Start by running:
+--   src/main/resources/db/predeploy/V107_phone_duplicate_check.sql
+--
+-- If duplicate rows are returned, choose one of the options below per duplicate
+-- canonical phone group.
+
+-- ============================================================================
+-- Option A: Manual merge into one surviving user
+-- ============================================================================
+--
+-- 1. Choose one survivor user ID manually.
+--    Example:
+--      canonical_phone = '+919876543210'
+--      survivor_user_id = 101
+--      duplicate_user_ids = 202, 303
+--
+-- 2. Inventory dependent records before changing anything.
+--    Add project-specific dependent tables here after schema review.
+--
+-- SELECT 'refresh_tokens' AS table_name, user_id, count(*) AS row_count
+-- FROM refresh_tokens
+-- WHERE user_id IN (101, 202, 303)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'otps' AS table_name, user_id, count(*) AS row_count
+-- FROM otps
+-- WHERE user_id IN (101, 202, 303)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- 3. Move dependent records only after business approval.
+--    Refresh tokens are usually safer to revoke/delete than move because they
+--    represent active sessions. Prefer forcing re-login for duplicate accounts.
+--
+-- BEGIN;
+--
+-- -- Example: revoke all duplicate users' refresh tokens instead of moving them.
+-- UPDATE refresh_tokens
+-- SET revoked = true
+-- WHERE user_id IN (202, 303);
+--
+-- -- Example: move historical OTP rows if they must be retained with survivor.
+-- -- UPDATE otps
+-- -- SET user_id = 101
+-- -- WHERE user_id IN (202, 303);
+--
+-- -- No inactive/blocked/soft-delete column currently exists on users.
+-- -- If business approval allows deletion after dependent data is handled:
+-- -- DELETE FROM users
+-- -- WHERE id IN (202, 303);
+--
+-- -- Ensure survivor owns the canonical E.164 phone.
+-- UPDATE users
+-- SET phone_number = '+919876543210'
+-- WHERE id = 101;
+--
+-- -- Validate the duplicate group is clean before committing.
+-- -- Re-run V107_phone_duplicate_check.sql in another session or paste it here.
+--
+-- COMMIT;
+--
+-- 4. Rerun V107_phone_duplicate_check.sql. Deploy only when it returns zero rows.
+
+-- ============================================================================
+-- Option B: Manual support resolution
+-- ============================================================================
+--
+-- Use this when merge/delete is risky or ownership is unclear.
+--
+-- 1. Do not delete or merge users.
+-- 2. Leave backend duplicate conflict behavior enabled. Login will fail closed
+--    with: "Multiple accounts found for this phone number. Please contact support."
+-- 3. Support manually verifies account ownership.
+-- 4. After ownership is resolved and business approves the survivor, use
+--    Option A or another reviewed migration/runbook to clean the group.
+-- 5. Rerun V107_phone_duplicate_check.sql. Deploy only when it returns zero rows.

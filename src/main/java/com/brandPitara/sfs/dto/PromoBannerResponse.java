@@ -18,6 +18,9 @@ public class PromoBannerResponse {
     private String title;
     private String subtitle;
     private String imageUrl;
+    private String mediaType;
+    private String mediaUrl;
+    private Integer displayDurationMs;
     private String targetUrl;
 
     private Integer priority;

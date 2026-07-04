@@ -6,6 +6,7 @@ import com.brandPitara.sfs.feed.service.section.FeedSectionLoader;
 import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.builder.dto.BuilderProjectCardDto;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import java.util.List;
 public class BuilderProjectsSectionLoader implements FeedSectionLoader {
 
   private final JdbcTemplate jdbcTemplate;
+  private final ProjectFavoriteService projectFavoriteService;
 
   @Override
   public String supports() {
@@ -84,6 +86,7 @@ public class BuilderProjectsSectionLoader implements FeedSectionLoader {
     );
 
     if (items == null || items.isEmpty()) return null;
+    projectFavoriteService.enrichBuilderProjectCards(items);
 
     String key = switch (bucket) {
       case "LUXURY" -> "PROJECTS_LUXURY";

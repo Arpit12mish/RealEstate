@@ -6,4 +6,11 @@ import com.brandPitara.sfs.location.dto.LocationResolveResponse;
 public interface LocationService {
 
     LocationResolveResponse resolve(LocationResolveRequest request);
+
+    LocationResolveResponse resolveCityContext(
+        Double latitude,
+        Double longitude,
+        String deviceCity,
+        Double accuracyMeters
+    );
 }

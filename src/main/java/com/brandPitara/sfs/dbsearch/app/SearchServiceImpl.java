@@ -14,6 +14,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMediaPicker;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class SearchServiceImpl implements SearchService {
     private final CompanySearchRepository companySearchRepository;
     private final ProjectMediaRepository projectMediaRepository;
     private final SearchMapper searchMapper;
+    private final ProjectFavoriteService projectFavoriteService;
 
     @Override
     public SearchSuggestResponse suggest(String query, Long cityId, Integer limit) {
@@ -63,17 +65,20 @@ public class SearchServiceImpl implements SearchService {
         List<SearchSectionDto> sections = new ArrayList<>();
 
         if (!projects.isEmpty()) {
+            List<SearchItemDto> projectItems = projects.stream()
+                    .limit(4)
+                    .map(project -> searchMapper.toProjectItem(
+                            project,
+                            resolveProjectImageUrl(project.getId(), mediaMap),
+                            buildProjectTags(project)
+                    ))
+                    .toList();
+            projectFavoriteService.enrichSearchProjectItems(projectItems);
+
             sections.add(SearchSectionDto.builder()
                     .key("projects")
                     .title("Projects")
-                    .items(projects.stream()
-                            .limit(4)
-                            .map(project -> searchMapper.toProjectItem(
-                                    project,
-                                    resolveProjectImageUrl(project.getId(), mediaMap),
-                                    buildProjectTags(project)
-                            ))
-                            .toList())
+                    .items(projectItems)
                     .build());
         }
 
@@ -150,6 +155,8 @@ public class SearchServiceImpl implements SearchService {
         companies.stream()
                 .map(searchMapper::toCompanyItem)
                 .forEach(items::add);
+
+        projectFavoriteService.enrichSearchProjectItems(items);
 
         return SearchResultResponse.builder()
                 .query(normalizedQuery)

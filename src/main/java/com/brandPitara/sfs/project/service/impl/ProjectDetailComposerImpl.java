@@ -9,6 +9,7 @@ import com.brandPitara.sfs.project.mapper.ProjectMediaMapper;
 import com.brandPitara.sfs.project.service.ProjectConnectivityService;
 import com.brandPitara.sfs.project.service.ProjectDetailComposer;
 import com.brandPitara.sfs.project.service.ProjectFloorPlanService;
+import com.brandPitara.sfs.project.service.ProjectMasterPlanService;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterDetailResponse;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
 import org.springframework.lang.Nullable;
@@ -29,6 +30,7 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
   private final ProjectFloorPlanService projectFloorPlanService;
   private final ProjectConnectivityService projectConnectivityService;
   private final ProjectMeterService projectMeterService;
+  private final ProjectMasterPlanService projectMasterPlanService;
 
   @Override
   public ProjectResponse compose(ProjectEntity project, List<ProjectMediaEntity> media) {
@@ -43,6 +45,7 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
     response.setConnectivity(connectivity);
     response.setGlimpses(buildGlimpses(media));
     response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
+    response.setMasterPlan(safeGetDashboardMasterPlan(project.getId()));
 
     return response;
   }
@@ -60,6 +63,7 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
     response.setConnectivity(connectivity);
     response.setGlimpses(buildGlimpses(media));
     response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
+    response.setMasterPlan(safeGetMasterPlan(project.getId()));
 
     return response;
   }
@@ -76,6 +80,7 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
     response.setConnectivity(connectivity);
     response.setGlimpses(buildGlimpses(media));
     response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
+    response.setMasterPlan(safeGetDashboardPreviewMasterPlan(project.getId()));
 
     return response;
   }
@@ -91,6 +96,30 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
   private ProjectConnectivityResponse safeGetDashboardConnectivity(Long projectId) {
     try {
       return projectConnectivityService.adminGet(projectId);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private ProjectMasterPlanResponse safeGetMasterPlan(Long projectId) {
+    try {
+      return projectMasterPlanService.publicGet(projectId);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private ProjectMasterPlanResponse safeGetDashboardMasterPlan(Long projectId) {
+    try {
+      return projectMasterPlanService.adminGet(projectId);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private ProjectMasterPlanResponse safeGetDashboardPreviewMasterPlan(Long projectId) {
+    try {
+      return projectMasterPlanService.dashboardPreviewGet(projectId);
     } catch (Exception ignored) {
       return null;
     }

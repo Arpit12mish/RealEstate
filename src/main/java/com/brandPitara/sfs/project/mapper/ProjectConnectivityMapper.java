@@ -87,6 +87,7 @@ public class ProjectConnectivityMapper {
         .projectAddress(project != null ? project.getAddressLine() : null)
         .defaultRadiusMeters(connectivity != null ? connectivity.getDefaultRadiusMeters() : null)
         .searchEnabled(connectivity != null && Boolean.TRUE.equals(connectivity.getSearchEnabled()))
+        .active(connectivity == null || Boolean.TRUE.equals(connectivity.getActive()))
         .places(placeResponses)
         .categories(buildCategories(placeResponses))
         .build();

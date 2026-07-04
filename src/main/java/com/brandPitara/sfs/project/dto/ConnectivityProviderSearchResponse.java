@@ -20,5 +20,8 @@ public class ConnectivityProviderSearchResponse {
   private Double projectLatitude;
   private Double projectLongitude;
   private String provider;
+  private Integer totalFetched;
+  private Integer totalWithinRadius;
+  private Integer totalFilteredOut;
   private List<NearbyPlaceProviderResult> results;
 }

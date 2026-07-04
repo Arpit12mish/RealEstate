@@ -3,6 +3,8 @@ package com.brandPitara.sfs.dbsearch.dto;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 
 @Getter
@@ -10,6 +12,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties("favorite")
 public class SearchItemDto {
     private Long id;
     private SearchEntityType entityType;
@@ -35,4 +38,7 @@ public class SearchItemDto {
     private LocalDate projectStartDate;
     private LocalDate startedOn;
     private List<String> tags;
+    private long favoriteCount;
+    @JsonProperty("isFavorite")
+    private boolean isFavorite;
 }

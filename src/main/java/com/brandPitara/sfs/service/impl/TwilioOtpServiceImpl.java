@@ -3,9 +3,12 @@ package com.brandPitara.sfs.service.impl;
 import com.brandPitara.sfs.config.AppReviewLoginProperties;
 import com.brandPitara.sfs.config.TwilioProperties;
 import com.brandPitara.sfs.entity.OtpRequestTracker;
+import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.repository.OtpRequestTrackerRepository;
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.model.OtpSendResult;
+import com.brandPitara.sfs.service.model.OtpVerificationResult;
+import com.brandPitara.sfs.util.PhoneNumberNormalizer;
 import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
 import com.twilio.rest.verify.v2.service.Verification;
@@ -23,7 +26,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +44,7 @@ public class TwilioOtpServiceImpl implements OtpService {
     private final TwilioProperties props;
     private final AppReviewLoginProperties reviewLoginProperties;
     private final OtpRequestTrackerRepository trackerRepository;
+    private final LogSanitizer logSanitizer;
 
     @PostConstruct
     public void initTwilio() {
@@ -98,7 +101,7 @@ public class TwilioOtpServiceImpl implements OtpService {
         }
 
         try {
-            log.info("Sending OTP via Twilio to {}", maskPhone(normalizedPhone));
+            log.info("Sending OTP via Twilio to {}", logSanitizer.maskPhone(normalizedPhone));
 
             VerificationCreator creator = Verification.creator(
                     safeTrim(props.getVerifyServiceSid()),
@@ -153,7 +156,7 @@ public class TwilioOtpServiceImpl implements OtpService {
     }
 
     @Override
-    public boolean verifyOtp(String phoneNumber, String code) {
+    public OtpVerificationResult verifyOtp(String phoneNumber, String code) {
         String normalizedPhone = normalizePhoneNumber(phoneNumber);
 
         if (reviewLoginProperties.matchesPhone(normalizedPhone)) {
@@ -165,19 +168,24 @@ public class TwilioOtpServiceImpl implements OtpService {
                 log.info("Apple review OTP bypass verified successfully");
             }
 
-            return approved;
+            return OtpVerificationResult.builder()
+                    .approved(approved)
+                    .normalizedPhoneNumber(normalizedPhone)
+                    .build();
         }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        Optional<OtpRequestTracker> optionalTracker = trackerRepository.findByPhoneNumber(normalizedPhone);
-        OtpRequestTracker tracker = optionalTracker.orElseGet(() -> createNewTracker(normalizedPhone));
+        // Locks the tracker row for the rest of this transaction so concurrent verify
+        // attempts for the same phone serialize instead of racing on failedVerifyCountInWindow.
+        OtpRequestTracker tracker = trackerRepository.findByPhoneNumberForUpdate(normalizedPhone)
+                .orElseGet(() -> createNewTracker(normalizedPhone));
 
         enforceBlockIfAny(tracker, now);
         resetVerifyWindowIfNeeded(tracker, now);
 
         try {
-            log.info("Verifying OTP via Twilio for {}", maskPhone(normalizedPhone));
+            log.info("Verifying OTP via Twilio for {}", logSanitizer.maskPhone(normalizedPhone));
 
             VerificationCheck check = VerificationCheck.creator(
                             safeTrim(props.getVerifyServiceSid()),
@@ -200,11 +208,17 @@ public class TwilioOtpServiceImpl implements OtpService {
                 tracker.setBlockedUntil(null);
                 tracker.setLastVerifiedAt(now);
                 trackerRepository.save(tracker);
-                return true;
+                return OtpVerificationResult.builder()
+                        .approved(true)
+                        .normalizedPhoneNumber(normalizedPhone)
+                        .build();
             }
 
             increaseVerifyFailure(tracker, now);
-            return false;
+            return OtpVerificationResult.builder()
+                    .approved(false)
+                    .normalizedPhoneNumber(normalizedPhone)
+                    .build();
 
         } catch (ApiException e) {
             log.error(
@@ -216,7 +230,10 @@ public class TwilioOtpServiceImpl implements OtpService {
             );
 
             increaseVerifyFailure(tracker, now);
-            return false;
+            return OtpVerificationResult.builder()
+                    .approved(false)
+                    .normalizedPhoneNumber(normalizedPhone)
+                    .build();
 
         } catch (Exception e) {
             log.error("Unexpected error while verifying OTP", e);
@@ -278,21 +295,26 @@ public class TwilioOtpServiceImpl implements OtpService {
         trackerRepository.save(tracker);
     }
 
+    /**
+     * Package-private seam for concurrency tests: reproduces the locked-fetch +
+     * failure-increment sequence verifyOtp runs on a failed check, without depending on
+     * a real Twilio API call. Exercises the same findByPhoneNumberForUpdate lock and
+     * increaseVerifyFailure logic that prevents the lost-update race under concurrency.
+     */
+    OtpRequestTracker recordFailedVerifyAttempt(String phoneNumber) {
+        String normalizedPhone = normalizePhoneNumber(phoneNumber);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+
+        OtpRequestTracker tracker = trackerRepository.findByPhoneNumberForUpdate(normalizedPhone)
+                .orElseGet(() -> createNewTracker(normalizedPhone));
+
+        resetVerifyWindowIfNeeded(tracker, now);
+        increaseVerifyFailure(tracker, now);
+        return tracker;
+    }
+
     private String normalizePhoneNumber(String phoneNumber) {
-        if (phoneNumber == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phone number is required");
-        }
-
-        String trimmed = phoneNumber.trim().replaceAll("\\s+", "");
-
-        if (!trimmed.matches("^\\+[1-9]\\d{7,14}$")) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Phone number must be in E.164 format like +919876543210"
-            );
-        }
-
-        return trimmed;
+        return PhoneNumberNormalizer.normalize(phoneNumber);
     }
 
     private String safeTrim(String value) {
@@ -304,12 +326,5 @@ public class TwilioOtpServiceImpl implements OtpService {
             return "null-or-short";
         }
         return value.substring(0, 4) + "****" + value.substring(value.length() - 4);
-    }
-
-    private String maskPhone(String phone) {
-        if (phone == null || phone.length() < 7) {
-            return "masked";
-        }
-        return phone.substring(0, 3) + "******" + phone.substring(phone.length() - 4);
     }
 }

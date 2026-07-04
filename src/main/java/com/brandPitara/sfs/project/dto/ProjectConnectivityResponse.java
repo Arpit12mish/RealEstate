@@ -22,6 +22,7 @@ public class ProjectConnectivityResponse {
 
   private Integer defaultRadiusMeters;
   private Boolean searchEnabled;
+  private Boolean active;
 
   private List<ProjectConnectivityPlaceResponse> places;
   private List<ProjectConnectivityCategoryResponse> categories;

@@ -8,6 +8,7 @@ public enum ReviewEntityType {
     PROJECT_HIGHLIGHT,
     PROJECT_CONNECTIVITY,
     PROJECT_CONNECTIVITY_PLACE,
+    PROJECT_MASTER_PLAN,
     PROJECT_METER,
     PROJECT_METER_SNAPSHOT,
 
@@ -17,6 +18,7 @@ public enum ReviewEntityType {
     BUILDER_IMPROVEMENT_ISSUE,
     BUILDER_AFTER_SALES_UPGRADE,
     BUILDER_IMPROVEMENT_TIMELINE,
+    BUILDER_HIGHLIGHT_ITEM,
 
     COMPANY,
     PROMO_BANNER,
@@ -31,6 +33,7 @@ public enum ReviewEntityType {
                 || this == PROJECT_HIGHLIGHT
                 || this == PROJECT_CONNECTIVITY
                 || this == PROJECT_CONNECTIVITY_PLACE
+                || this == PROJECT_MASTER_PLAN
                 || this == PROJECT_METER
                 || this == PROJECT_METER_SNAPSHOT;
     }

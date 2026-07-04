@@ -3,6 +3,8 @@ package com.brandPitara.sfs.project.dto;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
 import lombok.*;
 
+import java.util.List;
+
 @Getter
 @Setter
 @NoArgsConstructor
@@ -14,4 +16,16 @@ public class ConnectivityProviderCategoryMetaResponse {
   private String iconKey;
   private String defaultQuery;
   private Integer defaultRadiusMeters;
+  private List<QueryPreset> queries;
+
+  @Getter
+  @Setter
+  @NoArgsConstructor
+  @AllArgsConstructor
+  @Builder
+  public static class QueryPreset {
+    private String placeType;
+    private String label;
+    private String keyword;
+  }
 }

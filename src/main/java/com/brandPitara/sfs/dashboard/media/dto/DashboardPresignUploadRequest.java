@@ -13,8 +13,8 @@ public record DashboardPresignUploadRequest(
 
         @NotBlank
         @Pattern(
-                regexp = "^(image/(jpeg|jpg|png|webp)|application/pdf)$",
-                message = "Allowed content types: image/jpeg, image/png, image/webp, application/pdf"
+                regexp = "^(image/(jpeg|jpg|png|webp)|application/pdf|video/mp4|application/json)$",
+                message = "Allowed content types: image/jpeg, image/png, image/webp, application/pdf, video/mp4, application/json"
         )
         String contentType,
 
@@ -22,10 +22,10 @@ public record DashboardPresignUploadRequest(
         @Min(value = 1, message = "fileSizeBytes must be at least 1")
         Long fileSizeBytes,
 
-        // Required when uploadType is PROJECT_IMAGE, FLOOR_PLAN_IMAGE, CONNECTIVITY_MAP, BROCHURE_PDF
+        // Required when uploadType is PROJECT_IMAGE, FLOOR_PLAN_IMAGE, MASTER_PLAN_IMAGE, CONNECTIVITY_MAP, BROCHURE_PDF
         Long projectId,
 
-        // Required when uploadType is BUILDER_LOGO
+        // Required when uploadType is BUILDER_LOGO or builder highlight media
         Long builderId,
 
         // Required when uploadType is CITY_COVER_IMAGE

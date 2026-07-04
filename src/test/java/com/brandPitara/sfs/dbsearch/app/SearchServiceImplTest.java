@@ -1,12 +1,16 @@
 package com.brandPitara.sfs.dbsearch.app;
 
+import com.brandPitara.sfs.dbsearch.dto.SearchEntityType;
+import com.brandPitara.sfs.dbsearch.dto.SearchItemDto;
 import com.brandPitara.sfs.dbsearch.dto.SearchResultResponse;
 import com.brandPitara.sfs.dbsearch.dto.SearchSuggestResponse;
 import com.brandPitara.sfs.dbsearch.infra.BuilderSearchRepository;
 import com.brandPitara.sfs.dbsearch.infra.CompanySearchRepository;
 import com.brandPitara.sfs.dbsearch.infra.ProjectSearchRepository;
 import com.brandPitara.sfs.dbsearch.mapper.SearchMapper;
+import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -21,6 +25,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -33,6 +38,7 @@ class SearchServiceImplTest {
     @Mock private CompanySearchRepository companySearchRepository;
     @Mock private ProjectMediaRepository projectMediaRepository;
     @Mock private SearchMapper searchMapper;
+    @Mock private ProjectFavoriteService projectFavoriteService;
 
     @InjectMocks private SearchServiceImpl service;
 
@@ -159,6 +165,61 @@ class SearchServiceImplTest {
 
         verify(projectSearchRepository).searchProjects(queryCaptor.capture(), any(), any());
         assertThat(queryCaptor.getValue()).isEqualTo("brigade");
+    }
+
+    @Test
+    void search_enrichesProjectItemsThroughFavoriteService() {
+        ProjectEntity project = new ProjectEntity();
+        project.setId(101L);
+
+        SearchItemDto projectItem = SearchItemDto.builder()
+                .id(101L)
+                .entityType(SearchEntityType.PROJECT)
+                .build();
+
+        when(projectSearchRepository.searchProjects(anyString(), any(), any()))
+                .thenReturn(List.of(project));
+        when(builderSearchRepository.searchBuilders(anyString(), any(), any()))
+                .thenReturn(List.of());
+        when(companySearchRepository.searchCompanies(anyString(), any()))
+                .thenReturn(List.of());
+        when(projectMediaRepository.findActiveByProjectIds(List.of(101L)))
+                .thenReturn(List.of());
+        when(searchMapper.toProjectItem(project, null, List.of()))
+                .thenReturn(projectItem);
+
+        SearchResultResponse response = service.search("m3m", null, 0, 10);
+
+        assertThat(response.getItems()).containsExactly(projectItem);
+        verify(projectFavoriteService).enrichSearchProjectItems(response.getItems());
+    }
+
+    @Test
+    void suggest_enrichesProjectSuggestionItemsThroughFavoriteService() {
+        ProjectEntity project = new ProjectEntity();
+        project.setId(202L);
+
+        SearchItemDto projectItem = SearchItemDto.builder()
+                .id(202L)
+                .entityType(SearchEntityType.PROJECT)
+                .build();
+
+        when(projectSearchRepository.searchProjects(anyString(), any(), any()))
+                .thenReturn(List.of(project));
+        when(builderSearchRepository.searchBuilders(anyString(), any(), any()))
+                .thenReturn(List.of());
+        when(companySearchRepository.searchCompanies(anyString(), any()))
+                .thenReturn(List.of());
+        when(projectMediaRepository.findActiveByProjectIds(List.of(202L)))
+                .thenReturn(List.of());
+        when(searchMapper.toProjectItem(project, null, List.of()))
+                .thenReturn(projectItem);
+
+        SearchSuggestResponse response = service.suggest("m3m", null, null);
+
+        List<SearchItemDto> items = response.getSections().get(0).getItems();
+        assertThat(items).containsExactly(projectItem);
+        verify(projectFavoriteService).enrichSearchProjectItems(items);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

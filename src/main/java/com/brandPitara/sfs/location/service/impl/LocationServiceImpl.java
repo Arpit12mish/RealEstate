@@ -4,7 +4,6 @@ import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.location.dto.LocationResolveRequest;
 import com.brandPitara.sfs.location.dto.LocationResolveResponse;
 import com.brandPitara.sfs.location.service.LocationService;
-import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,13 +17,51 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class LocationServiceImpl implements LocationService {
 
-    private static final double MAX_SERVICEABLE_CITY_DISTANCE_KM = 60.0;
-
     private final CityRepository cityRepository;
-    private final ProjectRepository projectRepository;
 
     @Override
     public LocationResolveResponse resolve(LocationResolveRequest request) {
+        return resolveCityContext(
+                request.getLatitude(),
+                request.getLongitude(),
+                request.getDeviceCity(),
+                request.getAccuracyMeters()
+        );
+    }
+
+    @Override
+    public LocationResolveResponse resolveCityContext(
+            Double latitude,
+            Double longitude,
+            String deviceCityValue,
+            Double accuracyMeters
+    ) {
+        boolean hasCoordinates = latitude != null && longitude != null;
+        LocationResolveRequest request = LocationResolveRequest.builder()
+                .latitude(latitude)
+                .longitude(longitude)
+                .accuracyMeters(accuracyMeters)
+                .deviceCity(deviceCityValue)
+                .build();
+
+        if (!hasCoordinates && clean(deviceCityValue) == null) {
+            return LocationResolveResponse.builder()
+                    .serviceable(true)
+                    .accuracyMeters(accuracyMeters)
+                    .build();
+        }
+
+        if (hasCoordinates && !isValidCoordinate(latitude, longitude)) {
+            return LocationResolveResponse.builder()
+                    .serviceable(true)
+                    .accuracyMeters(accuracyMeters)
+                    .build();
+        }
+
+        if (!hasCoordinates) {
+            return resolveDeviceCityOnly(request);
+        }
+
         double userLat = request.getLatitude();
         double userLon = request.getLongitude();
 
@@ -32,26 +69,24 @@ public class LocationServiceImpl implements LocationService {
 
         if (deviceCity != null) {
             Optional<CityEntity> cityFromDevice =
-                    cityRepository.findFirstByNameIgnoreCase(deviceCity);
+                    cityRepository.findFirstByNameIgnoreCaseAndActiveTrue(deviceCity);
 
             if (cityFromDevice.isPresent()) {
                 return buildResponseForCity(
                         cityFromDevice.get(),
                         request,
-                        0.0,
-                        true
+                        0.0
                 );
             }
 
             return LocationResolveResponse.builder()
-                    .serviceable(false)
+                    .serviceable(true)
                     .cityId(null)
                     .cityName(deviceCity)
                     .latitude(userLat)
                     .longitude(userLon)
                     .accuracyMeters(request.getAccuracyMeters())
                     .nearestCityDistanceKm(null)
-                    .message("We are not serving projects in " + deviceCity + " yet.")
                     .build();
         }
 
@@ -71,38 +106,47 @@ public class LocationServiceImpl implements LocationService {
 
         if (nearestCity == null) {
             return LocationResolveResponse.builder()
-                    .serviceable(false)
+                    .serviceable(true)
                     .latitude(userLat)
                     .longitude(userLon)
                     .accuracyMeters(request.getAccuracyMeters())
-                    .message("We are not serving projects in your location yet.")
                     .build();
         }
-
-        boolean cityWithinServiceRange =
-                nearestCity.distanceKm() <= MAX_SERVICEABLE_CITY_DISTANCE_KM;
 
         return buildResponseForCity(
                 nearestCity.city(),
                 request,
-                nearestCity.distanceKm(),
-                cityWithinServiceRange
+                nearestCity.distanceKm()
         );
+    }
+
+    private LocationResolveResponse resolveDeviceCityOnly(LocationResolveRequest request) {
+        String deviceCity = clean(request.getDeviceCity());
+        Optional<CityEntity> cityFromDevice =
+                cityRepository.findFirstByNameIgnoreCaseAndActiveTrue(deviceCity);
+
+        if (cityFromDevice.isPresent()) {
+            return buildResponseForCity(
+                    cityFromDevice.get(),
+                    request,
+                    0.0
+            );
+        }
+
+        return LocationResolveResponse.builder()
+                .serviceable(true)
+                .cityName(deviceCity)
+                .accuracyMeters(request.getAccuracyMeters())
+                .build();
     }
 
     private LocationResolveResponse buildResponseForCity(
             CityEntity city,
             LocationResolveRequest request,
-            double distanceKm,
-            boolean cityWithinServiceRange
+            double distanceKm
     ) {
-        long projectCount = projectRepository
-                .countByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalse(city.getId());
-
-        boolean serviceable = cityWithinServiceRange && projectCount > 0;
-
         return LocationResolveResponse.builder()
-                .serviceable(serviceable)
+                .serviceable(true)
                 .cityId(city.getId())
                 .cityName(city.getName())
                 .state(city.getState())
@@ -111,11 +155,6 @@ public class LocationServiceImpl implements LocationService {
                 .longitude(request.getLongitude())
                 .accuracyMeters(request.getAccuracyMeters())
                 .nearestCityDistanceKm(round(distanceKm))
-                .message(
-                        serviceable
-                                ? "Projects available near your location"
-                                : "We are not serving projects in " + city.getName() + " yet."
-                )
                 .build();
     }
 
@@ -125,6 +164,15 @@ public class LocationServiceImpl implements LocationService {
         String cleaned = value.trim();
 
         return cleaned.isBlank() ? null : cleaned;
+    }
+
+    private boolean isValidCoordinate(Double latitude, Double longitude) {
+        return latitude != null
+                && longitude != null
+                && latitude >= -90.0
+                && latitude <= 90.0
+                && longitude >= -180.0
+                && longitude <= 180.0;
     }
 
     private double calculateDistanceKm(

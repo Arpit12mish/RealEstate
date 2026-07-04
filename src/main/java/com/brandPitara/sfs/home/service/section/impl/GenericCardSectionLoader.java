@@ -17,6 +17,7 @@ import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class GenericCardSectionLoader implements HomeSectionLoader {
   private final BuilderRepository builderRepo;
   private final CompanyRepository companyRepo;   // ✅ NEW
   private final ProjectRepository projectRepo;
+  private final ProjectFavoriteService projectFavoriteService;
 
   @Override
   public HomeSectionType supports() {
@@ -113,6 +115,8 @@ public class GenericCardSectionLoader implements HomeSectionLoader {
         .map(r -> mapRowToCard(r, brandsById, buildersById, companiesById, projectsById))
         .filter(Objects::nonNull)
         .toList();
+
+    projectFavoriteService.enrichGenericProjectCards(cards);
 
     return HomeSectionDto.<GenericCardDto>builder()
         .type(HomeSectionType.GENERIC_CARDS)

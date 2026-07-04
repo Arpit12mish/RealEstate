@@ -13,6 +13,13 @@ public record SectionContext(
     Long brandId,
     Long distributorId,
 
+    Double latitude,
+    Double longitude,
+    Double accuracyMeters,
+    String deviceCity,
+    String resolvedCityName,
+    boolean hasUserCoordinates,
+
     // Optional: auth user or flags later
     Long userId
 ) {}

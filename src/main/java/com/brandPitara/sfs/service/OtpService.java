@@ -79,10 +79,11 @@
 package com.brandPitara.sfs.service;
 
 import com.brandPitara.sfs.service.model.OtpSendResult;
+import com.brandPitara.sfs.service.model.OtpVerificationResult;
 
 public interface OtpService {
 
     OtpSendResult sendOtp(String phoneNumber);
 
-    boolean verifyOtp(String phoneNumber, String code);
+    OtpVerificationResult verifyOtp(String phoneNumber, String code);
 }

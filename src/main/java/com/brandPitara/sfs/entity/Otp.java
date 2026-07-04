@@ -20,6 +20,12 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "otps")
+/*
+ * Legacy/local OTP persistence model. The active production OTP flow uses Twilio
+ * Verify, which owns OTP generation, expiry, invalidation, and reuse prevention
+ * outside this database. This entity is not used by the current OtpService
+ * implementations and should be reviewed in a later cleanup.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor

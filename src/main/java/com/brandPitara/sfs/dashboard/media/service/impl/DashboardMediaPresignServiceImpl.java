@@ -7,6 +7,7 @@ import com.brandPitara.sfs.dashboard.media.service.DashboardMediaPresignService;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
 import com.brandPitara.sfs.media.config.S3Properties;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -31,13 +32,14 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
     private final DashboardProjectOwnershipService dashboardProjectOwnershipService;
     private final DashboardMediaUploadValidator uploadValidator;
     private final CityRepository cityRepository;
+    private final ProjectRepository projectRepository;
 
     @Override
     public DashboardPresignUploadResponse createPresignedUpload(DashboardPresignUploadRequest request) {
         uploadValidator.validateContentType(request.uploadType(), request.contentType());
         uploadValidator.validateFileSize(request.uploadType(), request.fileSizeBytes());
         uploadValidator.validateContextIds(request.uploadType(), request.projectId(), request.builderId(), request.cityId());
-        assertOwnershipForProjectUpload(request.uploadType(), request.projectId());
+        assertProjectUploadAllowed(request.uploadType(), request.projectId());
         assertCityExistsForCityUpload(request.uploadType(), request.cityId());
 
         String ext = extFromContentType(request.contentType());
@@ -71,9 +73,22 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         );
     }
 
-    private void assertOwnershipForProjectUpload(DashboardMediaUploadType uploadType, Long projectId) {
-        if (uploadType.isProjectScoped()) {
-            dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+    private void assertProjectUploadAllowed(DashboardMediaUploadType uploadType, Long projectId) {
+        if (!uploadType.isProjectScoped()) {
+            return;
+        }
+
+        if (uploadType == DashboardMediaUploadType.MASTER_PLAN_IMAGE) {
+            assertProjectExists(projectId);
+            return;
+        }
+
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+    }
+
+    private void assertProjectExists(Long projectId) {
+        if (projectId == null || projectRepository.findByIdAndDeletedFalse(projectId).isEmpty()) {
+            throw new EntityNotFoundException("Project not found: " + projectId);
         }
     }
 
@@ -90,10 +105,19 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         return switch (uploadType) {
             case PROJECT_IMAGE    -> "dashboard/projects/" + projectId + "/images/" + filename;
             case FLOOR_PLAN_IMAGE -> "dashboard/projects/" + projectId + "/floor-plans/" + filename;
+            case MASTER_PLAN_IMAGE -> "dashboard/projects/" + projectId + "/master-plan/" + filename;
             case CONNECTIVITY_MAP -> "dashboard/projects/" + projectId + "/connectivity/" + filename;
             case BROCHURE_PDF     -> "dashboard/projects/" + projectId + "/brochures/" + filename;
             case BUILDER_LOGO     -> "dashboard/builders/" + builderId + "/logos/" + filename;
             case CITY_COVER_IMAGE -> "dashboard/cities/" + cityId + "/cover/" + filename;
+            case INSTAGRAM_REEL_THUMBNAIL -> "dashboard/instagram-reels/thumbnails/" + filename;
+            case INSTAGRAM_REEL_PREVIEW_VIDEO -> "dashboard/instagram-reels/previews/" + filename;
+            case HOME_LOTTIE_JSON -> "home/lottie/" + filename;
+            case APP_SCREEN_LOTTIE_JSON -> "app/screen-content/lottie/" + filename;
+            case APP_SCREEN_VIDEO -> "app/screen-content/video/" + filename;
+            case BUILDER_HIGHLIGHT_IMAGE -> "dashboard/builders/" + builderId + "/highlights/images/" + filename;
+            case BUILDER_HIGHLIGHT_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/thumbnails/" + filename;
+            case BUILDER_ANALYSIS_VIDEO_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/analysis-thumbnails/" + filename;
         };
     }
 
@@ -109,7 +133,9 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         return switch (contentType) {
             case "image/png"       -> "png";
             case "image/webp"      -> "webp";
+            case "video/mp4"       -> "mp4";
             case "application/pdf" -> "pdf";
+            case "application/json" -> "json";
             default                -> "jpg";
         };
     }

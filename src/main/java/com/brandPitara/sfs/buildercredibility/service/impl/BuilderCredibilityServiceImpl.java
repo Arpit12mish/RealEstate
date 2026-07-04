@@ -4,6 +4,8 @@ import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.buildercredibility.dto.*;
 import com.brandPitara.sfs.buildercredibility.service.BuilderCredibilityService;
+import com.brandPitara.sfs.builderhighlight.enums.BuilderHighlightStatus;
+import com.brandPitara.sfs.builderhighlight.repository.BuilderHighlightItemRepository;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -33,12 +35,14 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     private static final int COMPLIANCE_MAX = 20;
     private static final int VERIFICATION_MAX = 15;
     private static final int PORTFOLIO_MAX = 10;
+    private static final int HOME_CARD_MAX = 10;
 
     private final BuilderRepository builderRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMeterSnapshotRepository projectMeterSnapshotRepository;
     private final ProjectComplianceItemRepository projectComplianceItemRepository;
     private final ProjectConstructionStageRepository projectConstructionStageRepository;
+    private final BuilderHighlightItemRepository builderHighlightItemRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -108,16 +112,71 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     @Override
     @Transactional(readOnly = true)
     public List<BuilderCredibilityCardResponse> publicListCredibilityCards(Long cityId, int limit) {
-        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        int safeLimit = Math.min(Math.max(limit, 1), HOME_CARD_MAX);
 
         List<BuilderEntity> builders = (cityId == null)
             ? builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc()
             : builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(cityId);
 
-        return builders.stream()
+        builders = builders.stream()
             .limit(safeLimit)
+            .toList();
+
+        if (builders.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> builderIds = builders.stream()
+            .map(BuilderEntity::getId)
+            .toList();
+
+        List<ProjectEntity> projects = projectRepository
+            .findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(builderIds);
+
+        Map<Long, List<ProjectEntity>> projectsByBuilderId = projects.stream()
+            .filter(project -> project.getBuilder() != null && project.getBuilder().getId() != null)
+            .collect(Collectors.groupingBy(
+                project -> project.getBuilder().getId(),
+                LinkedHashMap::new,
+                Collectors.toList()
+            ));
+
+        List<Long> projectIds = projects.stream()
+            .map(ProjectEntity::getId)
+            .toList();
+
+        Map<Long, ProjectMeterSnapshotEntity> snapshotMap = new HashMap<>();
+        Map<Long, List<ProjectComplianceItemEntity>> complianceMap = new HashMap<>();
+        Map<Long, List<ProjectConstructionStageEntity>> stageMap = new HashMap<>();
+
+        if (!projectIds.isEmpty()) {
+            snapshotMap = projectMeterSnapshotRepository.findByProjectIdIn(projectIds).stream()
+                .collect(Collectors.toMap(s -> s.getProject().getId(), s -> s));
+
+            complianceMap = projectComplianceItemRepository
+                .findByProjectIdInOrderByProjectIdAscItemGroupAscDisplayOrderAscIdAsc(projectIds)
+                .stream()
+                .collect(Collectors.groupingBy(c -> c.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
+
+            stageMap = projectConstructionStageRepository
+                .findByProjectIdInOrderByProjectIdAscDisplayOrderAscIdAsc(projectIds)
+                .stream()
+                .collect(Collectors.groupingBy(s -> s.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
+        }
+
+        Map<Long, ProjectMeterSnapshotEntity> finalSnapshotMap = snapshotMap;
+        Map<Long, List<ProjectComplianceItemEntity>> finalComplianceMap = complianceMap;
+        Map<Long, List<ProjectConstructionStageEntity>> finalStageMap = stageMap;
+
+        return builders.stream()
             .map(builder -> {
-                BuilderCredibilityComputed computed = computeCredibility(builder);
+                BuilderCredibilityComputed computed = computeCredibility(
+                    builder,
+                    projectsByBuilderId.getOrDefault(builder.getId(), List.of()),
+                    finalSnapshotMap,
+                    finalComplianceMap,
+                    finalStageMap
+                );
                 Aggregation agg = computed.aggregation;
 
                 int onTrackRecord = agg.trackedProjectsCount == 0
@@ -143,11 +202,25 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                     .onTrackRecord(onTrackRecord + "%")
                     .promisesMet(promisesMet + "%")
                     .complianceStrength(complianceStrength + "%")
+                    .projectsTrackedCount(agg.trackedProjectsCount)
+                    .onTrackRecordPercent(onTrackRecord)
+                    .promisesMetPercent(promisesMet)
+                    .complianceStrengthPercent(complianceStrength)
                     .summary(computed.summary)
                     .confidenceLabel(computed.confidenceLabel)
+                    .highlightsAvailable(hasPublicHighlights(builder.getId()))
+                    .highlightCtaLabel("Highlights")
                     .build();
             })
             .toList();
+    }
+
+    private boolean hasPublicHighlights(Long builderId) {
+        return builderHighlightItemRepository
+            .existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
+                builderId,
+                BuilderHighlightStatus.PUBLISHED
+            );
     }
 
     private BuilderEntity getPublicBuilder(Long builderId) {
@@ -187,7 +260,22 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                 .collect(Collectors.groupingBy(s -> s.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
         }
 
-        Aggregation aggregation = aggregate(projects, snapshotMap, complianceMap, stageMap);
+        return computeCredibility(builder, projects, snapshotMap, complianceMap, stageMap);
+    }
+
+    private BuilderCredibilityComputed computeCredibility(
+        BuilderEntity builder,
+        List<ProjectEntity> projects,
+        Map<Long, ProjectMeterSnapshotEntity> snapshotMap,
+        Map<Long, List<ProjectComplianceItemEntity>> complianceMap,
+        Map<Long, List<ProjectConstructionStageEntity>> stageMap
+    ) {
+        List<ProjectEntity> safeProjects = projects == null ? List.of() : projects;
+        Map<Long, ProjectMeterSnapshotEntity> safeSnapshotMap = snapshotMap == null ? Map.of() : snapshotMap;
+        Map<Long, List<ProjectComplianceItemEntity>> safeComplianceMap = complianceMap == null ? Map.of() : complianceMap;
+        Map<Long, List<ProjectConstructionStageEntity>> safeStageMap = stageMap == null ? Map.of() : stageMap;
+
+        Aggregation aggregation = aggregate(safeProjects, safeSnapshotMap, safeComplianceMap, safeStageMap);
 
         int executionScore = scoreExecutionReliability(aggregation);
         int promiseScore = scorePromiseFulfilment(aggregation);
@@ -204,7 +292,7 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
         String label = credibilityLabel(totalScore);
 
         return BuilderCredibilityComputed.builder()
-            .projects(projects)
+            .projects(safeProjects)
             .aggregation(aggregation)
             .executionScore(executionScore)
             .promiseScore(promiseScore)

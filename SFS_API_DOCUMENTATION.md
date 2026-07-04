@@ -541,7 +541,7 @@ curl -X PATCH \
 #### GET `/api/dashboard/projects/{projectId}/workspace`
 
 **Access:** ADMIN, REVIEWER, DATA_ENTRY  
-**Description:** Composite endpoint — returns project + all child sections (media, highlights, floor plans, connectivity, meter, review status) in a single call. Replaces 10+ individual fetches on the edit/review screen.
+**Description:** Composite endpoint — returns project + all child sections (media, highlights, floor plans, connectivity, master plan, meter, review status) in a single call. Replaces 10+ individual fetches on the edit/review screen.
 
 **Response `200`:** `DashboardProjectWorkspaceResponse`
 
@@ -834,6 +834,59 @@ curl -X PATCH \
 ```
 
 > **Note:** `durationLabel` and `durationSeconds` are always `null` until the Google Routes API is integrated. Frontend should display distance only until then.
+
+---
+
+### 3.8.1 Project Master Plan
+
+Project Master Plan is a project-level visual section for the mobile project detail screen. It is managed separately from Project Meter and appears as `masterPlan` inside project detail and dashboard mobile preview responses.
+
+**Base path:** `/api/dashboard/projects/{projectId}/master-plan`
+
+> **DATA_ENTRY permission exception:** Master Plan is intentionally relaxed compared with normal project editing. `DATA_ENTRY` users can upload and update Master Plan data for any non-deleted project, including approved projects and projects they did not create. They still cannot activate/deactivate or delete Master Plan records. Other project sections such as basic details, media, floor plans, connectivity, meter, and highlights continue to enforce the normal DATA_ENTRY ownership/status editability policy.
+
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| GET | `/` | ADMIN, REVIEWER, DATA_ENTRY | Get the current non-deleted master plan, or `null` if not configured |
+| PUT | `/` | ADMIN, DATA_ENTRY | Create or update the single master plan for the project |
+| PATCH | `/active?active=true` | ADMIN | Toggle public/mobile visibility |
+| DELETE | `/` | ADMIN | Soft-delete the master plan |
+
+**PUT request body:**
+```json
+{
+  "title": "Master Plan",
+  "subtitle": "Site layout, towers & open spaces",
+  "description": "Approved site layout with towers, parks and internal roads.",
+  "masterPlanImageUrl": "https://cdn.sfs.com/projects/42/master-plan.webp",
+  "imageCaption": "Approved project master layout",
+  "imageAltText": "Master plan layout",
+  "totalUnits": 1520,
+  "parkAreaValue": 2.70,
+  "parkAreaUnit": "ACRE",
+  "totalTowers": 18,
+  "totalFloors": 19,
+  "waterSource": "BWSSB",
+  "parkingType": "BASEMENT",
+  "openSpacePercent": 65,
+  "greenCoveragePercent": 35,
+  "verified": true,
+  "sourceLabel": "Builder Disclosure",
+  "sourceDocumentUrl": "https://cdn.sfs.com/projects/42/approved-layout.pdf",
+  "lastVerifiedAt": "2026-06-20T10:30:00Z",
+  "remarks": "Internal dashboard note",
+  "active": true
+}
+```
+
+**Enums:**
+- `MasterPlanAreaUnit`: `SQ_FT`, `SQ_MT`, `ACRE`, `HECTARE`
+- `ParkingType`: `OPEN`, `COVERED`, `BASEMENT`, `STILT`, `MECHANICAL`, `MIXED`, `NOT_DISCLOSED`
+- `MasterPlanApprovalStatus`: `DRAFT`, `SUBMITTED`, `VERIFIED`, `NEEDS_REVIEW`, `NOT_AVAILABLE`
+
+**Validation:** title max 150; subtitle max 300; description max 2000; image/source URLs max 500; counts and area values must be non-negative; percentages must be 0–100; waterSource max 120; sourceLabel max 180; remarks max 1000.
+
+Public/mobile output omits dashboard-only fields such as `remarks`, `sourceDocumentUrl`, `active`, and internal IDs.
 
 ---
 
@@ -1265,6 +1318,7 @@ These are static/enum metadata endpoints, no database call — fast response.
 |-------|-------|-------|
 | `PROJECT_IMAGE` | Project | Requires `projectId` |
 | `FLOOR_PLAN_IMAGE` | Project | Requires `projectId` |
+| `MASTER_PLAN_IMAGE` | Project | Requires `projectId`; image only |
 | `CONNECTIVITY_MAP` | Project | Requires `projectId` |
 | `BROCHURE_PDF` | Project | Requires `projectId`; only PDF allowed |
 | `BUILDER_LOGO` | Builder | Requires `builderId` |
@@ -1276,6 +1330,12 @@ These are static/enum metadata endpoints, no database call — fast response.
 - `image/png`
 - `image/webp`
 - `application/pdf` (only for BROCHURE_PDF)
+
+`MASTER_PLAN_IMAGE` uploads are stored under `dashboard/projects/{projectId}/master-plan/{uuid}.{ext}` and use the same 2 MB image limit as other dashboard image uploads.
+
+**Project upload permission rule:**
+- `MASTER_PLAN_IMAGE` follows the relaxed Master Plan rule: ADMIN and DATA_ENTRY can presign for any non-deleted project.
+- All other project-scoped upload types (`PROJECT_IMAGE`, `FLOOR_PLAN_IMAGE`, `CONNECTIVITY_MAP`, `BROCHURE_PDF`) keep the original project ownership/status checks for DATA_ENTRY users.
 
 **Response `200`:**
 ```json
@@ -1491,7 +1551,7 @@ PATCH /api/dashboard/cities/7/cover-image
 | PATCH | `/{id}/active` | ADMIN | Toggle active (`?value=true/false`) |
 | DELETE | `/{id}` | ADMIN | Delete entry |
 
-**`DashboardHelpModule` values:** `PROJECT`, `BUILDER`, `PROJECT_METER`, `FLOOR_PLAN`, etc. *(see enum)*
+**`DashboardHelpModule` values:** include `PROJECT_BASIC`, `PROJECT_MEDIA`, `PROJECT_FLOOR_PLAN`, `PROJECT_CONNECTIVITY`, `PROJECT_MASTER_PLAN`, project meter modules, `BUILDER`, and others. *(see enum)*
 
 **Upsert Request:**
 ```json
@@ -1804,9 +1864,9 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 #### GET `/api/projects/{projectId}`
 
 **Access:** Public  
-**Description:** Full project detail with aggregated sections (pricing, floor plan groups, connectivity, amenities, media glimpses).
+**Description:** Full project detail with aggregated sections (pricing, floor plan groups, connectivity, master plan, amenities, media glimpses).
 
-**Response `200`:** `ProjectResponse` — see structure below.
+**Response `200`:** `ProjectPublicResponse` — see structure below.
 
 ```json
 {
@@ -1845,6 +1905,35 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
   "location": { ... },
   "floorPlanGroups": [ ... ],
   "connectivity": { ... },
+  "masterPlan": {
+    "title": "Master Plan",
+    "subtitle": "Site layout, towers & open spaces",
+    "description": null,
+    "imageUrl": "https://cdn.sfs.com/projects/42/master-plan.webp",
+    "imageCaption": "Approved project master layout",
+    "imageAltText": "Master plan layout",
+    "expandable": true,
+    "verified": true,
+    "sourceLabel": "Builder Disclosure",
+    "lastVerifiedAt": "2026-06-20T10:30:00Z",
+    "stats": [
+      {
+        "key": "TOTAL_UNITS",
+        "label": "Total Units",
+        "value": "1520",
+        "rawValue": 1520,
+        "displayOrder": 10
+      },
+      {
+        "key": "PARK_AREA",
+        "label": "Park Area",
+        "value": "2.7 Acres",
+        "rawValue": 2.70,
+        "unit": "ACRE",
+        "displayOrder": 20
+      }
+    ]
+  },
   "glimpses": [ ... ],
   "amenities": { ... }
 }
@@ -1852,7 +1941,10 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 
 **Notes:**
 - Only returns published (`published=true`) projects
-- `isFavorite` requires authenticated mobile user; returns `null` for anonymous
+- `favoriteCount` is returned for anonymous and authenticated requests.
+- `isFavorite` is `false` for anonymous requests and reflects the current mobile user when a valid USER token is sent.
+- `masterPlan` is `null` when no active usable master plan exists.
+- Frontend should hide the Master Plan section when `masterPlan` is `null`, render `stats` as label/value rows, and open `imageUrl` fullscreen when `expandable=true`.
 
 ---
 
@@ -1871,7 +1963,7 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 
 **Default sort:** `priority ASC`, then `id DESC`
 
-**Response `200`:** `Page<ProjectResponse>`
+**Response `200`:** `Page<ProjectPublicResponse>`
 
 ---
 
@@ -1887,7 +1979,7 @@ See [Section 2.1](#21-mobile--app-authentication-otp).
 | `page` | int | No | 0 | |
 | `size` | int | No | 10 | Max 20 |
 
-**Response `200`:** `Page<ProjectResponse>`
+**Response `200`:** `Page<ProjectPublicResponse>`
 
 ---
 
@@ -2212,6 +2304,104 @@ All favorites endpoints require **authenticated mobile user**.
 }
 ```
 
+#### Public / Mobile Project Card Favorite Contract
+
+All supported public/mobile project-card responses use these exact fields:
+
+```json
+{
+  "favoriteCount": 0,
+  "isFavorite": false
+}
+```
+
+**Auth behavior:**
+- No token: `favoriteCount` is still returned, `isFavorite=false`.
+- Valid mobile USER token: `isFavorite=true` only for projects favorited by the current user.
+- Invalid or expired token: handled by the normal security filter behavior for that endpoint; public endpoints remain callable without sending a token.
+- Favorites are project-only here: backend uses `FavoriteTargetType.PROJECT`.
+
+**Supported public/mobile APIs and project id fields:**
+
+| API / Surface | DTO | Project identifier | Favorite fields | Notes |
+|---|---|---:|---|---|
+| `GET /api/projects/{projectId}` | `ProjectPublicResponse` | `id` | `favoriteCount`, `isFavorite` | Project detail. |
+| `GET /api/projects/browse` | `ProjectPublicResponse` | `id` | `favoriteCount`, `isFavorite` | Paginated project listing. |
+| `GET /api/projects/feature` | `ProjectPublicResponse` | `id` | `favoriteCount`, `isFavorite` | Featured projects, optional `builderId`. |
+| `GET /api/builders/{builderId}/projects` | `ProjectPublicResponse` | `id` | `favoriteCount`, `isFavorite` | Public builder project listing. |
+| `GET /api/public/project-meter/cards` | `ProjectMeterCardResponse` | `projectId` | `favoriteCount`, `isFavorite` | Also used by Home `PROJECT_ANALYTICS`. |
+| `GET /api/public/home` section `TOP_PROJECTS` | `ProjectCardDto` | `id` | `favoriteCount`, `isFavorite` | Home project cards. |
+| `GET /api/public/home` section `PROJECT_ANALYTICS` | `ProjectMeterCardResponse` | `projectId` | `favoriteCount`, `isFavorite` | Project meter cards. |
+| `GET /api/public/home` section `NEARBY_LISTINGS` | `ProjectNearbyListingCardDto` | `projectId` | `favoriteCount`, `isFavorite` | Distance fields are populated only for lat/lng requests. |
+| `GET /api/public/home` section `GENERIC_CARDS` | `GenericCardDto` | `refId` only when `itemType=PROJECT` | `favoriteCount`, `isFavorite` | Non-project cards remain `0/false`. |
+| `GET /api/public/search?q=m3m` | `SearchItemDto` | `id` only when `entityType=PROJECT` | `favoriteCount`, `isFavorite` | Non-project search items remain `0/false`. |
+| `GET /api/public/search/suggest?q=m3m` | `SearchItemDto` inside suggestion sections | `id` only when `entityType=PROJECT` | `favoriteCount`, `isFavorite` | Non-project suggestion items remain `0/false`. |
+| `GET /api/public/feed?screen=BUILDER&entityId={builderId}` | `BuilderProjectCardDto` | `id` | `favoriteCount`, `isFavorite` | Builder feed project cards. |
+| `GET /api/project-favorites` | `ProjectResponse` | `id` | `favoriteCount`, `isFavorite` | Authenticated user's favorite projects list. |
+
+**Builder feed request contract:**
+
+```http
+GET /api/public/feed?screen=BUILDER&entityId=2
+```
+
+| Param | Required | Notes |
+|---|---:|---|
+| `screen` | Yes | Must be `BUILDER`. |
+| `entityId` | Yes | Builder id. If missing, backend returns an error: `entityId is required for BUILDER screen`. |
+| `cityId` | No | Used for city-specific promo banner rules. |
+| `categoryId` | No | Accepted by controller/context; current builder feed sections primarily use `entityId`. |
+| `v` | No | Client content version. |
+
+Current builder project feed caveat: the feed config/loader key is `BUILDER_PROJECTS`, but the serialized project section currently uses `type: "TOP_PROJECTS"` and bucket keys such as `PROJECTS_RECENT`, `PROJECTS_LUXURY`, or `PROJECTS_ICONIC` depending on config `param1`.
+
+**Manual examples:**
+
+```bash
+curl "http://localhost:8080/api/public/home"
+curl "http://localhost:8080/api/public/home?lat=28.6139&lng=77.2090"
+curl "http://localhost:8080/api/public/search?q=m3m"
+curl "http://localhost:8080/api/public/search/suggest?q=m3m"
+curl "http://localhost:8080/api/public/feed?screen=BUILDER&entityId=2"
+```
+
+Authenticated favorite toggle:
+
+```bash
+curl -X POST "http://localhost:8080/api/project-favorites/29/toggle" \
+  -H "Authorization: Bearer <USER_TOKEN>"
+```
+
+Then re-call any supported public/mobile card API with the same bearer token:
+
+```bash
+curl "http://localhost:8080/api/public/search?q=m3m" \
+  -H "Authorization: Bearer <USER_TOKEN>"
+```
+
+Expected behavior: the favorited PROJECT item has `isFavorite=true`, and `favoriteCount` reflects the total project favorite count.
+
+**Frontend handling rules:**
+- Use `isFavorite=true` to show a filled heart.
+- Use `isFavorite=false` to show an outline heart.
+- After `POST /api/project-favorites/{projectId}/toggle`, update the local card state optimistically.
+- Keep `favoriteCount` in sync by incrementing/decrementing locally, or by applying the toggle response's `favoriteCount`.
+- Use the correct project id field for the DTO: `id`, `projectId`, or `refId` as listed above.
+- For `SearchItemDto`, only PROJECT items (`entityType=PROJECT`) should show project favorite UI.
+- For `GenericCardDto`, only PROJECT items (`itemType=PROJECT`) should show project favorite UI.
+
+**Intentionally unsupported for project favorites:**
+- Dashboard/admin responses under `/api/dashboard/**` and `/api/admin/**`.
+- Provider portfolio projects.
+- Company/architect/designer portfolio projects, including `CompanyProjectCardDto`.
+- Project subresources such as floor plans, highlights, connectivity, reviews, meter detail, media, and calculator/config responses.
+- Non-project search/generic card items such as builders, companies, brands, cities, categories, and businesses.
+
+**Known caveats:**
+- `SearchItemDto` and `GenericCardDto` include `favoriteCount` and `isFavorite` for a stable JSON shape, but non-project items are always `0/false`.
+- Builder feed requires `entityId`; `GET /api/public/feed?screen=BUILDER` without `entityId` is invalid.
+- Some admin/mobile-preview DTO classes may contain favorite fields because they reuse shared DTO types, but those endpoints are not favorite-aware contracts and should not drive frontend heart UI unless explicitly documented above.
+
 ---
 
 ### 5.15 Calculators (Public)
@@ -2495,7 +2685,7 @@ All API errors follow this standard `ApiError` format:
 1. **Auth:** Store `accessToken` and `refreshToken` in secure storage. Refresh on 401.
 2. **Never call Google APIs directly.** All map/places data comes from SFS backend.
 3. **Review submission:** Do NOT include userId, phone, or any status fields. Only send `rating`, `reviewerName`, `headline`, `reviewText`.
-4. **Favorites:** `isFavorite` in project response requires authenticated token. For unauthenticated users, show the favorite count only.
+4. **Favorites:** Supported project card/detail responses always include `favoriteCount` and `isFavorite`. Without a token, `isFavorite=false`; with a valid mobile USER token, it reflects the current user's favorite state.
 5. **Public project page:** Load `GET /api/projects/{id}` first (full composite response), then optionally load meter, reviews, and connectivity asynchronously.
 
 ### Token Handling

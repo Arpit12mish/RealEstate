@@ -2,6 +2,8 @@ package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.model.OtpSendResult;
+import com.brandPitara.sfs.service.model.OtpVerificationResult;
+import com.brandPitara.sfs.util.PhoneNumberNormalizer;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
@@ -24,8 +26,11 @@ public class FakeOtpService implements OtpService {
     }
 
     @Override
-    public boolean verifyOtp(String phoneNumber, String code) {
+    public OtpVerificationResult verifyOtp(String phoneNumber, String code) {
         log.info("FAKE OTP verify for {} with code {}", phoneNumber, code);
-        return "123456".equals(code);
+        return OtpVerificationResult.builder()
+                .approved("123456".equals(code))
+                .normalizedPhoneNumber(PhoneNumberNormalizer.normalize(phoneNumber))
+                .build();
     }
 }

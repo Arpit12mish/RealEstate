@@ -39,5 +39,10 @@ public class ProjectMeterCardResponse {
     private Integer delayDays;
     private boolean delayed;
 
+    @Builder.Default
+    private Long favoriteCount = 0L;
+    @Builder.Default
+    private Boolean isFavorite = false;
+
     private OffsetDateTime lastUpdatedAt;
 }

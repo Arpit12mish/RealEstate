@@ -148,6 +148,19 @@
         <!-- Actuator health endpoint noise reduction -->
         <logger name="org.springframework.boot.actuate"           level="WARN"/>
 
+        <!--
+          Suppress JVM HTTP debug logging (sun.net.www.protocol.http.HttpURLConnection etc.).
+          These classes log full request headers including Authorization/X-Goog-Api-Key at
+          DEBUG/FINE level. Spring Boot's jul-to-slf4j bridge forwards JUL records here;
+          LevelChangePropagator pushes this WARN floor back to the JUL side, preventing
+          the API key from appearing in journalctl or any log file.
+        -->
+        <logger name="sun.net.www.protocol.http"                  level="WARN"/>
+        <logger name="sun.net.www.protocol.https"                 level="WARN"/>
+        <logger name="sun.net"                                     level="WARN"/>
+        <logger name="jdk.internal.net.http"                      level="WARN"/>
+        <logger name="jdk.event.security"                         level="WARN"/>
+
         <!-- Root → sfs-app.log + sfs-error.log + console -->
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
@@ -187,6 +200,13 @@
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="AUDIT_FILE"/>
         </logger>
+
+        <!-- Suppress JVM HTTP debug logging (same as prod) — prevents key leakage in local dev -->
+        <logger name="sun.net.www.protocol.http"                  level="WARN"/>
+        <logger name="sun.net.www.protocol.https"                 level="WARN"/>
+        <logger name="sun.net"                                     level="WARN"/>
+        <logger name="jdk.internal.net.http"                      level="WARN"/>
+        <logger name="jdk.event.security"                         level="WARN"/>
 
         <!-- Root → console + sfs-app.log + sfs-error.log -->
         <root level="DEBUG">

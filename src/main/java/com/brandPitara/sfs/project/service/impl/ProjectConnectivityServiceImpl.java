@@ -185,6 +185,23 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   }
 
   @Override
+  @Transactional
+  public ProjectConnectivityPlaceResponse setPlaceActive(Long projectId, Long placeId, boolean active) {
+    ProjectConnectivityPlaceEntity entity = placeRepository.findByIdAndProjectIdAndDeletedFalse(placeId, projectId)
+        .orElseThrow(() -> new EntityNotFoundException("Connectivity place not found: " + placeId));
+
+    entity.setActive(active);
+    ProjectConnectivityPlaceEntity saved = placeRepository.save(entity);
+
+    contentVersionService.bump(KEY_PROJECTS);
+    if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
+      contentVersionService.bump(KEY_HOME);
+    }
+
+    return ProjectConnectivityMapper.toPlaceResponse(saved);
+  }
+
+  @Override
   @Transactional(readOnly = true)
   public List<ProjectConnectivityPlaceResponse> adminListPlaces(Long projectId) {
     return placeRepository.findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(projectId)
@@ -241,34 +258,61 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     if (project.getLatitude() == null || project.getLongitude() == null) {
-      throw new IllegalArgumentException("Project latitude and longitude are required before provider search");
+      throw new IllegalArgumentException(
+          "Project latitude/longitude is missing. Please add project location before searching nearby places.");
     }
 
-    int safeRadius = request.getRadiusMeters() != null
-        ? Math.min(Math.max(request.getRadiusMeters(), 100), 50000)
-        : 5000;
+    int maxRadius = nearbyPlaceProvider.getMaxRadiusMeters();
+    int userRadius = request.getRadiusMeters() != null ? request.getRadiusMeters() : 3000;
+    if (userRadius > maxRadius) {
+      throw new IllegalArgumentException(
+          String.format("Radius cannot exceed %d meters.", maxRadius));
+    }
+    int safeRadius = Math.max(userRadius, 500);
 
-    List<NearbyPlaceProviderResult> results = nearbyPlaceProvider.searchNearby(
+    String query = firstText(request.getKeyword(), request.getQuery(), defaultQueryFor(request.getCategory(), request.getPlaceType()));
+    int limit = request.getLimit() != null ? Math.min(Math.max(request.getLimit(), 1), 50) : 10;
+
+    List<NearbyPlaceProviderResult> providerResults = nearbyPlaceProvider.searchNearby(
         project.getLatitude(),
         project.getLongitude(),
-        request.getQuery(),
+        query,
         request.getCategory(),
         safeRadius
     );
 
+    int totalFetched = providerResults.size();
+
+    // Strict backend filter: only keep results whose distance is known AND within the requested radius.
+    // locationRestriction on the Google call reduces far-away results at source; this is the safety net.
+    List<NearbyPlaceProviderResult> withinRadius = providerResults.stream()
+        .filter(r -> r.getDistanceMeters() != null && r.getDistanceMeters() <= safeRadius)
+        .toList();
+
+    int totalWithinRadius = withinRadius.size();
+    int totalFilteredOut = totalFetched - totalWithinRadius;
+
+    List<NearbyPlaceProviderResult> results = withinRadius.stream()
+        .limit(limit)
+        .toList();
+
     Set<String> savedProviderKeys = placeRepository.findAllProviderExternalIdKeysByProjectId(projectId);
     Set<String> savedNameTypeKeys = placeRepository.findAllNameTypeKeysByProjectId(projectId);
-    results.forEach(r -> r.setAlreadySaved(isAlreadySaved(r, savedProviderKeys, savedNameTypeKeys)));
+    Set<String> savedNameCategoryKeys = placeRepository.findAllNameCategoryKeysByProjectId(projectId);
+    results.forEach(r -> r.setAlreadySaved(isAlreadySaved(r, savedProviderKeys, savedNameTypeKeys, savedNameCategoryKeys)));
 
     return ConnectivityProviderSearchResponse.builder()
         .projectId(project.getId())
         .category(request.getCategory())
         .categoryLabel(request.getCategory() != null ? request.getCategory().toLabel() : null)
-        .query(request.getQuery())
+        .query(query)
         .radiusMeters(safeRadius)
         .projectLatitude(project.getLatitude())
         .projectLongitude(project.getLongitude())
-        .provider("GOOGLE")
+        .provider("GOOGLE_PLACES")
+        .totalFetched(totalFetched)
+        .totalWithinRadius(totalWithinRadius)
+        .totalFilteredOut(totalFilteredOut)
         .results(results)
         .build();
   }
@@ -276,20 +320,50 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   @Override
   public List<ConnectivityProviderCategoryMetaResponse> providerCategories() {
     return List.of(
-        meta(ProjectConnectivityCategory.TRANSIT, "metro station bus stop railway station", 5000),
-        meta(ProjectConnectivityCategory.SCHOOLS, "school", 5000),
-        meta(ProjectConnectivityCategory.COLLEGES, "college university", 7000),
-        meta(ProjectConnectivityCategory.HOSPITALS, "hospital clinic", 5000),
-        meta(ProjectConnectivityCategory.PARKS, "park", 5000),
-        meta(ProjectConnectivityCategory.RETAIL, "retail shop market", 4000),
-        meta(ProjectConnectivityCategory.MALLS, "shopping mall", 7000),
-        meta(ProjectConnectivityCategory.GYMS, "gym fitness center", 4000),
-        meta(ProjectConnectivityCategory.OFFICES, "IT park business park office hub", 8000),
-        meta(ProjectConnectivityCategory.RESTAURANTS, "restaurant cafe", 3000),
-        meta(ProjectConnectivityCategory.BANKS, "bank ATM", 3000),
-        meta(ProjectConnectivityCategory.DAILY_NEEDS, "supermarket grocery store pharmacy", 3000),
-        meta(ProjectConnectivityCategory.SAFETY, "police station fire station", 7000),
-        meta(ProjectConnectivityCategory.LIFESTYLE, "temple landmark", 5000)
+        meta(ProjectConnectivityCategory.TRANSIT, "metro station bus stop railway station", 5000,
+            preset("METRO", "Metro", "metro station"),
+            preset("BUS_STOP", "Bus Stop", "bus stop"),
+            preset("RAILWAY_STATION", "Railway Station", "railway station"),
+            preset("AIRPORT", "Airport", "airport")),
+        meta(ProjectConnectivityCategory.SCHOOLS, "school", 5000,
+            preset("SCHOOL", "School", "school")),
+        meta(ProjectConnectivityCategory.COLLEGES, "college university", 7000,
+            preset("COLLEGE", "College", "college"),
+            preset("UNIVERSITY", "University", "university")),
+        meta(ProjectConnectivityCategory.HOSPITALS, "hospital clinic", 5000,
+            preset("HOSPITAL", "Hospital", "hospital"),
+            preset("CLINIC", "Clinic", "clinic"),
+            preset("PHARMACY", "Pharmacy", "pharmacy")),
+        meta(ProjectConnectivityCategory.PARKS, "park", 5000,
+            preset("PARK", "Park", "park")),
+        meta(ProjectConnectivityCategory.RETAIL, "retail shop market", 4000,
+            preset("RETAIL_SHOP", "Retail Shop", "retail shop"),
+            preset("MARKET", "Market", "market")),
+        meta(ProjectConnectivityCategory.MALLS, "shopping mall", 7000,
+            preset("MALL", "Mall", "shopping mall")),
+        meta(ProjectConnectivityCategory.GYMS, "gym fitness center", 4000,
+            preset("GYM", "Gym", "gym"),
+            preset("FITNESS_CENTER", "Fitness Center", "fitness center")),
+        meta(ProjectConnectivityCategory.OFFICES, "IT park business park office hub", 8000,
+            preset("TECH_PARK", "Tech Park", "IT park"),
+            preset("BUSINESS_HUB", "Business Hub", "business park"),
+            preset("OFFICE_HUB", "Office Hub", "office hub")),
+        meta(ProjectConnectivityCategory.RESTAURANTS, "restaurant cafe", 3000,
+            preset("RESTAURANT", "Restaurant", "restaurant"),
+            preset("CAFE", "Cafe", "cafe")),
+        meta(ProjectConnectivityCategory.BANKS, "bank ATM", 3000,
+            preset("BANK", "Bank", "bank"),
+            preset("ATM", "ATM", "ATM")),
+        meta(ProjectConnectivityCategory.DAILY_NEEDS, "supermarket grocery store pharmacy", 3000,
+            preset("SUPERMARKET", "Supermarket", "supermarket"),
+            preset("GROCERY_STORE", "Grocery Store", "grocery store"),
+            preset("CONVENIENCE_STORE", "Convenience Store", "convenience store")),
+        meta(ProjectConnectivityCategory.SAFETY, "police station fire station", 7000,
+            preset("POLICE_STATION", "Police Station", "police station"),
+            preset("FIRE_STATION", "Fire Station", "fire station")),
+        meta(ProjectConnectivityCategory.LIFESTYLE, "temple landmark", 5000,
+            preset("LANDMARK", "Landmark", "landmark"),
+            preset("TEMPLE", "Temple", "temple"))
     );
   }
 
@@ -306,6 +380,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
 
     Set<String> savedProviderKeys = placeRepository.findAllProviderExternalIdKeysByProjectId(projectId);
     Set<String> savedNameTypeKeys = placeRepository.findAllNameTypeKeysByProjectId(projectId);
+    Set<String> savedNameCategoryKeys = placeRepository.findAllNameCategoryKeysByProjectId(projectId);
 
     List<ProjectConnectivityPlaceResponse> savedPlaces = new ArrayList<>();
     List<ProjectConnectivityPlaceResponse> skippedDuplicates = new ArrayList<>();
@@ -314,14 +389,14 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
       if (!StringUtils.hasText(req.getPlaceName())) {
         throw new IllegalArgumentException("placeName is required for every place in a bulk save request");
       }
-      if (isBulkDuplicate(req, savedProviderKeys, savedNameTypeKeys)) {
-        skippedDuplicates.add(buildSkippedResponse(req, projectId));
-        continue;
-      }
-
       ProjectConnectivityCategory category = req.getCategory() != null
           ? req.getCategory()
           : ProjectConnectivityCategoryMapper.fromType(req.getPlaceType());
+
+      if (isBulkDuplicate(req, category, savedProviderKeys, savedNameTypeKeys, savedNameCategoryKeys)) {
+        skippedDuplicates.add(buildSkippedResponse(req, projectId));
+        continue;
+      }
 
       String distanceLabel = req.getDistanceLabel();
       if (distanceLabel == null && req.getDistanceMeters() != null) {
@@ -357,6 +432,15 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
 
       ProjectConnectivityPlaceEntity saved = placeRepository.save(entity);
       savedPlaces.add(ProjectConnectivityMapper.toPlaceResponse(saved));
+      if (StringUtils.hasText(saved.getProvider()) && StringUtils.hasText(saved.getExternalPlaceId())) {
+        savedProviderKeys.add(saved.getProvider() + "::" + saved.getExternalPlaceId());
+      }
+      if (saved.getPlaceType() != null && StringUtils.hasText(saved.getPlaceName())) {
+        savedNameTypeKeys.add(saved.getPlaceName().toLowerCase(Locale.ROOT) + "::" + saved.getPlaceType().name());
+      }
+      if (saved.getCategory() != null && StringUtils.hasText(saved.getPlaceName())) {
+        savedNameCategoryKeys.add(saved.getPlaceName().toLowerCase(Locale.ROOT) + "::" + saved.getCategory().name());
+      }
     }
 
     if (!savedPlaces.isEmpty()) {
@@ -379,23 +463,34 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   // --- Private helpers ---
 
   private boolean isBulkDuplicate(ProjectConnectivityPlaceUpsertRequest req,
-                                   Set<String> savedProviderKeys, Set<String> savedNameTypeKeys) {
+                                   ProjectConnectivityCategory category,
+                                   Set<String> savedProviderKeys,
+                                   Set<String> savedNameTypeKeys,
+                                   Set<String> savedNameCategoryKeys) {
     if (StringUtils.hasText(req.getProvider()) && StringUtils.hasText(req.getExternalPlaceId())) {
       return savedProviderKeys.contains(req.getProvider() + "::" + req.getExternalPlaceId());
     }
     if (req.getPlaceType() != null && StringUtils.hasText(req.getPlaceName())) {
-      return savedNameTypeKeys.contains(req.getPlaceName().toLowerCase() + "::" + req.getPlaceType().name());
+      return savedNameTypeKeys.contains(req.getPlaceName().toLowerCase(Locale.ROOT) + "::" + req.getPlaceType().name());
+    }
+    if (category != null && StringUtils.hasText(req.getPlaceName())) {
+      return savedNameCategoryKeys.contains(req.getPlaceName().toLowerCase(Locale.ROOT) + "::" + category.name());
     }
     return false;
   }
 
   private boolean isAlreadySaved(NearbyPlaceProviderResult result,
-                                  Set<String> savedProviderKeys, Set<String> savedNameTypeKeys) {
+                                  Set<String> savedProviderKeys,
+                                  Set<String> savedNameTypeKeys,
+                                  Set<String> savedNameCategoryKeys) {
     if (StringUtils.hasText(result.getProvider()) && StringUtils.hasText(result.getExternalPlaceId())) {
       return savedProviderKeys.contains(result.getProvider() + "::" + result.getExternalPlaceId());
     }
     if (result.getPlaceType() != null && StringUtils.hasText(result.getPlaceName())) {
-      return savedNameTypeKeys.contains(result.getPlaceName().toLowerCase() + "::" + result.getPlaceType().name());
+      return savedNameTypeKeys.contains(result.getPlaceName().toLowerCase(Locale.ROOT) + "::" + result.getPlaceType().name());
+    }
+    if (result.getCategory() != null && StringUtils.hasText(result.getPlaceName())) {
+      return savedNameCategoryKeys.contains(result.getPlaceName().toLowerCase(Locale.ROOT) + "::" + result.getCategory().name());
     }
     return false;
   }
@@ -420,7 +515,10 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   }
 
   private ConnectivityProviderCategoryMetaResponse meta(
-      ProjectConnectivityCategory category, String defaultQuery, int defaultRadiusMeters
+      ProjectConnectivityCategory category,
+      String defaultQuery,
+      int defaultRadiusMeters,
+      ConnectivityProviderCategoryMetaResponse.QueryPreset... queries
   ) {
     return ConnectivityProviderCategoryMetaResponse.builder()
         .category(category)
@@ -428,7 +526,52 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
         .iconKey(category.iconKey())
         .defaultQuery(defaultQuery)
         .defaultRadiusMeters(defaultRadiusMeters)
+        .queries(List.of(queries))
         .build();
+  }
+
+  private ConnectivityProviderCategoryMetaResponse.QueryPreset preset(String placeType, String label, String keyword) {
+    return ConnectivityProviderCategoryMetaResponse.QueryPreset.builder()
+        .placeType(placeType)
+        .label(label)
+        .keyword(keyword)
+        .build();
+  }
+
+  private String defaultQueryFor(ProjectConnectivityCategory category, com.brandPitara.sfs.project.enums.ProjectConnectivityType placeType) {
+    if (placeType != null) {
+      return placeType.toLabel();
+    }
+    if (category == null) {
+      return "nearby places";
+    }
+    return switch (category) {
+      case TRANSIT -> "metro station bus stop railway station";
+      case SCHOOLS -> "school";
+      case COLLEGES -> "college university";
+      case HOSPITALS -> "hospital clinic";
+      case PARKS -> "park";
+      case RETAIL -> "retail shop market";
+      case MALLS -> "shopping mall";
+      case GYMS -> "gym fitness center";
+      case OFFICES -> "IT park business park office hub";
+      case RESTAURANTS -> "restaurant cafe";
+      case BANKS -> "bank ATM";
+      case DAILY_NEEDS -> "supermarket grocery store pharmacy";
+      case SAFETY -> "police station fire station";
+      case LIFESTYLE -> "temple landmark";
+      case SEARCH -> "nearby places";
+    };
+  }
+
+  private String firstText(String... values) {
+    if (values == null) return null;
+    for (String value : values) {
+      if (StringUtils.hasText(value)) {
+        return value.trim();
+      }
+    }
+    return null;
   }
 
   private String formatDistance(Integer meters) {

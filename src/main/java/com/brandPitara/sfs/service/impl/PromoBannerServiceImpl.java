@@ -55,6 +55,8 @@ public class PromoBannerServiceImpl implements PromoBannerService {
     private PromoBannerResponse toResponse(PromoBannerEntity b,
                                           String categoryName,
                                           String categorySlug) {
+        String mediaType = b.getMediaType() != null ? b.getMediaType() : "IMAGE";
+        String mediaUrl  = "IMAGE".equals(mediaType) ? b.getImageUrl() : b.getMediaUrl();
         return PromoBannerResponse.builder()
                 .id(b.getId())
                 .categoryId(b.getCategory().getId())
@@ -63,6 +65,9 @@ public class PromoBannerServiceImpl implements PromoBannerService {
                 .title(b.getTitle())
                 .subtitle(b.getSubtitle())
                 .imageUrl(b.getImageUrl())
+                .mediaType(mediaType)
+                .mediaUrl(mediaUrl)
+                .displayDurationMs(b.getDisplayDurationMs())
                 .targetUrl(b.getTargetUrl())
                 .priority(b.getPriority())
                 .active(b.getActive())

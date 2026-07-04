@@ -25,7 +25,7 @@ public class BuilderCredibilityCardsSectionLoader implements HomeSectionLoader {
 
   @Override
   public HomeSectionDto<?> load(HomeSectionConfigEntity cfg, SectionContext ctx) {
-    int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 12);
+    int limit = Math.min(Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 8), 10);
 
     List<BuilderCredibilityCardResponse> cards =
         builderCredibilityService.publicListCredibilityCards(ctx.cityId(), limit);
@@ -38,6 +38,7 @@ public class BuilderCredibilityCardsSectionLoader implements HomeSectionLoader {
         .type(HomeSectionType.BUILDER_CREDIBILITY_CARDS)
         .key("BUILDER_CREDIBILITY_CARDS")
         .title(cfg.getTitle() != null ? cfg.getTitle() : "Trusted Builders")
+        .subtitle(cfg.getSubtitle())
         .items(cards)
         .build();
   }

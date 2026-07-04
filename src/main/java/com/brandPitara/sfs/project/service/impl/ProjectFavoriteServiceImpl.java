@@ -1,10 +1,16 @@
 package com.brandPitara.sfs.project.service.impl;
 
+import com.brandPitara.sfs.builder.dto.BuilderProjectCardDto;
+import com.brandPitara.sfs.dbsearch.dto.SearchEntityType;
+import com.brandPitara.sfs.dbsearch.dto.SearchItemDto;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.entity.UserFavoriteEntity;
 import com.brandPitara.sfs.enums.FavoriteTargetType;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.home.dto.GenericCardDto;
+import com.brandPitara.sfs.home.enums.HomeSectionItemType;
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
+import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
 import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -13,6 +19,7 @@ import com.brandPitara.sfs.project.mapper.ProjectMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
+import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -229,6 +236,133 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
             Long id = card.getId();
             card.setFavoriteCount(countMap.getOrDefault(id, 0L));
             card.setIsFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichNearbyListingCards(List<ProjectNearbyListingCardDto> cards) {
+        if (cards == null || cards.isEmpty()) return;
+
+        List<Long> projectIds = cards.stream()
+                .map(ProjectNearbyListingCardDto::getProjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (ProjectNearbyListingCardDto card : cards) {
+            Long id = card.getProjectId();
+            card.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            card.setIsFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichProjectMeterCards(List<ProjectMeterCardResponse> cards) {
+        if (cards == null || cards.isEmpty()) return;
+
+        List<Long> projectIds = cards.stream()
+                .map(ProjectMeterCardResponse::getProjectId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (ProjectMeterCardResponse card : cards) {
+            Long id = card.getProjectId();
+            card.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            card.setIsFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichBuilderProjectCards(List<BuilderProjectCardDto> cards) {
+        if (cards == null || cards.isEmpty()) return;
+
+        List<Long> projectIds = cards.stream()
+                .map(BuilderProjectCardDto::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (BuilderProjectCardDto card : cards) {
+            Long id = card.getId();
+            card.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            card.setFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichSearchProjectItems(List<SearchItemDto> items) {
+        if (items == null || items.isEmpty()) return;
+
+        List<Long> projectIds = items.stream()
+                .filter(item -> item.getEntityType() == SearchEntityType.PROJECT)
+                .map(SearchItemDto::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (SearchItemDto item : items) {
+            if (item.getEntityType() != SearchEntityType.PROJECT) {
+                item.setFavoriteCount(0L);
+                item.setFavorite(false);
+                continue;
+            }
+            Long id = item.getId();
+            item.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            item.setFavorite(favoritedIds.contains(id));
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void enrichGenericProjectCards(List<GenericCardDto> cards) {
+        if (cards == null || cards.isEmpty()) return;
+
+        List<Long> projectIds = cards.stream()
+                .filter(card -> card.getItemType() == HomeSectionItemType.PROJECT)
+                .map(GenericCardDto::getRefId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (projectIds.isEmpty()) return;
+
+        Map<Long, Long> countMap = buildFavoriteCountMap(projectIds);
+        Set<Long> favoritedIds = buildFavoritedIdSet(projectIds);
+
+        for (GenericCardDto card : cards) {
+            if (card.getItemType() != HomeSectionItemType.PROJECT) {
+                card.setFavoriteCount(0L);
+                card.setFavorite(false);
+                continue;
+            }
+            Long id = card.getRefId();
+            card.setFavoriteCount(countMap.getOrDefault(id, 0L));
+            card.setFavorite(favoritedIds.contains(id));
         }
     }
 

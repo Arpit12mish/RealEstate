@@ -8,6 +8,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenityItemResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenitiesResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectApprovalsResponse;
@@ -81,6 +82,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private final ProjectAmenityProgressRepository projectAmenityProgressRepository;
     private final ProjectMediaRepository projectMediaRepository;
     private final BuilderCredibilityService builderCredibilityService;
+    private final ProjectFavoriteService projectFavoriteService;
 
     @Override
     @Transactional(readOnly = true)
@@ -730,10 +732,16 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
         final var finalSnapshotMap = snapshotMap;
         final var finalMediaMap = mediaMap;
 
-        return page.map(project -> ProjectMeterMapper.toCardResponse(
-            project,
-            finalSnapshotMap.get(project.getId()),
-            finalMediaMap.getOrDefault(project.getId(), java.util.List.of())
-        ));
+        List<ProjectMeterCardResponse> cards = page.getContent().stream()
+            .map(project -> ProjectMeterMapper.toCardResponse(
+                project,
+                finalSnapshotMap.get(project.getId()),
+                finalMediaMap.getOrDefault(project.getId(), java.util.List.of())
+            ))
+            .toList();
+
+        projectFavoriteService.enrichProjectMeterCards(cards);
+
+        return new org.springframework.data.domain.PageImpl<>(cards, pageable, page.getTotalElements());
     }
 }

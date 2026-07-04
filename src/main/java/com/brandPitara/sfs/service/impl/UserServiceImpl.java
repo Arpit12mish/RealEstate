@@ -6,12 +6,16 @@ import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.UserService;
 import com.brandPitara.sfs.service.model.UserLoginResult;
+import com.brandPitara.sfs.util.PhoneNumberNormalizer;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -24,32 +28,41 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public UserLoginResult findOrCreateVerifiedUserByPhone(String phoneNumber) {
+        String normalizedPhone = PhoneNumberNormalizer.normalize(phoneNumber);
+        List<User> matchingUsers = userRepository.findByPhoneNumberIn(
+                PhoneNumberNormalizer.equivalentLookupValues(normalizedPhone)
+        );
 
-        return userRepository.findByPhoneNumber(phoneNumber)
-                .map(existing -> {
-                    // 🔁 RETURNING USER (re-login)
-                    existing.setVerified(true);
-                    existing.setLastLoginAt(OffsetDateTime.now());
-                    User saved = userRepository.save(existing);
-                    return new UserLoginResult(saved, false);  // newUser = false
-                })
-                .orElseGet(() -> {
-                    // 🆕 NEW USER
-                    String digitsOnly = phoneNumber.replaceAll("\\D", "");
-                    String syntheticEmail = "phone_" + digitsOnly + "@phone.local";
+        if (matchingUsers.size() > 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Multiple accounts found for this phone number. Please contact support."
+            );
+        }
 
-                    User user = new User();
-                    user.setEmail(syntheticEmail);
-                    user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
-                    user.setPhoneNumber(phoneNumber);
-                    user.setVerified(true);
-                    user.setRole(Role.CUSTOMER);
-                    user.setOnboardingStatus(OnboardingStatus.ROLE_PENDING);
-                    user.setLastLoginAt(OffsetDateTime.now());
-                    // createdAt is set automatically via @CreationTimestamp
+        if (!matchingUsers.isEmpty()) {
+            User existing = matchingUsers.get(0);
 
-                    User saved = userRepository.save(user);
-                    return new UserLoginResult(saved, true);   // newUser = true
-                });
+            existing.setVerified(true);
+            existing.setPhoneNumber(normalizedPhone);
+            existing.setLastLoginAt(OffsetDateTime.now());
+            User saved = userRepository.save(existing);
+            return new UserLoginResult(saved, false);
+        }
+
+        String digitsOnly = normalizedPhone.replaceAll("\\D", "");
+        String syntheticEmail = "phone_" + digitsOnly + "@phone.local";
+
+        User user = new User();
+        user.setEmail(syntheticEmail);
+        user.setPassword(passwordEncoder.encode(UUID.randomUUID().toString()));
+        user.setPhoneNumber(normalizedPhone);
+        user.setVerified(true);
+        user.setRole(Role.CUSTOMER);
+        user.setOnboardingStatus(OnboardingStatus.ROLE_PENDING);
+        user.setLastLoginAt(OffsetDateTime.now());
+
+        User saved = userRepository.save(user);
+        return new UserLoginResult(saved, true);
     }
 }

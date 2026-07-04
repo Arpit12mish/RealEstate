@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.project.dto;
 
 import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
+import com.brandPitara.sfs.project.enums.ProjectConnectivityType;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
@@ -14,11 +15,19 @@ public class ConnectivityProviderSearchRequest {
   @NotNull
   private ProjectConnectivityCategory category;
 
-  @NotBlank
   @Size(max = 120)
   private String query;
 
-  @Min(100)
+  @Size(max = 120)
+  private String keyword;
+
+  private ProjectConnectivityType placeType;
+
+  @Min(500)
   @Max(50000)
   private Integer radiusMeters;
+
+  @Min(1)
+  @Max(50)
+  private Integer limit;
 }

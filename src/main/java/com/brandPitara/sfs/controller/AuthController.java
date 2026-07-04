@@ -24,6 +24,8 @@ import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.RefreshTokenService;
 import com.brandPitara.sfs.service.UserService;
+import com.brandPitara.sfs.service.model.OtpVerificationResult;
+import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import com.brandPitara.sfs.service.model.UserLoginResult;
 import com.brandPitara.sfs.util.JwtTokenUtil;
 
@@ -65,9 +67,9 @@ public class AuthController {
     public ResponseEntity<?> verifyOtp(@Valid @RequestBody VerifyOtpRequest request, HttpServletRequest httpRequest) {
 
         log.debug("verify-otp requested for deviceId={}", request.getDeviceId());
-        boolean ok = otpService.verifyOtp(request.getPhoneNumber(), request.getCode());
+        OtpVerificationResult verification = otpService.verifyOtp(request.getPhoneNumber(), request.getCode());
 
-        if (!ok) {
+        if (!verification.isApproved()) {
             loginHistoryService.recordLogin(null, "OTP", false, request.getDeviceId(),
                     request.getFcmToken(), httpRequest);
 
@@ -75,7 +77,7 @@ public class AuthController {
         }
 
         // Find or create user
-        UserLoginResult loginResult = userService.findOrCreateVerifiedUserByPhone(request.getPhoneNumber());
+        UserLoginResult loginResult = userService.findOrCreateVerifiedUserByPhone(verification.getNormalizedPhoneNumber());
 
         User user = loginResult.getUser();
         boolean isNewUser = loginResult.isNewUser();
@@ -124,18 +126,18 @@ public class AuthController {
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(@Valid @RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
 
-        RefreshToken rt;
+        RefreshTokenRotationResult rotation;
         try {
-            rt = refreshTokenService.verifyAndGet(request.getRefreshToken());
+            rotation = refreshTokenService.rotateRefreshToken(request.getRefreshToken());
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(Map.of("error", "INVALID_REFRESH_TOKEN"));
         }
 
-        User user = rt.getUser();
+        User user = rotation.getUser();
         UserDetails userDetails = userDetailsService.loadUserByUsername(user.getPhoneNumber());
 
         loginHistoryService.recordLogin(
-            user, "REFRESH", true, rt.getDeviceId(), rt.getFcmToken(), httpRequest
+            user, "REFRESH", true, rotation.getDeviceId(), rotation.getFcmToken(), httpRequest
         );
 
         String newAccessToken = jwtTokenUtil.generateToken(
@@ -145,12 +147,9 @@ public class AuthController {
                 user.getRole().name()
         );
 
-        refreshTokenService.revokeToken(request.getRefreshToken());
-        String newRawRefreshToken = refreshTokenService.createRefreshToken(user, rt.getDeviceId(), rt.getFcmToken());
-
         return ResponseEntity.ok(Map.of(
                 "accessToken", newAccessToken,
-                "refreshToken", newRawRefreshToken
+                "refreshToken", rotation.getRefreshToken()
         ));
     }
 
@@ -166,7 +165,7 @@ public class AuthController {
     public ResponseEntity<?> logoutAll(@Valid @RequestBody LogoutRequest request) {
         RefreshToken rt;
         try {
-            rt = refreshTokenService.verifyAndGet(request.getRefreshToken());
+            rt = refreshTokenService.verifyForLogoutOnly(request.getRefreshToken());
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(401).body(Map.of("error", "INVALID_REFRESH_TOKEN"));
         }

@@ -24,6 +24,7 @@ Each endpoint below lists which roles are permitted in the **Access** column.
 1. [Authentication](#1-authentication)
 2. [Overview (Dashboard Home)](#2-overview-dashboard-home)
 3. [Builders](#3-builders)
+   - [Builder Highlights](#37-builder-highlights)
 4. [Projects](#4-projects)
    - [Core Project Data](#41-core-project-data)
    - [Project Media](#42-project-media)
@@ -313,6 +314,447 @@ DELETE /api/dashboard/builders/{builderId}
 **Access:** A
 
 Soft delete — builder is marked as deleted and hidden from all APIs.
+
+---
+
+### 3.7 Builder Highlights
+
+Builder Highlight is the active dashboard module for publishing builder updates, social impact stories, news/articles, and SFS analysis. It replaces Builder Improvement going forward.
+
+> **Legacy note:** Builder Improvement is legacy/read-only. Builder Highlight is the replacement module going forward. Do not remove old Builder Improvement documentation or public compatibility endpoints while older clients may still depend on them.
+
+**Dashboard base path:** `/api/dashboard/builders/{builderId}/highlights`
+
+**Public base path:** `/api/builders/{builderId}/highlights`
+
+**Public visibility rule:** Public APIs return only records where:
+
+```
+status = PUBLISHED
+publicVisible = true
+active = true
+deletedAt IS NULL
+```
+
+#### Access Rules
+
+| Role | Access |
+|------|--------|
+| `ADMIN` | Full access: create, update, list, read, publish/status change, delete |
+| `DATA_ENTRY` | Create/update draft content, list/read |
+| `REVIEWER` | List/read, status approval if backend permits |
+| Delete | `ADMIN` only |
+
+#### Dashboard Endpoints
+
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| `POST` | `/api/dashboard/builders/{builderId}/highlights` | A, DE | Create a highlight item |
+| `PUT` | `/api/dashboard/builders/{builderId}/highlights/{itemId}` | A, DE | Update a highlight item |
+| `GET` | `/api/dashboard/builders/{builderId}/highlights` | A, R, DE | List highlight items |
+| `GET` | `/api/dashboard/builders/{builderId}/highlights/{itemId}` | A, R, DE | Get highlight item detail |
+| `DELETE` | `/api/dashboard/builders/{builderId}/highlights/{itemId}` | A | Soft delete a highlight item |
+| `PATCH` | `/api/dashboard/builders/{builderId}/highlights/{itemId}/status` | A, R, DE* | Change workflow status |
+| `PATCH` | `/api/dashboard/builders/{builderId}/highlights/{itemId}/published?value=true` | A, R | Publish or archive item |
+
+`*` DATA_ENTRY cannot publish content. Use `DRAFT` or `PENDING_REVIEW` for data-entry workflow.
+
+#### Public Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/builders/{builderId}/highlights` | Composite Builder Highlights screen |
+| `GET` | `/api/builders/{builderId}/highlights/items?type=NEWS_ARTICLE&page=0&size=10` | Paginated See All list for one section |
+| `GET` | `/api/builders/{builderId}/highlights/items/{itemId}` | Public detail for a visible item |
+
+#### Dashboard List Query Params
+
+```
+GET /api/dashboard/builders/{builderId}/highlights?type=NEWS_ARTICLE&status=PUBLISHED&page=0&size=20
+```
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | enum | ❌ | Filter by `highlightType` |
+| `status` | enum | ❌ | Filter by workflow status |
+| `page` | number | ❌ | Page index, default `0` |
+| `size` | number | ❌ | Page size, capped by backend |
+
+#### Create / Update Request Body
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `projectId` | number | ❌ | Optional project related to this highlight |
+| `cityId` | number | ❌ | Optional city/area related to this highlight |
+| `highlightType` | enum | ✅ | Section/category of the highlight |
+| `sourceType` | enum | ✅ | Source of the information |
+| `mediaType` | enum | ✅ | Primary media/opening behavior |
+| `title` | string | ✅ | Main title |
+| `subtitle` | string | ❌ | Short supporting line |
+| `summary` | string | ❌ | Short summary for cards/detail |
+| `body` | string | ❌ | Full body/editorial text |
+| `tagLabel` | string | ❌ | UI chip label |
+| `tagType` | string | ❌ | UI chip style/type key |
+| `thumbnailUrl` | string | ❌ | Card thumbnail URL |
+| `imageUrl` | string | ❌ | Main image URL |
+| `videoUrl` | string | ❌ | Video URL or YouTube URL fallback |
+| `youtubeVideoId` | string | ❌ | YouTube video ID; required for `YOUTUBE` if `videoUrl` is absent |
+| `externalUrl` | string | Conditional | Required when `mediaType = WEBVIEW` |
+| `webviewEnabled` | boolean | ❌ | Mobile should open `externalUrl` in WebView |
+| `publisherName` | string | Conditional | Required for `NEWS_ARTICLE` + `EXTERNAL_NEWS` |
+| `authorLabel` | string | ❌ | Author/editorial label |
+| `readTimeMinutes` | number | ❌ | Must be `>= 0` |
+| `publishedAt` | datetime | ❌ | Publish/article date |
+| `featured` | boolean | ❌ | Featured items sort first publicly |
+| `verified` | boolean | ❌ | Whether SFS verified this item |
+| `publicVisible` | boolean | ❌ | Defaults false for drafts; true required for public APIs |
+| `active` | boolean | ❌ | Defaults true |
+| `sortOrder` | number | ❌ | Must be `>= 0`; lower sorts earlier |
+| `status` | enum | ❌ | Defaults `DRAFT` |
+| `points` | array | ❌ | Supporting points for analysis, advantages, impact metrics, etc. |
+
+#### Point Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `pointType` | enum | ✅ | Type of point |
+| `title` | string | ❌ | Point title |
+| `text` | string | ❌ | Point text |
+| `iconKey` | string | ❌ | Optional UI icon key |
+| `displayOrder` | number | ❌ | Must be `>= 0` |
+| `active` | boolean | ❌ | Defaults true |
+
+#### Enums
+
+**`highlightType`**
+
+| Value | Meaning |
+|-------|---------|
+| `BUILDER_UPDATE` | Builder/project updates, launches, official announcements |
+| `SOCIAL_IMPACT` | CSR, donations, education support, welfare, sustainability |
+| `NEWS_ARTICLE` | SFS or external public articles |
+| `SFS_ANALYSIS` | SFS editorial/video analysis |
+
+**`sourceType`**
+
+| Value |
+|-------|
+| `BUILDER_OFFICIAL` |
+| `SFS_EDITORIAL` |
+| `EXTERNAL_NEWS` |
+| `SOCIAL_MEDIA` |
+| `OTHER` |
+
+**`mediaType`**
+
+| Value | Notes |
+|-------|-------|
+| `IMAGE` | Image-led item |
+| `VIDEO` | Video URL item |
+| `YOUTUBE` | Requires `youtubeVideoId` or `videoUrl` |
+| `WEBVIEW` | Requires `externalUrl` |
+| `NONE` | Text-only item |
+
+**`status`**
+
+| Value | Public? |
+|-------|---------|
+| `DRAFT` | No |
+| `PENDING_REVIEW` | No |
+| `PUBLISHED` | Yes, only when public visibility rule is satisfied |
+| `ARCHIVED` | No |
+
+**`pointType`**
+
+| Value |
+|-------|
+| `ADVANTAGE` |
+| `DISADVANTAGE` |
+| `SUMMARY` |
+| `IMPACT_METRIC` |
+| `KEY_TAKEAWAY` |
+
+#### Status Update
+
+```
+PATCH /api/dashboard/builders/{builderId}/highlights/{itemId}/status
+```
+
+```json
+{
+  "status": "PENDING_REVIEW",
+  "publicVisible": false
+}
+```
+
+#### Publish / Archive
+
+```
+PATCH /api/dashboard/builders/{builderId}/highlights/{itemId}/published?value=true
+```
+
+Use `value=true` to publish and make visible. Use `value=false` to archive/hide.
+
+#### Response Shape
+
+Dashboard list/detail and public item detail return `BuilderHighlightItemResponse`.
+
+```json
+{
+  "id": 501,
+  "builderId": 7,
+  "projectId": 42,
+  "projectName": "M3M Jewel",
+  "cityId": 1,
+  "cityName": "Gurugram",
+  "highlightType": "NEWS_ARTICLE",
+  "sourceType": "EXTERNAL_NEWS",
+  "mediaType": "WEBVIEW",
+  "title": "M3M announces new commercial launch",
+  "subtitle": "Sector 113 update",
+  "summary": "A short summary shown on cards.",
+  "body": "Long-form body shown on the detail screen when applicable.",
+  "tagLabel": "News",
+  "tagType": "INFO",
+  "thumbnailUrl": "https://cdn.example.com/builders/7/highlights/thumb.webp",
+  "imageUrl": null,
+  "videoUrl": null,
+  "youtubeVideoId": null,
+  "externalUrl": "https://publisher.example.com/article",
+  "webviewEnabled": true,
+  "publisherName": "Economic Times",
+  "authorLabel": "Editorial Desk",
+  "readTimeMinutes": 4,
+  "publishedAt": "2026-07-02T10:30:00+05:30",
+  "featured": true,
+  "verified": true,
+  "publicVisible": true,
+  "active": true,
+  "sortOrder": 0,
+  "status": "PUBLISHED",
+  "createdBy": 11,
+  "updatedBy": 11,
+  "approvedBy": 3,
+  "approvedAt": "2026-07-02T11:00:00+05:30",
+  "createdAt": "2026-07-02T10:00:00+05:30",
+  "updatedAt": "2026-07-02T11:00:00+05:30",
+  "deletedAt": null,
+  "points": []
+}
+```
+
+#### Public Composite Response
+
+```
+GET /api/builders/{builderId}/highlights
+```
+
+```json
+{
+  "builder": {
+    "id": 7,
+    "name": "M3M Group",
+    "logoUrl": "https://cdn.example.com/builders/m3m.webp",
+    "credibilityScore": 54,
+    "credibilityLabel": "Needs Caution"
+  },
+  "sections": [
+    {
+      "type": "BUILDER_UPDATE",
+      "title": "Builder Updates",
+      "subtitle": "Official words from builder",
+      "items": []
+    },
+    {
+      "type": "SOCIAL_IMPACT",
+      "title": "Social Impact",
+      "subtitle": "Corporate responsibility",
+      "items": []
+    },
+    {
+      "type": "NEWS_ARTICLE",
+      "title": "News & Articles",
+      "subtitle": "Press & editorial",
+      "items": []
+    },
+    {
+      "type": "SFS_ANALYSIS",
+      "title": "SFS Builder Analysis",
+      "subtitle": "Financial and trust highlights",
+      "items": []
+    }
+  ]
+}
+```
+
+#### Example 1: Builder Update
+
+```json
+{
+  "projectId": 42,
+  "cityId": 1,
+  "highlightType": "BUILDER_UPDATE",
+  "sourceType": "BUILDER_OFFICIAL",
+  "mediaType": "IMAGE",
+  "title": "New phase launched in Sector 113",
+  "subtitle": "Official launch update",
+  "summary": "Builder has announced a new project phase in Gurugram.",
+  "body": "Use this space for the official announcement summary and SFS context.",
+  "tagLabel": "Launch",
+  "tagType": "INFO",
+  "thumbnailUrl": "https://cdn.example.com/builders/7/highlights/launch-thumb.webp",
+  "imageUrl": "https://cdn.example.com/builders/7/highlights/launch.webp",
+  "readTimeMinutes": 2,
+  "publishedAt": "2026-07-02T10:30:00+05:30",
+  "featured": true,
+  "verified": true,
+  "publicVisible": false,
+  "active": true,
+  "sortOrder": 0,
+  "status": "DRAFT",
+  "points": []
+}
+```
+
+**Example response:** returns `BuilderHighlightItemResponse` with generated `id`, audit fields, timestamps, and `status: "DRAFT"`.
+
+#### Example 2: Social Impact
+
+```json
+{
+  "cityId": 1,
+  "highlightType": "SOCIAL_IMPACT",
+  "sourceType": "BUILDER_OFFICIAL",
+  "mediaType": "IMAGE",
+  "title": "Tree plantation drive near Dwarka Expressway",
+  "subtitle": "Sustainability initiative",
+  "summary": "The builder supported a local tree plantation and cleanliness drive.",
+  "body": "Include verified details about scope, partner NGO, location, and dates.",
+  "tagLabel": "CSR",
+  "tagType": "SUCCESS",
+  "thumbnailUrl": "https://cdn.example.com/builders/7/highlights/tree-drive-thumb.webp",
+  "imageUrl": "https://cdn.example.com/builders/7/highlights/tree-drive.webp",
+  "verified": true,
+  "publicVisible": false,
+  "sortOrder": 1,
+  "status": "DRAFT",
+  "points": [
+    {
+      "pointType": "IMPACT_METRIC",
+      "title": "Trees planted",
+      "text": "500 saplings planted with community participation.",
+      "iconKey": "tree",
+      "displayOrder": 0,
+      "active": true
+    }
+  ]
+}
+```
+
+#### Example 3: News Article with WebView
+
+```json
+{
+  "highlightType": "NEWS_ARTICLE",
+  "sourceType": "EXTERNAL_NEWS",
+  "mediaType": "WEBVIEW",
+  "title": "M3M reports leasing momentum in Gurugram portfolio",
+  "subtitle": "External coverage",
+  "summary": "External article covering recent leasing activity.",
+  "tagLabel": "External News",
+  "tagType": "NEWS",
+  "thumbnailUrl": "https://cdn.example.com/builders/7/highlights/news-thumb.webp",
+  "externalUrl": "https://publisher.example.com/real-estate/m3m-leasing-update",
+  "webviewEnabled": true,
+  "publisherName": "Realty News Network",
+  "authorLabel": "Realty Desk",
+  "readTimeMinutes": 5,
+  "publishedAt": "2026-07-01T09:00:00+05:30",
+  "featured": false,
+  "verified": true,
+  "publicVisible": false,
+  "active": true,
+  "sortOrder": 2,
+  "status": "DRAFT",
+  "points": []
+}
+```
+
+Mobile should open `externalUrl` in WebView when `mediaType = WEBVIEW` and `webviewEnabled = true`.
+
+#### Example 4: SFS Analysis with YouTube and Considerations
+
+```json
+{
+  "highlightType": "SFS_ANALYSIS",
+  "sourceType": "SFS_EDITORIAL",
+  "mediaType": "YOUTUBE",
+  "title": "SFS analysis: M3M execution and buyer trust signals",
+  "subtitle": "Video analysis",
+  "summary": "SFS editorial view on builder strengths, risks, and buyer considerations.",
+  "body": "Summarize the video and add editorial context here.",
+  "tagLabel": "SFS Analysis",
+  "tagType": "SFS",
+  "thumbnailUrl": "https://cdn.example.com/builders/7/highlights/analysis-thumb.webp",
+  "youtubeVideoId": "dQw4w9WgXcQ",
+  "authorLabel": "SFS Editorial",
+  "readTimeMinutes": 7,
+  "publishedAt": "2026-07-02T12:00:00+05:30",
+  "featured": true,
+  "verified": true,
+  "publicVisible": false,
+  "active": true,
+  "sortOrder": 0,
+  "status": "DRAFT",
+  "points": [
+    {
+      "pointType": "SUMMARY",
+      "title": "Video summary",
+      "text": "The video reviews delivery patterns, compliance signals, and buyer-facing communication.",
+      "iconKey": "video",
+      "displayOrder": 0,
+      "active": true
+    },
+    {
+      "pointType": "ADVANTAGE",
+      "title": "Advantage",
+      "text": "Large active portfolio and visible commercial leasing traction.",
+      "iconKey": "check",
+      "displayOrder": 1,
+      "active": true
+    },
+    {
+      "pointType": "DISADVANTAGE",
+      "title": "Consideration",
+      "text": "Buyers should still verify project-level approvals, possession timelines, and maintenance commitments.",
+      "iconKey": "alert",
+      "displayOrder": 2,
+      "active": true
+    },
+    {
+      "pointType": "KEY_TAKEAWAY",
+      "title": "SFS takeaway",
+      "text": "Builder highlight is editorial/contextual; use Builder Credibility for tracked performance trust scoring.",
+      "iconKey": "sparkles",
+      "displayOrder": 3,
+      "active": true
+    }
+  ]
+}
+```
+
+#### Builder Credibility Card Integration
+
+Existing Builder Credibility card responses now include:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `highlightsAvailable` | boolean | `true` when at least one public Builder Highlight item exists for the builder |
+| `highlightCtaLabel` | string | Defaults to `"Highlights"` |
+
+Frontend usage:
+1. If `highlightsAvailable = true`, show the Highlights button on the Builder Credibility card.
+2. On click, open the Builder Highlights screen with `GET /api/builders/{builderId}/highlights`.
 
 ---
 
@@ -722,6 +1164,67 @@ DELETE /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}
 ```
 
 **Access:** A only
+
+---
+
+### 4.4.1 Project Master Plan
+
+Master Plan is a project-level mobile detail section for site layout, towers, open spaces, and core layout stats. It is not part of Project Meter.
+
+**Base path:** `/api/dashboard/projects/{projectId}/master-plan`
+
+> **DATA_ENTRY permission exception:** Master Plan does not use the normal DATA_ENTRY project ownership/status edit restriction. DATA_ENTRY users can upload and update Master Plan data for any non-deleted project, including approved projects and projects they did not create. DATA_ENTRY users cannot activate/deactivate or delete Master Plan records. Basic details, media, floor plans, connectivity, meter, highlights, and other project sections still follow the standard DATA_ENTRY ownership/status editability policy.
+
+| Method | Path | Access | Description |
+|--------|------|--------|-------------|
+| GET | `/` | A, R, DE | Get current non-deleted master plan, or `null` if absent |
+| PUT | `/` | A, DE | Create or update the project master plan |
+| PATCH | `/active?active=true` | A | Toggle public/mobile visibility |
+| DELETE | `/` | A | Soft-delete the master plan |
+
+**PUT request body:**
+
+| Field | Type | Required | Constraints | Description |
+|-------|------|----------|-------------|-------------|
+| `title` | string | No | max 150 | Section title |
+| `subtitle` | string | No | max 300 | Section subtitle |
+| `description` | string | No | max 2000 | Optional public description |
+| `masterPlanImageUrl` | string | No | max 500 | URL from `MASTER_PLAN_IMAGE` upload |
+| `imageCaption` | string | No | max 300 | Caption below/near image |
+| `imageAltText` | string | No | max 300 | Accessibility text |
+| `totalUnits`, `totalTowers`, `totalFloors` | number | No | >= 0 | Core project counts |
+| `parkAreaValue`, `totalLandAreaValue`, `openSpaceAreaValue`, `greenAreaValue` | decimal | No | >= 0 | Area stats |
+| `parkAreaUnit`, `totalLandAreaUnit`, etc. | enum | No | `SQ_FT`, `SQ_MT`, `ACRE`, `HECTARE` | Area unit |
+| `waterSource` | string | No | max 120 | Free-text authority/source |
+| `parkingType` | enum | No | `OPEN`, `COVERED`, `BASEMENT`, `STILT`, `MECHANICAL`, `MIXED`, `NOT_DISCLOSED` | Parking layout |
+| `openSpacePercent`, `greenCoveragePercent` | decimal | No | 0-100 | Percent stats |
+| `verified` | boolean | No | — | Whether data is verified |
+| `sourceLabel` | string | No | max 180 | Public source label |
+| `sourceDocumentUrl` | string | No | max 500 | Dashboard/source document URL |
+| `remarks` | string | No | max 1000 | Dashboard-only notes |
+| `active` | boolean | No | — | Public/mobile visibility |
+
+**Example:**
+```json
+{
+  "title": "Master Plan",
+  "subtitle": "Site layout, towers & open spaces",
+  "masterPlanImageUrl": "https://cdn.example.com/projects/42/master-plan.webp",
+  "imageCaption": "Approved project master layout",
+  "totalUnits": 1520,
+  "parkAreaValue": 2.70,
+  "parkAreaUnit": "ACRE",
+  "totalTowers": 18,
+  "totalFloors": 19,
+  "waterSource": "BWSSB",
+  "parkingType": "BASEMENT",
+  "verified": true,
+  "sourceLabel": "Builder Disclosure",
+  "active": true
+}
+```
+
+**Response:** `ProjectMasterPlanResponse`, including a display-ready `stats[]` list. Public project detail omits dashboard-only fields such as `remarks`, `sourceDocumentUrl`, `active`, and internal IDs.
 
 ---
 
@@ -2619,10 +3122,10 @@ POST /api/dashboard/media/presign-upload
 | Field | Type | Required | Constraints | Description |
 |-------|------|----------|-------------|-------------|
 | `uploadType` | string (enum) | ✅ | See values below | What you're uploading |
-| `contentType` | string | ✅ | `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, or `application/pdf` | MIME type of the file |
+| `contentType` | string | ✅ | `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, `application/pdf`, `video/mp4`, or `application/json` | MIME type of the file |
 | `fileSizeBytes` | number | ✅ | ≥ 1 | File size in bytes (used for validation) |
 | `projectId` | number | ❌ | Required when uploadType is project-related | Project this upload belongs to |
-| `builderId` | number | ❌ | Required when uploadType is `BUILDER_LOGO` | Builder this logo belongs to |
+| `builderId` | number | ❌ | Required when uploadType is builder-related | Builder this upload belongs to |
 | `cityId` | number | ❌ | Required when uploadType is `CITY_COVER_IMAGE` | City this cover image belongs to |
 
 **`uploadType` values and when to use each:**
@@ -2631,10 +3134,28 @@ POST /api/dashboard/media/presign-upload
 |-------|-------------|---------------------|
 | `PROJECT_IMAGE` | Project gallery photos | `projectId` |
 | `FLOOR_PLAN_IMAGE` | Floor plan layout images | `projectId` |
+| `MASTER_PLAN_IMAGE` | Master plan/site layout image | `projectId` |
 | `CONNECTIVITY_MAP` | Location map image for connectivity section | `projectId` |
 | `BROCHURE_PDF` | Project brochure PDF | `projectId` |
 | `BUILDER_LOGO` | Builder's logo image | `builderId` |
+| `BUILDER_HIGHLIGHT_IMAGE` | Main Builder Highlight image | `builderId` |
+| `BUILDER_HIGHLIGHT_THUMBNAIL` | Builder Highlight card thumbnail | `builderId` |
+| `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | Thumbnail for SFS Builder Analysis video/YouTube item | `builderId` |
 | `CITY_COVER_IMAGE` | City/location cover image for homepage/trending city cards | `cityId` |
+
+`MASTER_PLAN_IMAGE` accepts only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, rejects PDFs, uses the current 2 MB image limit, and stores objects under `dashboard/projects/{projectId}/master-plan/{uuid}.{ext}`.
+
+Builder Highlight upload types accept only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, use the current image size limit, and store objects under:
+
+| Upload type | Storage key pattern |
+|-------------|---------------------|
+| `BUILDER_HIGHLIGHT_IMAGE` | `dashboard/builders/{builderId}/highlights/images/{uuid}.{ext}` |
+| `BUILDER_HIGHLIGHT_THUMBNAIL` | `dashboard/builders/{builderId}/highlights/thumbnails/{uuid}.{ext}` |
+| `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | `dashboard/builders/{builderId}/highlights/analysis-thumbnails/{uuid}.{ext}` |
+
+**Project upload permission rule:**
+- `MASTER_PLAN_IMAGE` follows the relaxed Master Plan permission rule: A and DE can presign for any non-deleted project.
+- Other project upload types (`PROJECT_IMAGE`, `FLOOR_PLAN_IMAGE`, `CONNECTIVITY_MAP`, `BROCHURE_PDF`) still use the original DATA_ENTRY ownership/status checks.
 
 **Example:**
 ```json
@@ -2945,6 +3466,7 @@ GET /api/dashboard/field-help?module=PROJECT_METER_CONSTRUCTION_STAGE
 | `PROJECT_FLOOR_PLAN` | Floor plan fields |
 | `PROJECT_HIGHLIGHT` | Highlight / USP fields |
 | `PROJECT_CONNECTIVITY` | Connectivity overview and places |
+| `PROJECT_MASTER_PLAN` | Master plan image, layout stats, source, and verification fields |
 | `PROJECT_METER_CONSTRUCTION_STAGE` | Construction stage form fields |
 | `PROJECT_METER_COMPLIANCE` | Compliance item fields |
 | `PROJECT_METER_AMENITY` | Amenity fields |
@@ -3785,6 +4307,18 @@ Returns three data blocks — `card`, `detail`, `meter` — matching exactly wha
     "amenities": {
       "completionPercent": 74,
       "groups": [ { "category": "LIFESTYLE", "categoryLabel": "Lifestyle & Convenience", "items": [] } ]
+    },
+    "masterPlan": {
+      "title": "Master Plan",
+      "subtitle": "Site layout, towers & open spaces",
+      "imageUrl": "https://cdn.example.com/projects/42/master-plan.webp",
+      "expandable": true,
+      "verified": true,
+      "sourceLabel": "Builder Disclosure",
+      "stats": [
+        { "key": "TOTAL_UNITS", "label": "Total Units", "value": "1520", "rawValue": 1520, "displayOrder": 10 },
+        { "key": "PARK_AREA", "label": "Park Area", "value": "2.7 Acres", "rawValue": 2.70, "unit": "ACRE", "displayOrder": 20 }
+      ]
     }
   },
   "meter": {
@@ -3876,6 +4410,7 @@ The `meta.warnings` list contains human-readable strings for the dashboard user.
 | `BROCHURE` | No brochure PDF uploaded |
 | `RERA_REGISTRATION` | `reraNumber` field is blank |
 | `FLOOR_PLANS` | No active floor plans |
+| `MASTER_PLAN` | No active usable master plan image/stats |
 | `AMENITIES` | No public-visible active amenities |
 | `CONSTRUCTION_PROGRESS` | No construction stages added |
 | `COMPLIANCE_ITEMS` | No land/license AND no approval/NOC items |
@@ -3921,6 +4456,7 @@ The `detail` block maps to the mobile project detail screen. Key nested objects:
 | Floor plans | `floorPlanGroups[].items` | Floor Plans section |
 | Glimpses | `glimpses[]` | Image gallery |
 | Amenities | `amenities.groups[]` | Amenities section |
+| Master Plan | `masterPlan.*` | Master Plan section |
 | Location | `location.*` | Location section |
 | Connectivity | `connectivity.*` | Connectivity section |
 
@@ -4194,12 +4730,18 @@ Result: snapshot fields set, appreciationPercent = 26.15.
 | Create Builder | ✅ | ❌ | ✅ |
 | Update Builder | ✅ | ❌ | ❌ |
 | Publish Builder | ✅ | ❌ | ❌ |
+| Builder Highlights (create/update draft) | ✅ | ❌ | ✅ |
+| Builder Highlights (list/read) | ✅ | ✅ | ✅ |
+| Builder Highlights (publish/status approval) | ✅ | ✅* | ❌ |
+| Builder Highlights (delete) | ✅ | ❌ | ❌ |
 | Create Project | ✅ | ❌ | ✅ |
 | Update Project | ✅ | ❌ | ✅ |
 | Publish Project | ✅ | ❌ | ❌ |
 | Delete Project | ✅ | ❌ | ❌ |
 | Add/Update Media | ✅ | ❌ | ✅ |
 | Delete Media | ✅ | ❌ | ❌ |
+| Add/Update Master Plan | ✅ | ❌ | ✅* |
+| Activate / Deactivate / Delete Master Plan | ✅ | ❌ | ❌ |
 | Add Highlights / Floor Plans / Connectivity | ✅ | ❌ | ✅ |
 | Delete Highlights / Floor Plans / Connectivity | ✅ | ❌ | ❌ |
 | Add/Update Meter Data | ✅ | ❌ | ✅ |
@@ -4232,6 +4774,10 @@ Result: snapshot fields set, appreciationPercent = 26.15.
 | Update Candidate Status / Link Builder | ✅ | ❌ | ✅ |
 | Apply Candidate to Project | ✅ | ❌ | ✅ |
 
+`*` Master Plan is the exception to normal DATA_ENTRY project editability: DATA_ENTRY can update Master Plan data and presign `MASTER_PLAN_IMAGE` for any non-deleted project. Other project edit sections and project upload types still use the standard ownership/status rule.
+
+`*` Builder Highlight reviewer status approval depends on backend workflow permission. Current publish endpoint allows `ADMIN` and `REVIEWER`; `DATA_ENTRY` should submit draft content for review rather than publish directly.
+
 ---
 
 ## Error Responses
@@ -4255,3 +4801,5 @@ All endpoints return standard error shapes:
 | `404` | Entity not found |
 | `409` | Conflict (e.g. duplicate slug) |
 | `500` | Server error — report to backend team |
+
+**Builder Highlight validation notes:** `400` can also be returned for cross-field rules, such as `mediaType = WEBVIEW` without `externalUrl`, `mediaType = YOUTUBE` without `youtubeVideoId` or `videoUrl`, external news without `publisherName`, negative `readTimeMinutes`/`sortOrder`, or a `projectId` that does not belong to the selected builder.

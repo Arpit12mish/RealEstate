@@ -4,9 +4,14 @@ import com.brandPitara.sfs.dashboard.audit.service.DashboardActionAuditService;
 import com.brandPitara.sfs.dashboard.common.enums.DashboardAuditAction;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewEntityType;
 import com.brandPitara.sfs.project.dto.ProjectConnectivityPlaceResponse;
+import com.brandPitara.sfs.project.dto.ProjectConnectivityPlaceBulkSaveResponse;
+import com.brandPitara.sfs.project.dto.ProjectConnectivityPlaceBulkUpsertRequest;
 import com.brandPitara.sfs.project.dto.ProjectConnectivityPlaceUpsertRequest;
 import com.brandPitara.sfs.project.dto.ProjectConnectivityResponse;
 import com.brandPitara.sfs.project.dto.ProjectConnectivityUpsertRequest;
+import com.brandPitara.sfs.project.dto.ConnectivityProviderCategoryMetaResponse;
+import com.brandPitara.sfs.project.dto.ConnectivityProviderSearchRequest;
+import com.brandPitara.sfs.project.dto.ConnectivityProviderSearchResponse;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.project.service.ProjectConnectivityService;
 import jakarta.validation.Valid;
@@ -99,6 +104,19 @@ public class DashboardProjectConnectivityController {
         return response;
     }
 
+    @PatchMapping("/{projectId}/connectivity/places/{placeId}/active")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public ProjectConnectivityPlaceResponse setPlaceActive(
+            @PathVariable Long projectId,
+            @PathVariable Long placeId,
+            @RequestParam boolean value
+    ) {
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+        ProjectConnectivityPlaceResponse response = projectConnectivityService.setPlaceActive(projectId, placeId, value);
+        dashboardActionAuditService.record(DashboardAuditAction.CONNECTIVITY_PLACE_UPDATED, ReviewEntityType.PROJECT_CONNECTIVITY_PLACE, placeId, projectId);
+        return response;
+    }
+
     /**
      * Only ADMIN can delete nearby place for now.
      */
@@ -110,5 +128,33 @@ public class DashboardProjectConnectivityController {
     ) {
         projectConnectivityService.softDeletePlace(projectId, placeId);
         dashboardActionAuditService.record(DashboardAuditAction.CONNECTIVITY_PLACE_DELETED, ReviewEntityType.PROJECT_CONNECTIVITY_PLACE, placeId, projectId);
+    }
+
+    @GetMapping("/connectivity/provider-categories")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public List<ConnectivityProviderCategoryMetaResponse> providerCategories() {
+        return projectConnectivityService.providerCategories();
+    }
+
+    @PostMapping("/{projectId}/connectivity/provider-search")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public ConnectivityProviderSearchResponse providerSearch(
+            @PathVariable Long projectId,
+            @Valid @RequestBody ConnectivityProviderSearchRequest request
+    ) {
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+        return projectConnectivityService.providerSearch(projectId, request);
+    }
+
+    @PostMapping("/{projectId}/connectivity/places/bulk")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
+    public ProjectConnectivityPlaceBulkSaveResponse bulkSavePlaces(
+            @PathVariable Long projectId,
+            @Valid @RequestBody ProjectConnectivityPlaceBulkUpsertRequest request
+    ) {
+        dashboardProjectOwnershipService.assertCurrentUserCanEditProject(projectId);
+        ProjectConnectivityPlaceBulkSaveResponse response = projectConnectivityService.bulkSavePlaces(projectId, request);
+        dashboardActionAuditService.record(DashboardAuditAction.CONNECTIVITY_PLACE_ADDED, ReviewEntityType.PROJECT_CONNECTIVITY_PLACE, projectId, projectId);
+        return response;
     }
 }

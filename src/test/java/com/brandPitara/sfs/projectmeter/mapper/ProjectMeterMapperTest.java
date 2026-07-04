@@ -69,6 +69,8 @@ class ProjectMeterMapperTest {
 
         assertThat(response.getProjectStartDate()).isEqualTo(LocalDate.of(2023, 4, 1));
         assertThat(response.getStartedOn()).isEqualTo(LocalDate.of(2023, 4, 1));
+        assertThat(response.getFavoriteCount()).isZero();
+        assertThat(response.getIsFavorite()).isFalse();
     }
 
     @Test

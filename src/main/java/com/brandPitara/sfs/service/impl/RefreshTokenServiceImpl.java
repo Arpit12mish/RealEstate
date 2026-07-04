@@ -4,6 +4,7 @@ import com.brandPitara.sfs.entity.RefreshToken;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.repository.RefreshTokenRepository;
 import com.brandPitara.sfs.service.RefreshTokenService;
+import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -39,22 +40,13 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     public String createRefreshToken(User user, String deviceId, String fcmToken) {
         String rawToken = generateRandomToken();
 
-        RefreshToken refreshToken = RefreshToken.builder()
-                .user(user)
-                .token(hashToken(rawToken))
-                .deviceId(deviceId)
-                .fcmToken(fcmToken)
-                .expiresAt(OffsetDateTime.now().plusDays(refreshExpirationDays))
-                .revoked(false)
-                .build();
-
-        refreshTokenRepository.save(refreshToken);
+        saveRefreshToken(user, rawToken, deviceId, fcmToken);
         return rawToken;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public RefreshToken verifyAndGet(String token) {
+    public RefreshToken verifyForLogoutOnly(String token) {
         RefreshToken rt = refreshTokenRepository.findByToken(hashToken(token))
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
 
@@ -66,11 +58,63 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
     }
 
     @Override
+    public RefreshTokenRotationResult rotateRefreshToken(String token) {
+        RefreshToken oldToken = refreshTokenRepository.findByTokenForUpdate(hashToken(token))
+                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+
+        if (oldToken.isRevoked()) {
+            revokeTokenFamily(oldToken);
+            throw new IllegalArgumentException("Refresh token reuse detected");
+        }
+
+        if (oldToken.isExpired()) {
+            oldToken.setRevoked(true);
+            refreshTokenRepository.save(oldToken);
+            throw new IllegalArgumentException("Refresh token expired or revoked");
+        }
+
+        oldToken.setRevoked(true);
+        refreshTokenRepository.save(oldToken);
+
+        String newRawToken = generateRandomToken();
+        saveRefreshToken(oldToken.getUser(), newRawToken, oldToken.getDeviceId(), oldToken.getFcmToken());
+
+        return new RefreshTokenRotationResult(
+                oldToken.getUser(),
+                newRawToken,
+                oldToken.getDeviceId(),
+                oldToken.getFcmToken()
+        );
+    }
+
+    @Override
     public void revokeToken(String token) {
         refreshTokenRepository.findByToken(hashToken(token)).ifPresent(rt -> {
             rt.setRevoked(true);
             refreshTokenRepository.save(rt);
         });
+    }
+
+    private void saveRefreshToken(User user, String rawToken, String deviceId, String fcmToken) {
+        RefreshToken refreshToken = RefreshToken.builder()
+                .user(user)
+                .token(hashToken(rawToken))
+                .deviceId(deviceId)
+                .fcmToken(fcmToken)
+                .expiresAt(OffsetDateTime.now().plusDays(refreshExpirationDays))
+                .revoked(false)
+                .build();
+
+        refreshTokenRepository.save(refreshToken);
+    }
+
+    private void revokeTokenFamily(RefreshToken token) {
+        Long userId = token.getUser().getId();
+        if (token.getDeviceId() == null || token.getDeviceId().isBlank()) {
+            refreshTokenRepository.revokeAllByUserId(userId);
+            return;
+        }
+        refreshTokenRepository.revokeActiveByUserIdAndDeviceId(userId, token.getDeviceId());
     }
 
     private String hashToken(String rawToken) {

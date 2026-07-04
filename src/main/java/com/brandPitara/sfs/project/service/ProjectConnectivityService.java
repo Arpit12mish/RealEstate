@@ -13,6 +13,7 @@ public interface ProjectConnectivityService {
 
   ProjectConnectivityPlaceResponse addPlace(Long projectId, ProjectConnectivityPlaceUpsertRequest request);
   ProjectConnectivityPlaceResponse updatePlace(Long projectId, Long placeId, ProjectConnectivityPlaceUpsertRequest request);
+  ProjectConnectivityPlaceResponse setPlaceActive(Long projectId, Long placeId, boolean active);
 
   List<ProjectConnectivityPlaceResponse> adminListPlaces(Long projectId);
 

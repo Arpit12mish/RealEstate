@@ -20,6 +20,7 @@ public class DashboardProjectWorkspaceResponse {
     private List<ProjectFloorPlanResponse> floorPlans;
     private List<ProjectHighlightResponse> highlights;
     private ProjectConnectivityResponse connectivity;
+    private ProjectMasterPlanResponse masterPlan;
     private ProjectMeterSummaryResponse meterSummary;
     private List<FieldReviewIssueResponse> fieldIssues;
     private List<ReviewHistoryResponse> reviewHistory;

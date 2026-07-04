@@ -6,6 +6,7 @@ import com.brandPitara.sfs.common.contentVersion.repository.ContentVersionReposi
 import com.brandPitara.sfs.dto.PromoBannerResponse;
 import com.brandPitara.sfs.feed.enums.FeedScreen;
 import com.brandPitara.sfs.home.dto.HomeFeedResponse;
+import com.brandPitara.sfs.home.dto.HomeFeedRequest;
 import com.brandPitara.sfs.home.dto.HomeHeaderDto;
 import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.PromoBannerSlotConfigEntity;
@@ -20,6 +21,7 @@ import com.brandPitara.sfs.service.PromoBannerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -43,12 +45,25 @@ public class HomeFeedServiceImpl implements HomeFeedService {
   private final CityRepository cityRepository;
 
   @Override
+  @Transactional(readOnly = true)
   public HomeFeedResponse getHome(
       Long cityId,
       Long categoryId,
       Long builderId,
       Long clientVersion
   ) {
+    return getHome(HomeFeedRequest.builder()
+        .cityId(cityId)
+        .categoryId(categoryId)
+        .builderId(builderId)
+        .clientVersion(clientVersion)
+        .build());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public HomeFeedResponse getHome(HomeFeedRequest request) {
+    HomeFeedRequest safeRequest = request == null ? HomeFeedRequest.builder().build() : request;
 
     /*
      * cityId behavior:
@@ -58,12 +73,20 @@ public class HomeFeedServiceImpl implements HomeFeedService {
      *
      * Do NOT store "Global" as a real city row.
      */
-    Long resolvedCityId = normalizeCityId(cityId);
+    Long resolvedCityId = normalizeCityId(safeRequest.getCityId());
+    Double latitude = normalizeLatitude(safeRequest.getLatitude());
+    Double longitude = normalizeLongitude(safeRequest.getLongitude());
+    if ((latitude == null) != (longitude == null)) {
+      latitude = null;
+      longitude = null;
+    }
 
-    boolean isAllCategory = categoryId == null || categoryId == 0;
-    Long homeCategoryId = isAllCategory ? 0L : categoryId;
+    boolean hasUserCoordinates = latitude != null && longitude != null;
 
-    String contentVersionKey = isAllCategory ? "HOME:ALL" : "HOME:" + categoryId;
+    boolean isAllCategory = safeRequest.getCategoryId() == null || safeRequest.getCategoryId() == 0;
+    Long homeCategoryId = isAllCategory ? 0L : safeRequest.getCategoryId();
+
+    String contentVersionKey = isAllCategory ? "HOME:ALL" : "HOME:" + safeRequest.getCategoryId();
 
     long version = contentVersionRepository.findById(contentVersionKey)
         .map(ContentVersionEntity::getVersion)
@@ -79,10 +102,18 @@ public class HomeFeedServiceImpl implements HomeFeedService {
       loaderMap.put(loader.supports(), loader);
     }
 
+    String resolvedCityName = resolveCityName(resolvedCityId);
+
     SectionContext ctx = SectionContext.builder()
         .cityId(resolvedCityId)
         .categoryId(homeCategoryId)
-        .builderId(builderId)
+        .builderId(safeRequest.getBuilderId())
+        .latitude(latitude)
+        .longitude(longitude)
+        .accuracyMeters(safeRequest.getAccuracyMeters())
+        .deviceCity(clean(safeRequest.getDeviceCity()))
+        .resolvedCityName(resolvedCityName)
+        .hasUserCoordinates(hasUserCoordinates)
         .build();
 
     List<HomeSectionDto<?>> sections = new ArrayList<>();
@@ -99,19 +130,36 @@ public class HomeFeedServiceImpl implements HomeFeedService {
         continue;
       }
 
-      HomeSectionDto<?> section = loader.load(cfg, ctx);
+      long startNanos = System.nanoTime();
+      HomeSectionDto<?> section;
+      try {
+        section = loader.load(cfg, ctx);
+      } catch (Exception ex) {
+        log.error(
+            "Home section failed sectionType={} configId={}",
+            cfg.getSectionType(),
+            cfg.getId(),
+            ex
+        );
+        continue;
+      } finally {
+        long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000;
+        log.debug(
+            "Home section loaded sectionType={} configId={} elapsedMs={}",
+            cfg.getSectionType(),
+            cfg.getId(),
+            elapsedMs
+        );
+      }
 
-      if (
-          section != null
-              && section.getItems() != null
-              && !section.getItems().isEmpty()
-      ) {
+      if (shouldIncludeSection(section)) {
         sections.add(section);
       }
     }
 
     List<PromoBannerSlotConfigEntity> rules =
         loadPromoRules(FeedScreen.HOME, homeCategoryId, resolvedCityId);
+    Long promoResolvedCityId = resolvedCityId;
 
     sections = promoBannerInjector.inject(
         sections,
@@ -132,8 +180,8 @@ public class HomeFeedServiceImpl implements HomeFeedService {
                   "HERO banner missing for screen={} category={} requestedCityId={} resolvedCityId={}",
                   FeedScreen.HOME,
                   homeCategoryId,
-                  cityId,
-                  resolvedCityId
+                  safeRequest.getCityId(),
+                  promoResolvedCityId
               );
             }
 
@@ -149,16 +197,14 @@ public class HomeFeedServiceImpl implements HomeFeedService {
         }
     );
 
-    sections = moveTrendingCitiesAfterProjectAnalytics(sections);
-
-    String cityName = resolveCityName(resolvedCityId);
+    sections = orderLocationAwareHomeSections(sections);
 
     return HomeFeedResponse.builder()
         .version(version)
         .header(
             HomeHeaderDto.builder()
                 .cityId(resolvedCityId)
-                .cityName(cityName)
+                .cityName(resolvedCityName)
                 .sentences(List.of("Verified professionals", "Trusted brands near you"))
                 .build()
         )
@@ -204,27 +250,58 @@ public class HomeFeedServiceImpl implements HomeFeedService {
         );
   }
 
-  static List<HomeSectionDto<?>> moveTrendingCitiesAfterProjectAnalytics(List<HomeSectionDto<?>> sections) {
+  static List<HomeSectionDto<?>> orderLocationAwareHomeSections(List<HomeSectionDto<?>> sections) {
     if (sections == null || sections.isEmpty()) {
       return sections;
     }
 
-    int projectAnalyticsIndex = indexOfSectionType(sections, HomeSectionType.PROJECT_ANALYTICS);
-    int trendingCitiesIndex = indexOfSectionType(sections, HomeSectionType.TRENDING_CITIES);
-
-    if (
-        projectAnalyticsIndex < 0
-            || trendingCitiesIndex < 0
-            || trendingCitiesIndex == projectAnalyticsIndex + 1
-    ) {
-      return sections;
+    List<HomeSectionDto<?>> ordered = new ArrayList<>(sections);
+    int projectAnalyticsIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS);
+    if (projectAnalyticsIndex < 0) {
+      return ordered;
     }
 
-    List<HomeSectionDto<?>> ordered = new ArrayList<>(sections);
-    HomeSectionDto<?> trendingCities = ordered.remove(trendingCitiesIndex);
-    int insertAfterIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS);
-    ordered.add(insertAfterIndex + 1, trendingCities);
+    HomeSectionDto<?> nearbyListings = removeSectionType(ordered, HomeSectionType.NEARBY_LISTINGS);
+    HomeSectionDto<?> trendingCities = removeSectionType(ordered, HomeSectionType.TRENDING_CITIES);
+
+    int insertIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS) + 1;
+    if (nearbyListings != null) {
+      ordered.add(insertIndex, nearbyListings);
+      insertIndex++;
+    }
+
+    if (trendingCities != null) {
+      ordered.add(insertIndex, trendingCities);
+    }
+
     return ordered;
+  }
+
+  static List<HomeSectionDto<?>> moveTrendingCitiesAfterProjectAnalytics(List<HomeSectionDto<?>> sections) {
+    return orderLocationAwareHomeSections(sections);
+  }
+
+  private boolean shouldIncludeSection(HomeSectionDto<?> section) {
+    if (section == null) {
+      return false;
+    }
+
+    if (section.getType() == HomeSectionType.NEARBY_LISTINGS) {
+      return section.getItems() != null;
+    }
+
+    return section.getItems() != null && !section.getItems().isEmpty();
+  }
+
+  private static HomeSectionDto<?> removeSectionType(
+      List<HomeSectionDto<?>> sections,
+      HomeSectionType sectionType
+  ) {
+    int index = indexOfSectionType(sections, sectionType);
+    if (index < 0) {
+      return null;
+    }
+    return sections.remove(index);
   }
 
   private static int indexOfSectionType(
@@ -255,5 +332,27 @@ public class HomeFeedServiceImpl implements HomeFeedService {
           return city.getName().trim();
         })
         .orElse(null);
+  }
+
+  private Double normalizeLatitude(Double latitude) {
+    if (latitude == null || latitude < -90.0 || latitude > 90.0) {
+      return null;
+    }
+    return latitude;
+  }
+
+  private Double normalizeLongitude(Double longitude) {
+    if (longitude == null || longitude < -180.0 || longitude > 180.0) {
+      return null;
+    }
+    return longitude;
+  }
+
+  private boolean hasText(String value) {
+    return value != null && !value.trim().isEmpty();
+  }
+
+  private String clean(String value) {
+    return hasText(value) ? value.trim() : null;
   }
 }

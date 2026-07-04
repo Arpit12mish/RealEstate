@@ -5,6 +5,8 @@ import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Collection;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -17,6 +19,8 @@ public interface ProjectConnectivityPlaceRepository extends JpaRepository<Projec
   List<ProjectConnectivityPlaceEntity> findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(Long projectId);
 
   List<ProjectConnectivityPlaceEntity> findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(Long projectId);
+
+  List<ProjectConnectivityPlaceEntity> findByProjectIdInAndActiveTrueAndDeletedFalseOrderByProjectIdAscCategoryAscSortOrderAscIdAsc(Collection<Long> projectIds);
 
   Optional<ProjectConnectivityPlaceEntity> findByIdAndProjectIdAndDeletedFalse(Long id, Long projectId);
 
@@ -98,4 +102,15 @@ public interface ProjectConnectivityPlaceRepository extends JpaRepository<Projec
       and p.deleted = false
   """)
   Set<String> findAllNameTypeKeysByProjectId(@Param("projectId") Long projectId);
+
+  // Returns "lower(placeName)::category" composite keys for fallback duplicate detection.
+  @Query("""
+    select concat(lower(p.placeName), '::', cast(p.category as string))
+    from ProjectConnectivityPlaceEntity p
+    where p.project.id = :projectId
+      and p.placeName is not null
+      and p.category is not null
+      and p.deleted = false
+  """)
+  Set<String> findAllNameCategoryKeysByProjectId(@Param("projectId") Long projectId);
 }

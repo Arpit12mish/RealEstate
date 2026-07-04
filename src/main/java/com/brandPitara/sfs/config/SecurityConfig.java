@@ -24,6 +24,15 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    static final String[] PUBLIC_MOBILE_AUTH_ENDPOINTS = {
+            "/api/auth/request-otp",
+            "/api/auth/verify-otp",
+            "/api/auth/refresh",
+            "/api/auth/logout",
+            "/api/auth/logout-all",
+            "/api/auth/guest/session"
+    };
+
     private final JwtRequestFilter jwtRequestFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final DashboardJwtAuthenticationFilter dashboardJwtAuthenticationFilter;
@@ -78,12 +87,14 @@ public class SecurityConfig {
                     "/swagger-ui/**",
                     "/swagger-ui.html"
                 ).permitAll()
-                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers(HttpMethod.POST, PUBLIC_MOBILE_AUTH_ENDPOINTS).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/location/resolve").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/cities/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/app-content/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/app/screen-content").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/builders/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/projects/compare").permitAll()
                 .requestMatchers(
                     HttpMethod.GET,
                     "/api/public/**",

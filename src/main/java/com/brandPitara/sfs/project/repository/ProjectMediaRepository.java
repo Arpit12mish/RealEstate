@@ -22,7 +22,7 @@ public interface ProjectMediaRepository extends JpaRepository<ProjectMediaEntity
     where m.deleted = false
       and m.active = true
       and m.project.id in :projectIds
-    order by m.project.id asc, m.sortOrder asc, m.id desc
+    order by m.project.id asc, m.sortOrder asc, m.id asc
   """)
   List<ProjectMediaEntity> findActiveByProjectIds(@Param("projectIds") List<Long> projectIds);
 

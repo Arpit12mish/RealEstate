@@ -11,6 +11,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -19,7 +20,7 @@ import java.util.*;
 @Service
 public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
 
-  private static final String PROVIDER = "GOOGLE";
+  private static final String PROVIDER = "GOOGLE_PLACES";
 
   private static final String FIELD_MASK = String.join(",",
       "places.id",
@@ -65,14 +66,19 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
 
     Map<String, Object> body = buildTextSearchBody(latitude, longitude, cleanedQuery, safeRadius);
 
-    GooglePlacesResponse response = restClient.post()
-        .uri(properties.getTextSearchUrl())
-        .header("X-Goog-Api-Key", properties.getApiKey())
-        .header("X-Goog-FieldMask", FIELD_MASK)
-        .header(HttpHeaders.CONTENT_TYPE, "application/json")
-        .body(body)
-        .retrieve()
-        .body(GooglePlacesResponse.class);
+    GooglePlacesResponse response;
+    try {
+      response = restClient.post()
+          .uri(properties.getTextSearchUrl())
+          .header("X-Goog-Api-Key", properties.getApiKey())
+          .header("X-Goog-FieldMask", FIELD_MASK)
+          .header(HttpHeaders.CONTENT_TYPE, "application/json")
+          .body(body)
+          .retrieve()
+          .body(GooglePlacesResponse.class);
+    } catch (RestClientException ex) {
+      throw new IllegalStateException("Google Places search failed. Check API key, billing, quota, and Places API access.", ex);
+    }
 
     if (response == null || response.places() == null) {
       return List.of();
@@ -93,7 +99,15 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
     return radiusMeters != null ? Math.min(Math.max(radiusMeters, 100), max) : 5000;
   }
 
-  private Map<String, Object> buildTextSearchBody(Double latitude, Double longitude, String query, int radiusMeters) {
+  @Override
+  public int getMaxRadiusMeters() {
+    return properties.getMaxRadiusMeters() > 0 ? properties.getMaxRadiusMeters() : 10000;
+  }
+
+  // Package-private so the shape can be verified in unit tests without invoking Google.
+  // places:searchText supports locationBias.circle (soft preference) but NOT locationRestriction.circle
+  // (that shape is only valid on places:searchNearby). Hard radius enforcement is done in the service layer.
+  Map<String, Object> buildTextSearchBody(Double latitude, Double longitude, String query, int radiusMeters) {
     Map<String, Object> center = Map.of("latitude", latitude, "longitude", longitude);
     Map<String, Object> circle = Map.of("center", center, "radius", (double) radiusMeters);
     Map<String, Object> locationBias = Map.of("circle", circle);

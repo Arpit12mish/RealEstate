@@ -47,6 +47,11 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
       Long builderId
   );
 
+  @EntityGraph(attributePaths = {"builder", "city"})
+  List<ProjectEntity> findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
+      Collection<Long> builderIds
+  );
+
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder", "city"})
   List<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatusOrderByPriorityAscIdDesc(
@@ -208,6 +213,21 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
       ReviewStatus reviewStatus
   );
 
+  @Query("""
+      select count(p.id)
+      from ProjectEntity p
+      join p.builder b
+      where p.city.id = :cityId
+        and p.published = true
+        and p.active = true
+        and p.deleted = false
+        and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
+        and b.published = true
+        and b.active = true
+        and b.deleted = false
+      """)
+  long countPublicProjectsByCityWithPublicBuilder(@Param("cityId") Long cityId);
+
   Page<ProjectEntity> findByDeletedFalseAndReviewStatus(
     ReviewStatus reviewStatus,
     Pageable pageable
@@ -244,4 +264,234 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
       @Param("types") List<UnitConfigurationType> types,
       Pageable pageable
   );
+
+  @Query(
+      value = """
+          select
+            p.id as projectId,
+            p.name as projectName,
+            p.slug as projectSlug,
+            media.cover_image_url as coverImageUrl,
+            p.address_line as addressLine,
+            c.name as cityName,
+            b.id as builderId,
+            b.name as builderName,
+            b.logo_url as builderLogoUrl,
+            p.price_min as priceMin,
+            p.price_max as priceMax,
+            p.latitude as latitude,
+            p.longitude as longitude,
+            (
+              6371 * acos(
+                least(1, greatest(-1,
+                  cos(radians(:latitude)) *
+                  cos(radians(p.latitude)) *
+                  cos(radians(p.longitude) - radians(:longitude)) +
+                  sin(radians(:latitude)) *
+                  sin(radians(p.latitude))
+                ))
+              )
+            ) as distanceKm,
+            coalesce(snapshot.verified, false) as verified,
+            fp.unit_configuration_type as unitConfigurationType,
+            fp.unit_label as unitLabel,
+            fp.bedrooms as bedrooms,
+            fp.saleable_area_sqft as saleableAreaSqft,
+            fp.super_area_sqft as superAreaSqft,
+            fp.carpet_area_sqft as carpetAreaSqft
+          from project p
+          join builder b on b.id = p.builder_id
+          left join city c on c.id = p.city_id
+          left join project_meter_snapshot snapshot on snapshot.project_id = p.id
+          left join lateral (
+            select pm.url as cover_image_url
+            from project_media pm
+            where pm.project_id = p.id
+              and pm.active = true
+              and pm.deleted = false
+              and pm.url is not null
+              and pm.url <> ''
+              and pm.media_type in ('IMAGE', 'VIDEO')
+            order by case when pm.media_type = 'IMAGE' then 0 else 1 end, pm.sort_order asc, pm.id desc
+            limit 1
+          ) media on true
+          left join lateral (
+            select
+              pfp.unit_configuration_type,
+              pfp.unit_label,
+              pfp.bedrooms,
+              pfp.saleable_area_sqft,
+              pfp.super_area_sqft,
+              pfp.carpet_area_sqft
+            from project_floor_plan pfp
+            where pfp.project_id = p.id
+              and pfp.active = true
+              and pfp.deleted = false
+            order by pfp.featured desc, pfp.sort_order asc, pfp.id asc
+            limit 1
+          ) fp on true
+          where p.published = true
+            and p.active = true
+            and p.deleted = false
+            and p.review_status = 'APPROVED'
+            and b.published = true
+            and b.active = true
+            and b.deleted = false
+            and (c.id is null or c.active = true)
+            and p.latitude is not null
+            and p.longitude is not null
+          order by distanceKm asc, p.priority asc, p.id desc
+          limit :limit
+          """,
+      nativeQuery = true
+  )
+  List<ProjectNearbyListingProjection> findNearbyPublicProjectCards(
+      @Param("latitude") Double latitude,
+      @Param("longitude") Double longitude,
+      @Param("limit") int limit
+  );
+
+  @Query(
+      value = """
+          select
+            p.id as projectId,
+            p.name as projectName,
+            p.slug as projectSlug,
+            media.cover_image_url as coverImageUrl,
+            p.address_line as addressLine,
+            c.name as cityName,
+            b.id as builderId,
+            b.name as builderName,
+            b.logo_url as builderLogoUrl,
+            p.price_min as priceMin,
+            p.price_max as priceMax,
+            p.latitude as latitude,
+            p.longitude as longitude,
+            cast(null as double precision) as distanceKm,
+            coalesce(snapshot.verified, false) as verified,
+            fp.unit_configuration_type as unitConfigurationType,
+            fp.unit_label as unitLabel,
+            fp.bedrooms as bedrooms,
+            fp.saleable_area_sqft as saleableAreaSqft,
+            fp.super_area_sqft as superAreaSqft,
+            fp.carpet_area_sqft as carpetAreaSqft
+          from project p
+          join builder b on b.id = p.builder_id
+          left join city c on c.id = p.city_id
+          left join project_meter_snapshot snapshot on snapshot.project_id = p.id
+          left join lateral (
+            select pm.url as cover_image_url
+            from project_media pm
+            where pm.project_id = p.id
+              and pm.active = true
+              and pm.deleted = false
+              and pm.url is not null
+              and pm.url <> ''
+              and pm.media_type in ('IMAGE', 'VIDEO')
+            order by case when pm.media_type = 'IMAGE' then 0 else 1 end, pm.sort_order asc, pm.id desc
+            limit 1
+          ) media on true
+          left join lateral (
+            select
+              pfp.unit_configuration_type,
+              pfp.unit_label,
+              pfp.bedrooms,
+              pfp.saleable_area_sqft,
+              pfp.super_area_sqft,
+              pfp.carpet_area_sqft
+            from project_floor_plan pfp
+            where pfp.project_id = p.id
+              and pfp.active = true
+              and pfp.deleted = false
+            order by pfp.featured desc, pfp.sort_order asc, pfp.id asc
+            limit 1
+          ) fp on true
+          where p.published = true
+            and p.active = true
+            and p.deleted = false
+            and p.review_status = 'APPROVED'
+            and p.city_id = :cityId
+            and b.published = true
+            and b.active = true
+            and b.deleted = false
+            and (c.id is null or c.active = true)
+          order by p.priority asc, p.id desc
+          limit :limit
+          """,
+      nativeQuery = true
+  )
+  List<ProjectNearbyListingProjection> findPublicProjectCardsByCity(
+      @Param("cityId") Long cityId,
+      @Param("limit") int limit
+  );
+
+  @Query(
+      value = """
+          select
+            p.id as projectId,
+            p.name as projectName,
+            p.slug as projectSlug,
+            media.cover_image_url as coverImageUrl,
+            p.address_line as addressLine,
+            c.name as cityName,
+            b.id as builderId,
+            b.name as builderName,
+            b.logo_url as builderLogoUrl,
+            p.price_min as priceMin,
+            p.price_max as priceMax,
+            p.latitude as latitude,
+            p.longitude as longitude,
+            cast(null as double precision) as distanceKm,
+            coalesce(snapshot.verified, false) as verified,
+            fp.unit_configuration_type as unitConfigurationType,
+            fp.unit_label as unitLabel,
+            fp.bedrooms as bedrooms,
+            fp.saleable_area_sqft as saleableAreaSqft,
+            fp.super_area_sqft as superAreaSqft,
+            fp.carpet_area_sqft as carpetAreaSqft
+          from project p
+          join builder b on b.id = p.builder_id
+          left join city c on c.id = p.city_id
+          left join project_meter_snapshot snapshot on snapshot.project_id = p.id
+          left join lateral (
+            select pm.url as cover_image_url
+            from project_media pm
+            where pm.project_id = p.id
+              and pm.active = true
+              and pm.deleted = false
+              and pm.url is not null
+              and pm.url <> ''
+              and pm.media_type in ('IMAGE', 'VIDEO')
+            order by case when pm.media_type = 'IMAGE' then 0 else 1 end, pm.sort_order asc, pm.id desc
+            limit 1
+          ) media on true
+          left join lateral (
+            select
+              pfp.unit_configuration_type,
+              pfp.unit_label,
+              pfp.bedrooms,
+              pfp.saleable_area_sqft,
+              pfp.super_area_sqft,
+              pfp.carpet_area_sqft
+            from project_floor_plan pfp
+            where pfp.project_id = p.id
+              and pfp.active = true
+              and pfp.deleted = false
+            order by pfp.featured desc, pfp.sort_order asc, pfp.id asc
+            limit 1
+          ) fp on true
+          where p.published = true
+            and p.active = true
+            and p.deleted = false
+            and p.review_status = 'APPROVED'
+            and b.published = true
+            and b.active = true
+            and b.deleted = false
+            and (c.id is null or c.active = true)
+          order by p.priority asc, p.id desc
+          limit :limit
+          """,
+      nativeQuery = true
+  )
+  List<ProjectNearbyListingProjection> findFallbackPublicProjectCards(@Param("limit") int limit);
 }

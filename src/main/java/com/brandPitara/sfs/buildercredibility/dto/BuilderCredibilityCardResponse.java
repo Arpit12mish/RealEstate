@@ -21,6 +21,14 @@ public class BuilderCredibilityCardResponse {
     private String promisesMet;
     private String complianceStrength;
 
+    private Integer projectsTrackedCount;
+    private Integer onTrackRecordPercent;
+    private Integer promisesMetPercent;
+    private Integer complianceStrengthPercent;
+
     private String summary;
     private String confidenceLabel;
+
+    private Boolean highlightsAvailable;
+    private String highlightCtaLabel;
 }

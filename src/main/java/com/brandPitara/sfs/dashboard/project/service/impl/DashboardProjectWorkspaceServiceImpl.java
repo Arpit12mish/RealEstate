@@ -14,6 +14,7 @@ import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
 import com.brandPitara.sfs.project.service.ProjectConnectivityService;
 import com.brandPitara.sfs.project.service.ProjectFloorPlanService;
 import com.brandPitara.sfs.project.service.ProjectHighlightService;
+import com.brandPitara.sfs.project.service.ProjectMasterPlanService;
 import com.brandPitara.sfs.project.service.ProjectMediaService;
 import com.brandPitara.sfs.project.service.ProjectService;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterSummaryResponse;
@@ -34,6 +35,7 @@ public class DashboardProjectWorkspaceServiceImpl implements DashboardProjectWor
     private final ProjectFloorPlanService floorPlanService;
     private final ProjectHighlightService highlightService;
     private final ProjectConnectivityService connectivityService;
+    private final ProjectMasterPlanService masterPlanService;
     private final ProjectMeterService meterService;
     private final DashboardFieldReviewIssueService fieldIssueService;
     private final DashboardReviewHistoryService reviewHistoryService;
@@ -50,6 +52,7 @@ public class DashboardProjectWorkspaceServiceImpl implements DashboardProjectWor
         var floorPlans   = floorPlanService.adminList(projectId);
         var highlights   = highlightService.adminList(projectId);
         var connectivity = connectivityService.adminGet(projectId);
+        var masterPlan   = masterPlanService.adminGet(projectId);
         var meterSummary = safeGetMeterSummary(projectId);
         var fieldIssues  = fieldIssueService.listIssues(ReviewEntityType.PROJECT, projectId, false);
         var history      = reviewHistoryService.listHistory(ReviewEntityType.PROJECT, projectId);
@@ -62,11 +65,12 @@ public class DashboardProjectWorkspaceServiceImpl implements DashboardProjectWor
                 .floorPlans(floorPlans)
                 .highlights(highlights)
                 .connectivity(connectivity)
+                .masterPlan(masterPlan)
                 .meterSummary(meterSummary)
                 .fieldIssues(fieldIssues)
                 .reviewHistory(history)
                 .approvalReadiness(ProjectApprovalReadinessDto.compute(
-                        project, media, floorPlans, highlights, connectivity, meterSummary, fieldIssues))
+                        project, media, floorPlans, highlights, connectivity, masterPlan, meterSummary, fieldIssues))
                 .build();
     }
 

@@ -1,7 +1,7 @@
 package com.brandPitara.sfs.security;
 
 import com.brandPitara.sfs.entity.User;
-import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.service.UserPhoneLookupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -14,7 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class CurrentUserService {
 
-    private final UserRepository userRepository;
+    private final UserPhoneLookupService userPhoneLookupService;
 
     public User requireUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -29,45 +29,17 @@ public class CurrentUserService {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication principal");
         }
 
-        final String phone = normalizePhone(rawPhone);
-
-        return userRepository.findByPhoneNumber(phone)
+        // Always resolve through PhoneNumberNormalizer (via the shared lookup helper) so
+        // pre-migration JWT principals still resolve to the canonical +91 user.
+        return userPhoneLookupService.findByPhoneIdentifier(rawPhone)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "User not found for phone: " + phone
+                        "User not found for phone: " + rawPhone
                 ));
     }
 
-
     public Long requireUserId() {
         return requireUser().getId();
-    }
-
-    private String normalizePhone(String input) {
-        if (input == null) return null;
-
-        String trimmed = input.trim();
-        // keep + if present, remove other non-digits
-        String digits = trimmed.replaceAll("[^0-9]", "");
-
-        // Cases:
-        // 10 digits -> +91XXXXXXXXXX
-        if (digits.length() == 10) return "+91" + digits;
-
-        // 12 digits starting with 91 -> +91XXXXXXXXXX
-        if (digits.length() == 12 && digits.startsWith("91")) return "+91" + digits.substring(2);
-
-        // 11 digits starting with 0 -> +91XXXXXXXXXX
-        if (digits.length() == 11 && digits.startsWith("0")) return "+91" + digits.substring(1);
-
-        // Already looks like country-coded but no '+'
-        if (digits.length() > 10 && digits.startsWith("91")) return "+91" + digits.substring(2);
-
-        // fallback: if original had + and digits look like full number, rebuild
-        if (trimmed.startsWith("+")) return "+" + digits;
-
-        // last resort: return as-is digits (but ideally should never reach here)
-        return digits;
     }
 
 }

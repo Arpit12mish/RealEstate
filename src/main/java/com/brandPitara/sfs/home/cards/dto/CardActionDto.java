@@ -7,4 +7,5 @@ import lombok.*;
 public class CardActionDto {
   private String type;     // "NAVIGATE" | "DEEPLINK" | "CALL" | "WHATSAPP"
   private String target;   // "/projects/3" or "tel:+91..." or "https://wa.me/..."
+  private String path;
 }

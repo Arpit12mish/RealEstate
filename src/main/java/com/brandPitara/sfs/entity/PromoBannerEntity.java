@@ -34,16 +34,28 @@ public class PromoBannerEntity extends BaseEntity {
     @Column(length = 255)
     private String subtitle;
 
-    @Column(name = "image_url", nullable = false, length = 500)
+    @Column(name = "image_url", length = 500)
     private String imageUrl;
+
+    @Column(name = "media_type", nullable = false, length = 30)
+    @Builder.Default
+    private String mediaType = "IMAGE";
+
+    @Column(name = "media_url", columnDefinition = "TEXT")
+    private String mediaUrl;
+
+    @Column(name = "display_duration_ms")
+    private Integer displayDurationMs;
 
     @Column(name = "target_url", length = 500)
     private String targetUrl;
 
     @Column(nullable = false)
+    @Builder.Default
     private Integer priority = 0;
 
     @Column(name = "is_active", nullable = false)
+    @Builder.Default
     private Boolean active = true;
 
     // ✅ NEW: used for placements (HERO/MID/BOTTOM/SEARCH_TOP etc.)
