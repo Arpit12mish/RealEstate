@@ -6,6 +6,13 @@ import com.brandPitara.sfs.dashboard.auth.security.DashboardJwtAuthenticationFil
 import com.brandPitara.sfs.dashboard.auth.security.DashboardUserDetailsService;
 import com.brandPitara.sfs.dashboard.auth.service.DashboardJwtService;
 import com.brandPitara.sfs.observability.LogSanitizer;
+import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
+import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
+import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
+import com.brandPitara.sfs.ratelimit.resolver.RateLimitKeyResolver;
+import com.brandPitara.sfs.ratelimit.resolver.RateLimitPolicyResolver;
+import com.brandPitara.sfs.ratelimit.service.RateLimitService;
+import com.brandPitara.sfs.ratelimit.service.impl.InMemoryRateLimitService;
 import com.brandPitara.sfs.util.JwtTokenUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.Filter;
@@ -219,6 +226,10 @@ class SecurityConfigRuntimeTest {
             UserDetailsService userDetailsService = username -> {
                 throw new UsernameNotFoundException(username);
             };
+            // Not exposed as its own @Bean: JwtTokenUtil has @Value-bound fields with no
+            // property source configured in this minimal context, so registering the mock
+            // as a managed bean (rather than a plain local instance) would trigger Spring's
+            // property injection on it and fail to resolve those placeholders.
             JwtTokenUtil jwtTokenUtil = Mockito.mock(JwtTokenUtil.class);
             return new JwtRequestFilter(userDetailsService, jwtTokenUtil, logSanitizer);
         }
@@ -256,6 +267,38 @@ class SecurityConfigRuntimeTest {
                 LogSanitizer logSanitizer
         ) {
             return new DashboardAccessDeniedHandler(objectMapper, logSanitizer);
+        }
+
+        @Bean
+        RateLimitProperties rateLimitProperties() {
+            // Disabled here: these tests assert authorization rules, not rate limiting.
+            RateLimitProperties properties = new RateLimitProperties();
+            properties.setEnabled(false);
+            return properties;
+        }
+
+        @Bean
+        RateLimitService rateLimitService(RateLimitProperties rateLimitProperties) {
+            return new InMemoryRateLimitService(rateLimitProperties);
+        }
+
+        @Bean
+        RateLimitingFilter rateLimitingFilter(
+                RateLimitProperties rateLimitProperties,
+                RateLimitService rateLimitService,
+                ObjectMapper objectMapper
+        ) {
+            // See jwtRequestFilter() above for why this mock is not its own @Bean.
+            JwtTokenUtil jwtTokenUtil = Mockito.mock(JwtTokenUtil.class);
+            return new RateLimitingFilter(
+                    new RateLimitPolicyResolver(),
+                    new RateLimitKeyResolver(),
+                    new ClientIpResolver(rateLimitProperties),
+                    rateLimitService,
+                    rateLimitProperties,
+                    objectMapper,
+                    jwtTokenUtil
+            );
         }
     }
 }

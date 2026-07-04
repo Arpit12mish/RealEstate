@@ -176,6 +176,20 @@
       <version>8.0</version>
     </dependency>
 
+    <!-- Bucket4j - in-memory API rate limiting (see com.brandPitara.sfs.ratelimit) -->
+    <dependency>
+      <groupId>com.bucket4j</groupId>
+      <artifactId>bucket4j_jdk17-core</artifactId>
+      <version>8.14.0</version>
+    </dependency>
+
+    <!-- Caffeine - bounds/evicts the in-memory rate-limit bucket cache -->
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
+      <version>3.2.0</version>
+    </dependency>
+
     <!-- Tests -->
 	    <dependency>
 	      <groupId>org.springframework.boot</groupId>

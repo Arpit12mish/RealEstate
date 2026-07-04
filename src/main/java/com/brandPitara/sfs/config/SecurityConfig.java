@@ -3,6 +3,7 @@ package com.brandPitara.sfs.config;
 import com.brandPitara.sfs.dashboard.auth.security.DashboardAccessDeniedHandler;
 import com.brandPitara.sfs.dashboard.auth.security.DashboardAuthenticationEntryPoint;
 import com.brandPitara.sfs.dashboard.auth.security.DashboardJwtAuthenticationFilter;
+import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -38,6 +39,7 @@ public class SecurityConfig {
     private final DashboardJwtAuthenticationFilter dashboardJwtAuthenticationFilter;
     private final DashboardAuthenticationEntryPoint dashboardAuthenticationEntryPoint;
     private final DashboardAccessDeniedHandler dashboardAccessDeniedHandler;
+    private final RateLimitingFilter rateLimitingFilter;
 
     @Bean
     @Order(1)
@@ -110,6 +112,15 @@ public class SecurityConfig {
         http.addFilterBefore(
             jwtRequestFilter,
             UsernamePasswordAuthenticationFilter.class
+        );
+
+        // Runs after JWT authentication so SecurityContext is already populated
+        // for optionally-authenticated public endpoints (e.g. PUBLIC_PROJECT_COMPARE's
+        // IP_OR_USER key), and before any controller logic executes. Mobile/public
+        // routes only for Phase 1 - dashboard rate limiting is not in scope here.
+        http.addFilterAfter(
+            rateLimitingFilter,
+            JwtRequestFilter.class
         );
 
         return http.build();
