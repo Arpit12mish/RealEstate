@@ -19,4 +19,11 @@ public class RateLimitRequestContext {
     private final String deviceId;
     private final String query;
     private final Long userId;
+    /**
+     * Raw canonicalized JSON body (sorted keys, deterministic), only populated
+     * for body-fingerprint-aware policies (e.g. PUBLIC_CALCULATOR_WRITE). Never
+     * logged directly - RateLimitKeyResolver SHA-256 hashes it before it ever
+     * becomes bucket key material.
+     */
+    private final String bodyFingerprint;
 }

@@ -6,18 +6,15 @@ import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
 import com.brandPitara.sfs.dashboard.media.service.DashboardMediaPresignService;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
-import com.brandPitara.sfs.media.config.S3Properties;
+import com.brandPitara.sfs.media.service.MediaStorageService;
+import com.brandPitara.sfs.media.service.PresignedUploadRequest;
+import com.brandPitara.sfs.media.service.PresignedUploadResult;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
-import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,8 +24,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
 
     private static final String CACHE_CONTROL = "public, max-age=31536000, immutable";
 
-    private final S3Presigner s3Presigner;
-    private final S3Properties s3Properties;
+    private final MediaStorageService mediaStorageService;
     private final DashboardProjectOwnershipService dashboardProjectOwnershipService;
     private final DashboardMediaUploadValidator uploadValidator;
     private final CityRepository cityRepository;
@@ -45,31 +41,21 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         String ext = extFromContentType(request.contentType());
         String key = buildKey(request.uploadType(), request.projectId(), request.builderId(), request.cityId(), ext);
 
-        PutObjectRequest putReq = PutObjectRequest.builder()
-                .bucket(s3Properties.getBucket())
-                .key(key)
-                .contentType(request.contentType())
-                .cacheControl(CACHE_CONTROL)
-                .build();
-
-        PutObjectPresignRequest presignReq = PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(s3Properties.getPresignExpirySeconds()))
-                .putObjectRequest(putReq)
-                .build();
-
-        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(presignReq);
-
         Map<String, String> requiredHeaders = Map.of(
                 "Content-Type", request.contentType(),
                 "Cache-Control", CACHE_CONTROL
         );
 
+        PresignedUploadResult result = mediaStorageService.createPresignedUpload(
+                new PresignedUploadRequest(key, request.contentType(), requiredHeaders)
+        );
+
         return new DashboardPresignUploadResponse(
-                presigned.url().toString(),
-                buildPublicUrl(key),
-                key,
-                s3Properties.getPresignExpirySeconds(),
-                requiredHeaders
+                result.uploadUrl(),
+                result.publicUrl(),
+                result.storageKey(),
+                result.expiresInSeconds(),
+                result.requiredHeaders()
         );
     }
 
@@ -119,14 +105,6 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case BUILDER_HIGHLIGHT_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/thumbnails/" + filename;
             case BUILDER_ANALYSIS_VIDEO_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/analysis-thumbnails/" + filename;
         };
-    }
-
-    private String buildPublicUrl(String key) {
-        String base = s3Properties.getPublicBaseUrl();
-        if (base != null && !base.isBlank()) {
-            return (base.endsWith("/") ? base.substring(0, base.length() - 1) : base) + "/" + key;
-        }
-        return "https://" + s3Properties.getBucket() + ".s3." + s3Properties.getRegion() + ".amazonaws.com/" + key;
     }
 
     private String extFromContentType(String contentType) {

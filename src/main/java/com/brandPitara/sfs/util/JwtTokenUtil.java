@@ -3,6 +3,7 @@ package com.brandPitara.sfs.util;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,20 @@ public class JwtTokenUtil {
 
     @Value("${jwt.expiration.ms}")
     private long expirationMs;
+
+    /**
+     * jwt.secret is only otherwise read lazily (on first token generate/parse),
+     * so a blank value would previously pass health checks and only surface
+     * when a real user tried to log in. Fail fast at startup instead.
+     */
+    @PostConstruct
+    void validateConfig() {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "jwt.secret is not configured. Set the JWT_SECRET environment variable before starting this profile."
+            );
+        }
+    }
 
     private SecretKey getSigningKey() {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);

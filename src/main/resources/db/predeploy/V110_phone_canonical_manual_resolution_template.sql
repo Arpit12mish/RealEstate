@@ -1,0 +1,162 @@
+-- V110 manual resolution template.
+--
+-- PRODUCTION: one reviewed user/group at a time only. No mass updates.
+--
+-- This file is NOT executable as-is. Every mutating statement below is
+-- commented out. It is a template to copy one case at a time into a fresh
+-- psql session, fill in real IDs/values after manual review, and run
+-- statement-by-statement inside an explicit transaction so you can inspect
+-- the result before COMMIT (and ROLLBACK if anything looks wrong).
+--
+-- Never:
+--   - bulk-generate fake/dummy phone numbers (e.g. lpad-based '+918...'
+--     patterns) against production
+--   - run this against more than one user/group per reviewed transaction
+--   - delete a user automatically
+--   - set phone_number to NULL automatically
+--   - change email without explicit review of that specific row
+--
+-- Start from V110_phone_canonical_production_review.sql - it tells you which
+-- case (A/B/C) applies to each row and why.
+
+-- ============================================================================
+-- Case A - Correct an obvious typo/format issue after business/user verification
+-- ============================================================================
+--
+-- Use when the production review classified the row SAFE_CANONICALIZATION_CANDIDATE
+-- (an unambiguous Indian mobile number just stored in a non-canonical shape),
+-- or when a human has confirmed the correct number directly with the user.
+--
+-- 1. Confirm ownership: does this user genuinely own this number? (support
+--    ticket, OTP re-verification, or existing account history.)
+-- 2. Fill in the real user id and the CURRENT stored value as a safety guard
+--    (the WHERE clause only touches the row if the old value still matches
+--    what you reviewed, in case something changed underneath you).
+--
+-- BEGIN;
+--
+-- UPDATE users
+-- SET phone_number = '+91XXXXXXXXXX'
+-- WHERE id = <USER_ID>
+--   AND phone_number = '<OLD_PHONE_NUMBER>';
+--
+-- SELECT id, email, phone_number
+-- FROM users
+-- WHERE id = <USER_ID>;
+--
+-- COMMIT;
+
+-- ============================================================================
+-- Case B - Duplicate / collision group
+-- ============================================================================
+--
+-- Use when the production review classified the row(s) DUPLICATE_COLLISION -
+-- two or more rows would map to the same canonical phone.
+--
+-- Do not delete or merge until a survivor has been chosen manually and the
+-- dependent data below has been inventoried and handled with business
+-- approval. Prefer revoking a duplicate account's sessions over silently
+-- moving its active refresh tokens to another user.
+--
+-- 1. Inventory dependent rows for every user id in the collision group
+--    (only the tables that actually exist in this schema are listed):
+--
+-- SELECT 'refresh_tokens' AS table_name, user_id, count(*) AS row_count
+-- FROM refresh_tokens
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'otps' AS table_name, user_id, count(*) AS row_count
+-- FROM otps
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'project_review' AS table_name, user_id, count(*) AS row_count
+-- FROM project_review
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'favorites' AS table_name, user_id, count(*) AS row_count
+-- FROM favorites
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'user_favorite' AS table_name, user_id, count(*) AS row_count
+-- FROM user_favorite
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- SELECT 'login_history' AS table_name, user_id, count(*) AS row_count
+-- FROM login_history
+-- WHERE user_id IN (<SURVIVOR_ID>, <DUPLICATE_ID_1>, <DUPLICATE_ID_2>)
+-- GROUP BY user_id
+-- ORDER BY user_id;
+--
+-- 2. Choose one survivor user id manually with business approval. Prefer the
+--    account with real activity (last_login_at, verified reviews/favorites)
+--    over an empty/never-logged-in duplicate.
+--
+-- 3. Revoke the duplicate accounts' sessions instead of moving them blindly -
+--    this forces a clean re-login rather than silently merging active state:
+--
+-- BEGIN;
+--
+-- UPDATE refresh_tokens
+-- SET revoked = true
+-- WHERE user_id IN (<DUPLICATE_ID_1>, <DUPLICATE_ID_2>);
+--
+-- -- Only if business explicitly approves retaining historical data under the
+-- -- survivor (do this per table, only for tables that actually have rows):
+-- -- UPDATE project_review SET user_id = <SURVIVOR_ID> WHERE user_id IN (<DUPLICATE_ID_1>, <DUPLICATE_ID_2>);
+-- -- UPDATE favorites SET user_id = <SURVIVOR_ID> WHERE user_id IN (<DUPLICATE_ID_1>, <DUPLICATE_ID_2>);
+-- -- UPDATE user_favorite SET user_id = <SURVIVOR_ID> WHERE user_id IN (<DUPLICATE_ID_1>, <DUPLICATE_ID_2>);
+--
+-- -- Ensure the survivor owns the canonical E.164 phone.
+-- UPDATE users
+-- SET phone_number = '+91XXXXXXXXXX'
+-- WHERE id = <SURVIVOR_ID>;
+--
+-- -- Do not delete the duplicate user row(s) in the same transaction as a
+-- -- reflex action. Only delete after business has explicitly approved
+-- -- removal AND all dependent data above has been handled:
+-- -- DELETE FROM users WHERE id IN (<DUPLICATE_ID_1>, <DUPLICATE_ID_2>);
+--
+-- -- Re-run V110_phone_canonical_production_review.sql in another session (or
+-- -- paste its query here) before committing, to confirm the group is clean.
+--
+-- COMMIT;
+
+-- ============================================================================
+-- Case C - Local/test user accidentally present in production
+-- ============================================================================
+--
+-- Use when the production review classified a row MANUAL_SUPPORT_REVIEW and
+-- the phone_number/email look like leftover local/dev/test data (e.g. no
+-- extractable digits at all, or an obviously synthetic value that isn't the
+-- app's normal "phone_<digits>@phone.local" placeholder).
+--
+-- 1. Do NOT auto-delete this user.
+-- 2. Do NOT assign a fake/placeholder phone number without business approval.
+-- 3. Mark the case for a business decision - confirm with the team whether
+--    this is a real customer with corrupted data, or genuinely a test
+--    artifact that reached production.
+-- 4. Only after business approves a specific disposition (correct the real
+--    number if known, or delete with sign-off), apply it as a single
+--    reviewed transaction using Case A or the reviewed delete below:
+--
+-- BEGIN;
+--
+-- SELECT id, email, phone_number, created_at, last_login_at, role, onboarding_status
+-- FROM users
+-- WHERE id = <USER_ID>;
+--
+-- -- Only after explicit, documented business approval to remove this specific
+-- -- test/local account (never as a default action):
+-- -- DELETE FROM users WHERE id = <USER_ID>;
+--
+-- COMMIT;

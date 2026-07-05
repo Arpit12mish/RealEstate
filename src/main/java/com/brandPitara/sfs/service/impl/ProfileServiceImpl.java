@@ -6,7 +6,9 @@ import com.brandPitara.sfs.dto.profile.PresignProfilePhotoResponse;
 import com.brandPitara.sfs.dto.profile.ProfileResponse;
 import com.brandPitara.sfs.dto.profile.UpdateProfileRequest;
 import com.brandPitara.sfs.entity.User;
-import com.brandPitara.sfs.media.config.S3Properties;
+import com.brandPitara.sfs.media.service.MediaStorageService;
+import com.brandPitara.sfs.media.service.PresignedUploadRequest;
+import com.brandPitara.sfs.media.service.PresignedUploadResult;
 import com.brandPitara.sfs.repository.FavoriteRepository;
 import com.brandPitara.sfs.repository.GuestSessionRepository;
 import com.brandPitara.sfs.repository.LoginHistoryRepository;
@@ -17,12 +19,7 @@ import com.brandPitara.sfs.service.ProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
-import java.time.Duration;
 import java.util.UUID;
 
 @Service
@@ -36,8 +33,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final UserFavoriteRepository userFavoriteRepository;
     private final LoginHistoryRepository loginHistoryRepository;
     private final GuestSessionRepository guestSessionRepository;
-    private final S3Presigner s3Presigner;
-    private final S3Properties s3Properties;
+    private final MediaStorageService mediaStorageService;
 
     @Override
     @Transactional(readOnly = true)
@@ -80,24 +76,15 @@ public class ProfileServiceImpl implements ProfileService {
         String ext = extFromContentType(request.getContentType());
         String storageKey = "users/" + user.getId() + "/profile/" + UUID.randomUUID() + "." + ext;
 
-        PutObjectRequest putReq = PutObjectRequest.builder()
-                .bucket(s3Properties.getBucket())
-                .key(storageKey)
-                .contentType(request.getContentType())
-                .build();
-
-        PutObjectPresignRequest presignReq = PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofSeconds(s3Properties.getPresignExpirySeconds()))
-                .putObjectRequest(putReq)
-                .build();
-
-        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(presignReq);
+        PresignedUploadResult result = mediaStorageService.createPresignedUpload(
+                new PresignedUploadRequest(storageKey, request.getContentType())
+        );
 
         return new PresignProfilePhotoResponse(
-                presigned.url().toString(),
-                buildPublicUrl(storageKey),
-                storageKey,
-                s3Properties.getPresignExpirySeconds()
+                result.uploadUrl(),
+                result.publicUrl(),
+                result.storageKey(),
+                result.expiresInSeconds()
         );
     }
 
@@ -129,15 +116,6 @@ public class ProfileServiceImpl implements ProfileService {
         loginHistoryRepository.nullifyUserById(userId);
 
         userRepository.delete(user);
-    }
-
-    private String buildPublicUrl(String storageKey) {
-        String base = s3Properties.getPublicBaseUrl();
-        if (base != null && !base.isBlank()) {
-            String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
-            return normalized + "/" + storageKey;
-        }
-        return "https://" + s3Properties.getBucket() + ".s3." + s3Properties.getRegion() + ".amazonaws.com/" + storageKey;
     }
 
     private String extFromContentType(String ct) {

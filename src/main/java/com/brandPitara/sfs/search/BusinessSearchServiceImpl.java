@@ -1,16 +1,13 @@
 package com.brandPitara.sfs.search;
 
-import co.elastic.clients.elasticsearch.ElasticsearchClient;
-import co.elastic.clients.elasticsearch._types.SortOptions;
-import co.elastic.clients.elasticsearch._types.SortOrder;
-import co.elastic.clients.elasticsearch._types.query_dsl.Query;
-import co.elastic.clients.elasticsearch.core.SearchResponse;
 import com.brandPitara.sfs.dto.BusinessResponse;
 import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.repository.BusinessRepository;
 import com.brandPitara.sfs.repository.FavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.search.gateway.BusinessSearchGateway;
+import com.brandPitara.sfs.search.gateway.BusinessSearchQuery;
 import com.brandPitara.sfs.search.model.BusinessSearchDocument;
 import com.brandPitara.sfs.service.mapper.BusinessMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +28,7 @@ import java.util.*;
 @Slf4j
 public class BusinessSearchServiceImpl implements BusinessSearchService {
 
-    private final ElasticsearchClient esClient;
+    private final BusinessSearchGateway businessSearchGateway;
     private final BusinessRepository businessRepository;
     private final FavoriteRepository favoriteRepository;
     private final UserRepository userRepository;
@@ -46,12 +43,7 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
         BusinessSearchDocument doc = BusinessSearchDocument.fromEntity(entity);
 
         try {
-            esClient.index(i -> i
-                    .index(BusinessIndexInitializer.INDEX_NAME)
-                    .id(entity.getId().toString())
-                    .document(docWithGeo(doc))
-            );
-            log.info("[ES INDEX] indexed businessId={} index={}", entity.getId(), BusinessIndexInitializer.INDEX_NAME);
+            businessSearchGateway.indexBusiness(doc);
         } catch (Exception e) {
             // ✅ never crash your save/update flow
             log.warn("[ES INDEX] skipped (ES down) businessId={} reason={}", entity.getId(), e.getMessage());
@@ -63,41 +55,11 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
         if (!searchEnabled) return;
 
         try {
-            esClient.delete(d -> d
-                    .index(BusinessIndexInitializer.INDEX_NAME)
-                    .id(businessId.toString())
-            );
-            log.info("[ES DELETE] deleted businessId={} from index={}", businessId, BusinessIndexInitializer.INDEX_NAME);
+            businessSearchGateway.deleteBusiness(businessId);
         } catch (Exception e) {
             // ✅ never crash your delete flow
             log.warn("[ES DELETE] skipped (ES down) businessId={} reason={}", businessId, e.getMessage());
         }
-    }
-
-    private Map<String, Object> docWithGeo(BusinessSearchDocument doc) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("id", doc.getId());
-        map.put("name", doc.getName());
-        map.put("cityId", doc.getCityId());
-        map.put("cityName", doc.getCityName());
-        map.put("categoryId", doc.getCategoryId());
-        map.put("categoryName", doc.getCategoryName());
-        map.put("addressText", doc.getAddressText());
-        map.put("keywords", doc.getKeywords());
-
-        if (doc.getLatitude() != null && doc.getLongitude() != null) {
-            Map<String, Object> loc = new HashMap<>();
-            loc.put("lat", doc.getLatitude());
-            loc.put("lon", doc.getLongitude());
-            map.put("location", loc);
-        }
-
-        map.put("avgRating", doc.getAvgRating());
-        map.put("totalRatings", doc.getTotalRatings());
-        map.put("active", doc.getActive());
-        map.put("sponsored", doc.getSponsored());
-        map.put("sponsoredPriority", doc.getSponsoredPriority());
-        return map;
     }
 
     @Override
@@ -121,64 +83,15 @@ public class BusinessSearchServiceImpl implements BusinessSearchService {
         log.info("[ES SEARCH] cityId={} categoryId={} q='{}' userLat={} userLon={} page={} size={}",
                 cityId, categoryId, text, userLat, userLon, page, size);
 
-        List<Query> must = new ArrayList<>();
-        List<Query> filter = new ArrayList<>();
-
-        // full-text
-        if (StringUtils.hasText(text)) {
-            must.add(Query.of(q -> q.multiMatch(m -> m
-                    .query(text)
-                    .fields("name^3", "categoryName^2", "cityName", "addressText", "keywords")
-                    .fuzziness("AUTO")
-            )));
-        }
-
-        // filters
-        if (cityId != null) {
-            filter.add(Query.of(q -> q.term(t -> t.field("cityId").value(cityId))));
-        }
-        if (categoryId != null) {
-            filter.add(Query.of(q -> q.term(t -> t.field("categoryId").value(categoryId))));
-        }
-
-        // sort: sponsored first, then geo-distance (if provided)
-        List<SortOptions> sort = new ArrayList<>();
-        sort.add(SortOptions.of(s -> s.field(f -> f.field("sponsoredPriority").order(SortOrder.Desc))));
-
-        if (userLat != null && userLon != null) {
-            sort.add(SortOptions.of(s -> s.geoDistance(g -> g
-                    .field("location")
-                    .location(l -> l.latlon(ll -> ll.lat(userLat).lon(userLon)))
-                    .order(SortOrder.Asc)
-            )));
-        }
-
-        SearchResponse<BusinessSearchDocument> response;
+        List<Long> ids;
         try {
-            response = esClient.search(s -> s
-                            .index(BusinessIndexInitializer.INDEX_NAME)
-                            .query(q -> q.bool(b -> {
-                                if (!must.isEmpty()) b.must(must);
-                                if (!filter.isEmpty()) b.filter(filter);
-                                return b;
-                            }))
-                            .from(page * safeSize)
-                            .size(safeSize)
-                            .sort(sort),
-                    BusinessSearchDocument.class);
-
-            log.info("[ES SEARCH] took={}ms totalHits={}",
-                    response.took(),
-                    response.hits().total() != null ? response.hits().total().value() : null);
-
+            ids = businessSearchGateway.search(
+                    new BusinessSearchQuery(cityId, categoryId, text, userLat, userLon, page, safeSize)
+            );
         } catch (Exception e) {
             log.error("[ES SEARCH] Failed. Falling back to DB. reason={}", e.getMessage());
             return fallbackDbSearch(cityId, categoryId, text, page, safeSize);
         }
-
-        List<Long> ids = response.hits().hits().stream()
-                .map(h -> Long.valueOf(h.id()))
-                .toList();
 
         if (ids.isEmpty()) return List.of();
 

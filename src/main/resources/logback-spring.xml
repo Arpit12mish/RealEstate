@@ -140,13 +140,40 @@
             <appender-ref ref="AUDIT_FILE"/>
         </logger>
 
-        <!-- Hibernate: silence verbose SQL in production -->
+        <!--
+          Hibernate: silence verbose SQL/bind/entity-dump logging in production.
+          Verified against hibernate-core:7.1.8.Final on the classpath:
+          BasicBinder lives under type.descriptor.jdbc (not the legacy .sql
+          package) and has no logger of its own - bind-parameter values are
+          gated entirely by the org.hibernate.orm.jdbc.bind category
+          (JdbcBindingLogging), which is TRACE-gated in Hibernate's own source,
+          so OFF (not WARN) is the only setting that reliably guarantees a
+          bind value - which can include PII or password hashes bound as query
+          params - can never print. org.hibernate.internal.util.EntityPrinter
+          is Hibernate's own internal entity-state dumper (independent of any
+          entity's custom toString()) and is the confirmed source of the
+          "entity dumps included passwordHash" issue this block fixes.
+        -->
+        <logger name="org.hibernate"                               level="WARN"/>
         <logger name="org.hibernate.SQL"                           level="WARN"/>
-        <logger name="org.hibernate.type.descriptor.sql"          level="WARN"/>
-        <logger name="org.hibernate.orm.jdbc.bind"                level="WARN"/>
+        <logger name="org.hibernate.orm.jdbc.bind"                 level="OFF"/>
+        <logger name="org.hibernate.type.descriptor.jdbc.BasicBinder" level="OFF"/>
+        <logger name="org.hibernate.type.descriptor.sql.BasicBinder"  level="OFF"/>
+        <logger name="org.hibernate.internal.util.EntityPrinter"   level="OFF"/>
+
+        <!-- Spring startup/autoconfig/security noise suppression -->
+        <logger name="org.springframework"                         level="WARN"/>
+        <logger name="org.springframework.web"                     level="WARN"/>
+        <logger name="org.springframework.security"                level="WARN"/>
+        <logger name="org.springframework.beans.factory"           level="WARN"/>
+        <logger name="org.springframework.boot.autoconfigure"      level="WARN"/>
+        <logger name="org.springframework.orm.jpa"                 level="WARN"/>
 
         <!-- Actuator health endpoint noise reduction -->
         <logger name="org.springframework.boot.actuate"           level="WARN"/>
+
+        <!-- Hikari: allow startup/shutdown pool INFO logs, suppress DEBUG pool-stats spam -->
+        <logger name="com.zaxxer.hikari"                           level="INFO"/>
 
         <!--
           Suppress JVM HTTP debug logging (sun.net.www.protocol.http.HttpURLConnection etc.).
@@ -154,10 +181,13 @@
           DEBUG/FINE level. Spring Boot's jul-to-slf4j bridge forwards JUL records here;
           LevelChangePropagator pushes this WARN floor back to the JUL side, preventing
           the API key from appearing in journalctl or any log file.
+          GooglePlacesClient/GoogleNearbyPlaceProvider send X-Goog-Api-Key via raw
+          java.net.http.HttpClient, so these guards directly protect that key.
         -->
         <logger name="sun.net.www.protocol.http"                  level="WARN"/>
         <logger name="sun.net.www.protocol.https"                 level="WARN"/>
         <logger name="sun.net"                                     level="WARN"/>
+        <logger name="jdk.internal.httpclient"                    level="WARN"/>
         <logger name="jdk.internal.net.http"                      level="WARN"/>
         <logger name="jdk.event.security"                         level="WARN"/>
 

@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.ratelimit.config;
 
+import com.brandPitara.sfs.ratelimit.enums.RateLimitKeyType;
 import com.brandPitara.sfs.ratelimit.enums.RateLimitPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,6 +73,119 @@ class RateLimitConfigLoadingTest {
                 RateLimitPolicy.PUBLIC_APP_CONTENT_READ,
                 RateLimitPolicy.PUBLIC_CALCULATOR_READ
         );
+    }
+
+    @Test
+    void bindsEveryPhase2Policy() {
+        assertThat(properties.getPolicies()).containsKeys(
+                RateLimitPolicy.PUBLIC_CALCULATOR_WRITE,
+                RateLimitPolicy.MOBILE_PROFILE_READ,
+                RateLimitPolicy.MOBILE_PROFILE_WRITE,
+                RateLimitPolicy.MOBILE_FAVORITE_READ,
+                RateLimitPolicy.MOBILE_FAVORITE_WRITE,
+                RateLimitPolicy.MOBILE_REVIEW_WRITE,
+                RateLimitPolicy.MOBILE_REVIEW_READ,
+                RateLimitPolicy.MOBILE_MEDIA_OR_UPLOAD_ACTION,
+                RateLimitPolicy.MOBILE_PROVIDER_ACCOUNT_READ,
+                RateLimitPolicy.MOBILE_PROVIDER_ACCOUNT_WRITE
+        );
+    }
+
+    @Test
+    void bindsFullLimitDetailForANewPhase2BodyFingerprintPolicy() {
+        RateLimitProperties.PolicyConfig calculatorWrite =
+                properties.getPolicies().get(RateLimitPolicy.PUBLIC_CALCULATOR_WRITE);
+
+        assertThat(calculatorWrite.getLimits()).hasSize(3);
+        assertThat(calculatorWrite.getLimits())
+                .extracting(RateLimitProperties.LimitConfig::getKeyType)
+                .contains(RateLimitKeyType.IP, RateLimitKeyType.BODY_FINGERPRINT);
+    }
+
+    @Test
+    void bindsMultiWindowLimitsForAPhase2ReviewWritePolicy() {
+        RateLimitProperties.PolicyConfig reviewWrite =
+                properties.getPolicies().get(RateLimitPolicy.MOBILE_REVIEW_WRITE);
+
+        assertThat(reviewWrite.getLimits()).hasSize(2);
+        assertThat(reviewWrite.getLimits().get(0).getCapacity()).isEqualTo(5);
+        assertThat(reviewWrite.getLimits().get(1).getRefillPeriodSeconds()).isEqualTo(86400);
+    }
+
+    @Test
+    void bindsEveryPhase3Policy() {
+        assertThat(properties.getPolicies()).containsKeys(
+                RateLimitPolicy.MOBILE_SERVICE_REQUEST_WRITE,
+                RateLimitPolicy.MOBILE_PROVIDER_INTEREST_WRITE,
+                RateLimitPolicy.MOBILE_ONBOARDING_WRITE,
+                RateLimitPolicy.PUBLIC_BUSINESS_EVENT_WRITE,
+                RateLimitPolicy.PUBLIC_COMPANY_READ,
+                RateLimitPolicy.PUBLIC_ARCHITECT_DESIGNER_READ,
+                RateLimitPolicy.PUBLIC_INSTAGRAM_REELS_READ,
+                RateLimitPolicy.PUBLIC_PROJECT_METER_READ,
+                RateLimitPolicy.PUBLIC_FEED_READ
+        );
+    }
+
+    @Test
+    void bindsMultiWindowLimitsForAPhase3ServiceRequestWritePolicy() {
+        RateLimitProperties.PolicyConfig serviceRequestWrite =
+                properties.getPolicies().get(RateLimitPolicy.MOBILE_SERVICE_REQUEST_WRITE);
+
+        assertThat(serviceRequestWrite.getLimits()).hasSize(2);
+        assertThat(serviceRequestWrite.getLimits().get(0).getCapacity()).isEqualTo(20);
+        assertThat(serviceRequestWrite.getLimits().get(1).getRefillPeriodSeconds()).isEqualTo(3600);
+    }
+
+    @Test
+    void bindsIpKeyedLimitsForAPhase3PublicWritePolicy() {
+        RateLimitProperties.PolicyConfig businessEventWrite =
+                properties.getPolicies().get(RateLimitPolicy.PUBLIC_BUSINESS_EVENT_WRITE);
+
+        assertThat(businessEventWrite.getLimits()).hasSize(2);
+        assertThat(businessEventWrite.getLimits())
+                .extracting(RateLimitProperties.LimitConfig::getKeyType)
+                .containsOnly(RateLimitKeyType.IP);
+    }
+
+    @Test
+    void bindsEveryPhase4Policy() {
+        assertThat(properties.getPolicies()).containsKeys(
+                RateLimitPolicy.PUBLIC_BRAND_READ,
+                RateLimitPolicy.PUBLIC_DISTRIBUTOR_READ,
+                RateLimitPolicy.PUBLIC_CATEGORY_READ,
+                RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ,
+                RateLimitPolicy.MOBILE_SESSION_READ
+        );
+    }
+
+    @Test
+    void trendingCityRouteReusesPublicCityReadWithoutADuplicateConfigEntry() {
+        // GET /api/public/cities/trending is mapped (in RateLimitPolicyResolver) to
+        // the existing PUBLIC_CITY_READ policy rather than a new one - there must be
+        // exactly one config entry for it, already asserted by bindsEveryPhase1Policy.
+        assertThat(properties.getPolicies().get(RateLimitPolicy.PUBLIC_CITY_READ)).isNotNull();
+        assertThat(properties.getPolicies().get(RateLimitPolicy.PUBLIC_CITY_READ).getLimits()).hasSize(1);
+    }
+
+    @Test
+    void bindsAGenerousLimitForTheContentVersionReadPolicy() {
+        RateLimitProperties.PolicyConfig contentVersionRead =
+                properties.getPolicies().get(RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ);
+
+        assertThat(contentVersionRead.getLimits()).hasSize(1);
+        assertThat(contentVersionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP);
+        assertThat(contentVersionRead.getLimits().get(0).getCapacity()).isEqualTo(600);
+    }
+
+    @Test
+    void bindsUserPreferredKeyForTheSessionReadPolicy() {
+        RateLimitProperties.PolicyConfig sessionRead =
+                properties.getPolicies().get(RateLimitPolicy.MOBILE_SESSION_READ);
+
+        assertThat(sessionRead.getLimits()).hasSize(1);
+        assertThat(sessionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP_OR_USER);
+        assertThat(sessionRead.getLimits().get(0).getCapacity()).isEqualTo(300);
     }
 
     @Test

@@ -55,7 +55,11 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             RateLimitPolicy.MOBILE_OTP_VERIFY,
             RateLimitPolicy.MOBILE_TOKEN_REFRESH,
             RateLimitPolicy.MOBILE_GUEST_SESSION,
-            RateLimitPolicy.PUBLIC_LOCATION_RESOLVE
+            RateLimitPolicy.PUBLIC_LOCATION_RESOLVE,
+            // Phase 2: only the calculator write policy needs body content (for its
+            // BODY_FINGERPRINT dimension). Profile/favorite/review write policies key
+            // on IP_OR_USER alone and are intentionally NOT body-wrapped.
+            RateLimitPolicy.PUBLIC_CALCULATOR_WRITE
     );
 
     private final RateLimitPolicyResolver policyResolver;
@@ -155,7 +159,39 @@ public class RateLimitingFilter extends OncePerRequestFilter {
                 .deviceId(resolveDeviceId(policy, request, body))
                 .query(policy == RateLimitPolicy.PUBLIC_SEARCH ? request.getParameter("q") : null)
                 .userId(currentUserId(request))
+                .bodyFingerprint(policy == RateLimitPolicy.PUBLIC_CALCULATOR_WRITE ? canonicalBodyJson(body) : null)
                 .build();
+    }
+
+    /**
+     * Deterministic JSON representation of the parsed body (nested map keys
+     * sorted recursively) so identical calculator requests always fingerprint
+     * to the same value regardless of client-side key ordering. The result is
+     * still the request's own field values, never logged directly - only the
+     * SHA-256 hash RateLimitKeyResolver derives from it ever becomes key
+     * material or appears (further hashed) in a log line.
+     */
+    private String canonicalBodyJson(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(canonicalize(body));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            return null;
+        }
+    }
+
+    private Object canonicalize(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var sorted = new java.util.TreeMap<String, Object>();
+            map.forEach((k, v) -> sorted.put(String.valueOf(k), canonicalize(v)));
+            return sorted;
+        }
+        if (value instanceof java.util.List<?> list) {
+            return list.stream().map(this::canonicalize).toList();
+        }
+        return value;
     }
 
     private String resolveDeviceId(RateLimitPolicy policy, HttpServletRequest request, Map<String, Object> body) {

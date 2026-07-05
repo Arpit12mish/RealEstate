@@ -1,13 +1,237 @@
 spring:
   config:
     import: "optional:classpath:application-rate-limit.yml"
+  # Standard Spring Boot / HikariCP-managed datasource. No safe default is
+  # possible here (a real DB connection is required for the app to function
+  # at all) - these three MUST be set via /etc/sfs-app.env in production.
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  # Mail is not actually used to send anything today (EmailService is dead/
+  # commented-out code) and management.health.mail.enabled=false below
+  # disables the only thing that would otherwise probe this at /actuator/
+  # health. Safe to leave blank; only set these if EmailService is ever
+  # revived.
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
 
 app:
   logging:
     path: /var/log/sfs/app
+  media:
+    s3:
+      # bucket/region are not secrets (resource identifiers), so a real
+      # non-secret default is used - override via env only if it changes.
+      bucket: ${AWS_S3_BUCKET:sfs-s3bucket}
+      region: ${AWS_S3_REGION:ap-south-1}
+      publicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL:}
+      presignExpirySeconds: ${AWS_S3_PRESIGN_EXPIRY_SECONDS:300}
 
 springdoc:
   api-docs:
     enabled: false
   swagger-ui:
     enabled: false
+
+server:
+  address: 0.0.0.0
+  port: 8080
+
+management:
+  health:
+    mail:
+      enabled: false
+
+# ============================================================
+# Mobile/app JWT. No safe default - required for every mobile
+# auth flow to function. Set via /etc/sfs-app.env.
+# ============================================================
+jwt:
+  secret: ${JWT_SECRET}
+  expiration:
+    ms: ${JWT_EXPIRATION_MS}
+  refresh:
+    expiration:
+      days: ${JWT_REFRESH_EXPIRATION_DAYS:15}
+
+# ============================================================
+# Dashboard JWT + seed. Seed defaults are intentionally the SAFE
+# (disabled) state - see docs/PRODUCTION_ENV_TEMPLATE.md for why
+# this differs from what may currently be running, and why that
+# needs an explicit decision before rollout.
+# ============================================================
+dashboard:
+  jwt:
+    secret: ${DASHBOARD_JWT_SECRET}
+    access-expiration-ms: ${DASHBOARD_JWT_ACCESS_EXPIRATION_MS}
+  refresh:
+    expiration-days: ${DASHBOARD_REFRESH_EXPIRATION_DAYS:15}
+  seed:
+    enabled: ${DASHBOARD_SEED_ENABLED:false}
+    update-passwords: ${DASHBOARD_SEED_UPDATE_PASSWORDS:false}
+    admin:
+      email: ${DASHBOARD_SEED_ADMIN_EMAIL:}
+      password: ${DASHBOARD_SEED_ADMIN_PASSWORD:}
+      name: ${DASHBOARD_SEED_ADMIN_NAME:SFS Admin}
+    reviewer:
+      email: ${DASHBOARD_SEED_REVIEWER_EMAIL:}
+      password: ${DASHBOARD_SEED_REVIEWER_PASSWORD:}
+      name: ${DASHBOARD_SEED_REVIEWER_NAME:SFS Reviewer}
+    data-entry:
+      email: ${DASHBOARD_SEED_DATA_ENTRY_EMAIL:}
+      password: ${DASHBOARD_SEED_DATA_ENTRY_PASSWORD:}
+      name: ${DASHBOARD_SEED_DATA_ENTRY_NAME:SFS Data Entry}
+
+# ============================================================
+# Twilio Verify (OTP). No safe default - TwilioOtpServiceImpl's
+# @PostConstruct calls Twilio.init() eagerly for the prod profile,
+# so a blank accountSid/authToken fails application startup
+# immediately (fail-fast, not a silent runtime break).
+# ============================================================
+twilio:
+  accountSid: ${TWILIO_ACCOUNT_SID}
+  authToken: ${TWILIO_AUTH_TOKEN}
+  verifyServiceSid: ${TWILIO_VERIFY_SERVICE_SID}
+  phoneNumber: ${TWILIO_PHONE_NUMBER:}
+
+# ============================================================
+# Elasticsearch stays DISABLED. sfs.search.enabled=false already
+# makes BusinessSearchServiceImpl/BusinessIndexInitializer skip all
+# real ES calls, but ElasticsearchConfig unconditionally builds a
+# RestClient/ElasticsearchClient bean at startup regardless of that
+# flag (no @ConditionalOnProperty exists on it). HttpHost.create(url)
+# only parses the URL - it does not connect - so a syntactically
+# valid but inert localhost placeholder lets the bean construct
+# safely without requiring a real Elastic Cloud endpoint/key while
+# search stays off. See docs/PRODUCTION_ENV_TEMPLATE.md for the
+# recommended follow-up (@ConditionalOnProperty on ElasticsearchConfig)
+# if this should be tightened later - not done here to avoid touching
+# the two business-logic classes that currently require the bean.
+# ============================================================
+elasticsearch:
+  url: ${ELASTICSEARCH_URL:http://localhost:9200}
+  api-key: ${ELASTICSEARCH_API_KEY:}
+
+# ============================================================
+# Google Places (connectivity/nearby-place features).
+# ============================================================
+google:
+  places:
+    api-key: ${GOOGLE_PLACES_API_KEY:}
+    base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com/v1}
+    field-mask: id,displayName,formattedAddress,googleMapsUri,rating,userRatingCount,reviews
+  maps:
+    places:
+      enabled: ${GOOGLE_MAPS_PLACES_ENABLED:true}
+      api-key: ${GOOGLE_PLACES_API_KEY:}
+      text-search-url: ${GOOGLE_PLACES_TEXT_SEARCH_URL:https://places.googleapis.com/v1/places:searchText}
+      default-language-code: en
+      default-region-code: IN
+      timeout-ms: ${GOOGLE_PLACES_TIMEOUT_MS:8000}
+      max-results: ${GOOGLE_PLACES_MAX_RESULTS:10}
+      max-radius-meters: ${GOOGLE_PLACES_MAX_RADIUS_METERS:5000}
+
+# ============================================================
+# AWS credentials. Leave both blank in production - AwsS3Config
+# already falls back to DefaultCredentialsProvider (supports an
+# EC2 IAM instance role) whenever aws.credentials.access-key is
+# blank. Only set these env vars if IAM role access is genuinely
+# unavailable.
+# ============================================================
+aws:
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+
+# ============================================================
+# Meta/Instagram - LIVE feature, must keep working. sfs.search
+# lives under the same top-level "sfs" key as sfs.instagram - do
+# not split this into two separate top-level "sfs:" blocks, which
+# would silently last-value-win clobber one of them under SnakeYAML.
+# ============================================================
+sfs:
+  search:
+    enabled: ${SFS_SEARCH_ENABLED:false}
+  instagram:
+    meta:
+      graph-api-version: ${META_GRAPH_API_VERSION:v25.0}
+      app-id: ${META_APP_ID:}
+      app-secret: ${META_APP_SECRET:}
+      access-token: ${META_ACCESS_TOKEN:}
+      facebook-page-id: ${META_FACEBOOK_PAGE_ID:}
+      instagram-business-account-id: ${META_INSTAGRAM_BUSINESS_ACCOUNT_ID:}
+      sync-enabled: ${META_INSTAGRAM_SYNC_ENABLED:false}
+      sync-cron: ${META_INSTAGRAM_SYNC_CRON:0 0 * * * *}
+      public-limit: ${META_INSTAGRAM_PUBLIC_LIMIT:10}
+      request-timeout-seconds: ${META_INSTAGRAM_REQUEST_TIMEOUT_SECONDS:15}
+
+# Production-safe logging levels. This is the one place production logging
+# level is explicitly, self-containedly defined - it must not depend on
+# inheriting a safe default from application.yml (which is loaded for every
+# profile and previously leaked root: DEBUG into prod - see the comment
+# there). logback-spring.xml's "!local" springProfile block backs these same
+# guards up at the appender-wiring layer.
+logging:
+  level:
+    root: INFO
+
+    # SFS application logs
+    "[com.brandPitara.sfs]": INFO
+    "[com.brandPitara.sfs.observability.api]": INFO
+    "[com.brandPitara.sfs.observability.security]": INFO
+    "[com.brandPitara.sfs.observability.audit]": INFO
+    "[com.brandPitara.sfs.ratelimit]": INFO
+
+    # Spring noise control
+    "[org.springframework]": WARN
+    "[org.springframework.web]": WARN
+    "[org.springframework.security]": WARN
+    "[org.springframework.boot.autoconfigure]": WARN
+    "[org.springframework.beans.factory]": WARN
+    "[org.springframework.orm.jpa]": WARN
+
+    # Hibernate SQL/bind/entity-dump suppression.
+    # Verified against the actual hibernate-core:7.1.8.Final jar on the
+    # classpath: BasicBinder now lives under type.descriptor.jdbc (not the
+    # legacy .sql package some older docs/configs reference), and it has no
+    # logger of its own - bind-parameter value logging is entirely gated by
+    # the org.hibernate.orm.jdbc.bind category (JdbcBindingLogging), which is
+    # TRACE-gated in Hibernate's own source, so OFF (not just WARN) is the
+    # only setting that reliably guarantees it can never print a value.
+    #
+    # IMPORTANT: "OFF" MUST be quoted below. YAML 1.1 (which SnakeYAML/Spring's
+    # YAML parser follows) treats a bare on/off/yes/no (any case) as a boolean
+    # literal, not a string - an unquoted OFF here is parsed as the boolean
+    # `false`, which Spring's logging system does not accept as a level name.
+    # This was caught by ProductionLoggingConfigTest during this hardening
+    # work; if you ever add another OFF-level logger, quote it the same way.
+    "[org.hibernate]": WARN
+    "[org.hibernate.SQL]": WARN
+    "[org.hibernate.orm.jdbc.bind]": "OFF"
+    "[org.hibernate.type.descriptor.jdbc.BasicBinder]": "OFF"
+    "[org.hibernate.type.descriptor.sql.BasicBinder]": "OFF"
+    "[org.hibernate.internal.util.EntityPrinter]": "OFF"
+
+    # DB pool
+    "[com.zaxxer.hikari]": INFO
+
+    # JDK/HTTP debug leakage guards. GooglePlacesClient/GoogleNearbyPlaceProvider
+    # send X-Goog-Api-Key via raw java.net.http.HttpClient - these loggers are
+    # exactly where the JDK HttpClient would print full request headers
+    # (including that key) if DEBUG/FINE-level logging were ever enabled here.
+    "[sun.net]": WARN
+    "[sun.net.www.protocol.http]": WARN
+    "[sun.net.www.protocol.https]": WARN
+    "[jdk.internal.httpclient]": WARN
+    "[jdk.internal.net.http]": WARN
+    "[jdk.event.security]": WARN

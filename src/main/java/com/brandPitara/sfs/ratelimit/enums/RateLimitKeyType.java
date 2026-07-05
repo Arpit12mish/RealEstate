@@ -18,5 +18,7 @@ public enum RateLimitKeyType {
     /** Client IP + deviceId (falls back to IP-only when deviceId is absent). */
     IP_AND_DEVICE,
     /** Client IP + a normalized fingerprint of the search query string. */
-    IP_AND_QUERY
+    IP_AND_QUERY,
+    /** SHA-256 fingerprint of a canonicalized request body, standalone (not combined with IP). */
+    BODY_FINGERPRINT
 }

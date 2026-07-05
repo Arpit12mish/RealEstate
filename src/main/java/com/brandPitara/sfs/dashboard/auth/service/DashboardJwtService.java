@@ -5,6 +5,7 @@ import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -26,6 +27,20 @@ public class DashboardJwtService {
 
     @Value("${dashboard.jwt.access-expiration-ms}")
     private long accessExpirationMs;
+
+    /**
+     * dashboard.jwt.secret is only otherwise read lazily (on first token
+     * generate/parse), so a blank value would previously pass health checks
+     * and only surface when a dashboard user tried to log in. Fail fast.
+     */
+    @PostConstruct
+    void validateConfig() {
+        if (dashboardJwtSecret == null || dashboardJwtSecret.isBlank()) {
+            throw new IllegalStateException(
+                    "dashboard.jwt.secret is not configured. Set the DASHBOARD_JWT_SECRET environment variable before starting this profile."
+            );
+        }
+    }
 
     public String generateAccessToken(DashboardUserEntity user) {
         Map<String, Object> claims = new HashMap<>();

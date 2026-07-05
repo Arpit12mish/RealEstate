@@ -140,3 +140,184 @@ sfs:
             capacity: 60
             refillTokens: 60
             refillPeriodSeconds: 60
+
+      # Phase 2: mobile action APIs (still action-based, authenticated,
+      # write-heavy, or computationally expensive).
+      PUBLIC_CALCULATOR_WRITE:
+        limits:
+          - keyType: IP
+            capacity: 20
+            refillTokens: 20
+            refillPeriodSeconds: 60
+          - keyType: IP
+            capacity: 100
+            refillTokens: 100
+            refillPeriodSeconds: 3600
+          - keyType: BODY_FINGERPRINT
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      MOBILE_PROFILE_READ:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      MOBILE_PROFILE_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+          - keyType: IP_OR_USER
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 3600
+      MOBILE_FAVORITE_READ:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      MOBILE_FAVORITE_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 60
+      MOBILE_REVIEW_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 5
+            refillTokens: 5
+            refillPeriodSeconds: 60
+          - keyType: IP_OR_USER
+            capacity: 20
+            refillTokens: 20
+            refillPeriodSeconds: 86400
+      MOBILE_REVIEW_READ:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 60
+      MOBILE_MEDIA_OR_UPLOAD_ACTION:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+          - keyType: IP_OR_USER
+            capacity: 300
+            refillTokens: 300
+            refillPeriodSeconds: 86400
+      MOBILE_PROVIDER_ACCOUNT_READ:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      MOBILE_PROVIDER_ACCOUNT_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+
+      # Phase 3: remaining mobile/public API rate limiting.
+      MOBILE_SERVICE_REQUEST_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 20
+            refillTokens: 20
+            refillPeriodSeconds: 60
+          - keyType: IP_OR_USER
+            capacity: 100
+            refillTokens: 100
+            refillPeriodSeconds: 3600
+      MOBILE_PROVIDER_INTEREST_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 30
+            refillTokens: 30
+            refillPeriodSeconds: 60
+      MOBILE_ONBOARDING_WRITE:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 20
+            refillTokens: 20
+            refillPeriodSeconds: 60
+      PUBLIC_BUSINESS_EVENT_WRITE:
+        limits:
+          - keyType: IP
+            capacity: 60
+            refillTokens: 60
+            refillPeriodSeconds: 60
+          - keyType: IP
+            capacity: 300
+            refillTokens: 300
+            refillPeriodSeconds: 3600
+      PUBLIC_COMPANY_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_ARCHITECT_DESIGNER_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_INSTAGRAM_REELS_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_PROJECT_METER_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_FEED_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+
+      # Phase 4: final remaining mobile/public read route policies.
+      # Note: GET /api/public/cities/trending reuses PUBLIC_CITY_READ above - no
+      # duplicate config entry needed for it.
+      PUBLIC_BRAND_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_DISTRIBUTOR_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_CATEGORY_READ:
+        limits:
+          - keyType: IP
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_CONTENT_VERSION_READ:
+        limits:
+          - keyType: IP
+            capacity: 600
+            refillTokens: 600
+            refillPeriodSeconds: 60
+      MOBILE_SESSION_READ:
+        limits:
+          - keyType: IP_OR_USER
+            capacity: 300
+            refillTokens: 300
+            refillPeriodSeconds: 60

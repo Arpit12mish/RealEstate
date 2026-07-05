@@ -61,6 +61,9 @@ public class RateLimitKeyResolver {
             case IP_AND_QUERY -> ctx.getIp() == null
                     ? java.util.Optional.empty()
                     : java.util.Optional.of(ctx.getIp() + "|" + fingerprint(ctx.getQuery()));
+            case BODY_FINGERPRINT -> ctx.getBodyFingerprint() == null || ctx.getBodyFingerprint().isBlank()
+                    ? java.util.Optional.empty()
+                    : java.util.Optional.of(fingerprint(ctx.getBodyFingerprint()));
         };
     }
 
@@ -95,11 +98,12 @@ public class RateLimitKeyResolver {
         }
     }
 
-    private String fingerprint(String query) {
-        if (query == null || query.isBlank()) {
+    /** Shared by IP_AND_QUERY's search-query normalization and BODY_FINGERPRINT's canonical body JSON. */
+    private String fingerprint(String value) {
+        if (value == null || value.isBlank()) {
             return MISSING_MARKER;
         }
-        String normalized = query.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
+        String normalized = value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
         return hashToken(normalized);
     }
 

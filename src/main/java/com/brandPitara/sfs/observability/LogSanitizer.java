@@ -21,8 +21,9 @@ public class LogSanitizer {
 
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
             "authorization", "accesstoken", "refreshtoken", "token", "jwt",
-            "password", "otp", "code", "pin", "secret", "clientsecret",
-            "payment", "card", "cvv", "upi", "address", "phone", "email"
+            "password", "passwordhash", "otp", "code", "pin", "secret", "clientsecret",
+            "payment", "card", "cvv", "upi", "address", "phone", "email",
+            "x-goog-api-key"
     );
 
     // ── Public API ────────────────────────────────────────────────────────────

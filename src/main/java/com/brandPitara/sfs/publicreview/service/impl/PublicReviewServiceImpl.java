@@ -9,8 +9,8 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.publicreview.client.GooglePlaceDetailsResponse;
-import com.brandPitara.sfs.publicreview.client.GooglePlacesClient;
 import com.brandPitara.sfs.publicreview.dto.*;
+import com.brandPitara.sfs.publicreview.provider.ReviewPlaceProvider;
 import com.brandPitara.sfs.publicreview.entity.ProjectReviewEntity;
 import com.brandPitara.sfs.publicreview.entity.PublicReviewPlaceEntity;
 import com.brandPitara.sfs.publicreview.entity.PublicReviewSampleEntity;
@@ -58,7 +58,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     private final ProjectRepository projectRepository;
     private final BuilderRepository builderRepository;
     private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
-    private final GooglePlacesClient googlePlacesClient;
+    private final ReviewPlaceProvider reviewPlaceProvider;
     private final ContentVersionService contentVersionService;
 
     // =========================================================================
@@ -146,7 +146,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
         OffsetDateTime now = OffsetDateTime.now();
 
         try {
-            GooglePlaceDetailsResponse googleResponse = googlePlacesClient.fetchPlaceDetails(place.getGooglePlaceId());
+            GooglePlaceDetailsResponse googleResponse = reviewPlaceProvider.fetchPlaceDetails(place.getGooglePlaceId());
 
             place.setPlaceName(extractText(googleResponse.getDisplayName()));
             place.setFormattedAddress(clean(googleResponse.getFormattedAddress()));
@@ -288,7 +288,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
 
         String resolvedQuery = StringUtils.hasText(query) ? query.trim() : project.getName();
 
-        List<GooglePlaceSearchResultItem> results = googlePlacesClient.searchPlaces(
+        List<GooglePlaceSearchResultItem> results = reviewPlaceProvider.searchPlaces(
             resolvedQuery,
             project.getLatitude(),
             project.getLongitude()
