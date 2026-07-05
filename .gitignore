@@ -43,3 +43,6 @@ src/main/resources/application-local.yml
 logs/
 *.log
 app.jar
+
+.DS_Store
+**/.DS_Store
