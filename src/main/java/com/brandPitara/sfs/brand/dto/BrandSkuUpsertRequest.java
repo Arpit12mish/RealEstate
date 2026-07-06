@@ -1,0 +1,47 @@
+package com.brandPitara.sfs.brand.dto;
+
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.*;
+
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor @Builder
+public class BrandSkuUpsertRequest {
+
+  @NotBlank
+  @Size(max = 150)
+  private String name;
+
+  @Pattern(regexp = "^[a-z0-9]+(?:-[a-z0-9]+)*$", message = "slug must be lowercase, alphanumeric, hyphen-separated")
+  @Size(max = 180)
+  private String slug;
+
+  @Size(max = 80)
+  private String skuCode;
+
+  private Long categoryId;
+
+  @Size(max = 255)
+  private String shortDescription;
+
+  @Size(max = 4000)
+  private String description;
+
+  @Size(max = 500)
+  private String imageUrl;
+
+  @Size(max = 80)
+  private String priceLabel;
+
+  private Boolean featured;
+  private Boolean latest;
+
+  @Min(0) @Max(9999)
+  private Integer displayOrder;
+
+  private Boolean published;
+  private Boolean active;
+}

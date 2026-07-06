@@ -13,6 +13,9 @@ import com.brandPitara.sfs.brand.enums.PromoMediaType;
     indexes = {
         @Index(name = "idx_brand_category_id", columnList = "category_id"),
         @Index(name = "idx_brand_public",      columnList = "published,active,deleted")
+    },
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_brand_slug", columnNames = "slug")
     }
 )
 @Getter
@@ -31,6 +34,15 @@ public class BrandEntity extends BaseEntity {
 
   @Column(name = "logo_url")
   private String logoUrl;
+
+  @Column(nullable = false, length = 180)
+  private String slug;
+
+  @Column(name = "hero_image_url", columnDefinition = "text")
+  private String heroImageUrl;
+
+  @Column(name = "short_description", length = 255)
+  private String shortDescription;
 
   @Column(columnDefinition = "text")
   private String description;

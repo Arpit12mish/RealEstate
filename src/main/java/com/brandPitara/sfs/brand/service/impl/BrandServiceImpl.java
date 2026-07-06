@@ -1,23 +1,32 @@
 package com.brandPitara.sfs.brand.service.impl;
 
 import com.brandPitara.sfs.brand.dto.*;
+import com.brandPitara.sfs.brand.entity.BrandCategoryLinkEntity;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.entity.BrandMediaEntity;
 import com.brandPitara.sfs.brand.entity.BrandMediaEntity.Placement;
+import com.brandPitara.sfs.brand.repository.BrandCategoryLinkRepository;
 import com.brandPitara.sfs.brand.repository.BrandDistributorRepository;
 import com.brandPitara.sfs.brand.repository.BrandMediaRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.service.BrandService;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.distributor.dto.DistributorCardResponse;
+import com.brandPitara.sfs.entity.CategoryEntity;
+import com.brandPitara.sfs.repository.CategoryRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +35,8 @@ public class BrandServiceImpl implements BrandService {
   private final BrandRepository brandRepository;
   private final BrandMediaRepository brandMediaRepository;
   private final BrandDistributorRepository brandDistributorRepository;
+  private final BrandCategoryLinkRepository brandCategoryLinkRepository;
+  private final CategoryRepository categoryRepository;
   private final ContentVersionService contentVersionService;
 
   // Keys for version bumps
@@ -35,10 +46,14 @@ public class BrandServiceImpl implements BrandService {
   @Override
   @Transactional
   public BrandResponse create(BrandUpsertRequest request) {
+    String name = clean(request.getName());
     BrandEntity entity = BrandEntity.builder()
-        .name(clean(request.getName()))
+        .name(name)
         .logoUrl(clean(request.getLogoUrl()))
         .description(clean(request.getDescription()))
+        .slug(resolveSlugForCreate(clean(request.getSlug()), name))
+        .heroImageUrl(clean(request.getHeroImageUrl()))
+        .shortDescription(clean(request.getShortDescription()))
         .priority(request.getPriority() != null ? request.getPriority() : 0)
         .active(request.getActive() != null ? request.getActive() : true)
         .published(false)
@@ -49,6 +64,8 @@ public class BrandServiceImpl implements BrandService {
         .build();
 
     BrandEntity saved = brandRepository.save(entity);
+
+    replaceCategoryLinks(saved, request.getCategoryIds());
 
     // Admin-side change; customer visibility after publish
     contentVersionService.bump(KEY_BRANDS);
@@ -65,6 +82,9 @@ public class BrandServiceImpl implements BrandService {
     if (StringUtils.hasText(request.getName())) entity.setName(clean(request.getName()));
     if (request.getLogoUrl() != null) entity.setLogoUrl(clean(request.getLogoUrl()));
     if (request.getDescription() != null) entity.setDescription(clean(request.getDescription()));
+    if (request.getSlug() != null) entity.setSlug(resolveSlugForUpdate(clean(request.getSlug()), id));
+    if (request.getHeroImageUrl() != null) entity.setHeroImageUrl(clean(request.getHeroImageUrl()));
+    if (request.getShortDescription() != null) entity.setShortDescription(clean(request.getShortDescription()));
     if (request.getPriority() != null) entity.setPriority(request.getPriority());
     if (request.getActive() != null) entity.setActive(request.getActive());
 
@@ -73,6 +93,8 @@ public class BrandServiceImpl implements BrandService {
     if (request.getPromoMediaUrl() != null) entity.setPromoMediaUrl(clean(request.getPromoMediaUrl()));
 
     BrandEntity saved = brandRepository.save(entity);
+
+    replaceCategoryLinks(saved, request.getCategoryIds());
 
     contentVersionService.bump(KEY_BRANDS);
     if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
@@ -142,7 +164,19 @@ public class BrandServiceImpl implements BrandService {
       page = brandRepository.findByPublishedAndActiveAndDeletedFalse(published, active, pageable);
     }
 
-    return page.map(this::toResponse);
+    // Batch-load category links for every brand on this page in one query instead of
+    // one query per row (toResponse's single-brand overload is fine for create/update/get).
+    List<Long> brandIds = page.getContent().stream().map(BrandEntity::getId).toList();
+    Map<Long, List<Long>> categoryIdsByBrandId = brandCategoryLinkRepository
+        .findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandIds)
+        .stream()
+        .collect(Collectors.groupingBy(
+            link -> link.getBrand().getId(),
+            LinkedHashMap::new,
+            Collectors.mapping(link -> link.getCategory().getId(), Collectors.toList())
+        ));
+
+    return page.map(brand -> toResponse(brand, categoryIdsByBrandId.getOrDefault(brand.getId(), List.of())));
   }
 
   @Override
@@ -226,11 +260,24 @@ public class BrandServiceImpl implements BrandService {
   }
 
   private BrandResponse toResponse(BrandEntity e) {
+    List<Long> categoryIds = brandCategoryLinkRepository
+        .findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(e.getId())
+        .stream()
+        .map(link -> link.getCategory().getId())
+        .toList();
+    return toResponse(e, categoryIds);
+  }
+
+  private BrandResponse toResponse(BrandEntity e, List<Long> categoryIds) {
     return BrandResponse.builder()
         .id(e.getId())
         .name(e.getName())
         .logoUrl(e.getLogoUrl())
         .description(e.getDescription())
+        .slug(e.getSlug())
+        .heroImageUrl(e.getHeroImageUrl())
+        .shortDescription(e.getShortDescription())
+        .categoryIds(categoryIds)
         .active(Boolean.TRUE.equals(e.getActive()))
         .published(Boolean.TRUE.equals(e.getPublished()))
         .priority(e.getPriority() != null ? e.getPriority() : 0)
@@ -238,6 +285,85 @@ public class BrandServiceImpl implements BrandService {
         .promoMediaType(e.getPromoMediaType())
         .promoMediaUrl(e.getPromoMediaUrl())
         .build();
+  }
+
+  // ---------- slug helpers ----------
+
+  private String resolveSlugForCreate(String requestedSlug, String name) {
+    if (StringUtils.hasText(requestedSlug)) {
+      brandRepository.findBySlug(requestedSlug).ifPresent(existing -> {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Brand slug already exists: " + requestedSlug);
+      });
+      return requestedSlug;
+    }
+    return generateUniqueSlug(name);
+  }
+
+  private String resolveSlugForUpdate(String requestedSlug, Long brandId) {
+    if (!StringUtils.hasText(requestedSlug)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "slug cannot be blank");
+    }
+    brandRepository.findBySlugAndIdNot(requestedSlug, brandId).ifPresent(existing -> {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "Brand slug already exists: " + requestedSlug);
+    });
+    return requestedSlug;
+  }
+
+  private String generateUniqueSlug(String name) {
+    String base = slugify(name);
+    String candidate = base;
+    int suffix = 2;
+    while (brandRepository.findBySlug(candidate).isPresent()) {
+      candidate = base + "-" + suffix++;
+    }
+    return candidate;
+  }
+
+  private String slugify(String input) {
+    String base = input == null ? "" : input.toLowerCase().trim()
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("(^-+|-+$)", "");
+    return base.isEmpty() ? "brand" : base;
+  }
+
+  // ---------- category link helpers ----------
+
+  /**
+   * Full replace of this brand's category tags when categoryIds is non-null (null means
+   * "leave existing tags untouched"). Simple resync: soft-delete everything currently
+   * linked, then re-create fresh links for the requested ids. The dedicated
+   * BrandCategoryLinkService is the primary surface for fine-grained per-link management
+   * (display order, reactivation); this is a convenience bulk-set on the brand itself.
+   */
+  private void replaceCategoryLinks(BrandEntity brand, List<Long> categoryIds) {
+    if (categoryIds == null) return;
+
+    Map<Long, CategoryEntity> categories = new LinkedHashMap<>();
+    for (Long categoryId : categoryIds) {
+      if (categoryId == null || categories.containsKey(categoryId)) continue;
+      CategoryEntity category = categoryRepository.findByIdAndActiveTrue(categoryId)
+          .orElseThrow(() -> new EntityNotFoundException("Category not found or inactive: " + categoryId));
+      categories.put(categoryId, category);
+    }
+
+    List<BrandCategoryLinkEntity> existing = brandCategoryLinkRepository
+        .findByBrand_IdAndDeletedFalseOrderBySortOrderAscIdAsc(brand.getId());
+    for (BrandCategoryLinkEntity link : existing) {
+      link.setDeleted(true);
+      link.setActive(false);
+      brandCategoryLinkRepository.save(link);
+    }
+
+    int order = 0;
+    for (CategoryEntity category : categories.values()) {
+      brandCategoryLinkRepository.save(BrandCategoryLinkEntity.builder()
+          .brand(brand)
+          .category(category)
+          .sortOrder(order++)
+          .active(true)
+          .deleted(false)
+          .build());
+    }
   }
 
   private BrandMediaResponse toMediaResponse(BrandMediaEntity m) {

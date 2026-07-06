@@ -4,6 +4,8 @@ import com.brandPitara.sfs.brand.enums.PromoMediaType;
 
 import lombok.*;
 
+import java.util.List;
+
 @Getter @Setter
 @NoArgsConstructor @AllArgsConstructor @Builder
 public class BrandResponse {
@@ -11,6 +13,10 @@ public class BrandResponse {
   private String name;
   private String logoUrl;
   private String description;
+  private String slug;
+  private String heroImageUrl;
+  private String shortDescription;
+  private List<Long> categoryIds;
   private boolean active;
   private boolean published;
   private int priority;

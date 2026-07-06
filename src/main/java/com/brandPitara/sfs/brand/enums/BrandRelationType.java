@@ -1,0 +1,11 @@
+package com.brandPitara.sfs.brand.enums;
+
+public enum BrandRelationType {
+  USED_IN_PROJECT,
+  SUPPLIED_TO_PROJECT,
+  COLLABORATED_WITH,
+  RECOMMENDED_BY,
+  CERTIFIED_PARTNER,
+  ASSOCIATED_VENDOR,
+  DISPLAY_PARTNER
+}

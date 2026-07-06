@@ -18,6 +18,8 @@ public interface BuilderRepository extends JpaRepository<BuilderEntity, Long> {
 
   Optional<BuilderEntity> findByIdAndDeletedFalse(Long id);
 
+  Optional<BuilderEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
+
   long countByDeletedFalse();
 
   Page<BuilderEntity> findByDeletedFalse(Pageable pageable);

@@ -96,6 +96,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/app/screen-content").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/builders/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/brands/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/projects/compare").permitAll()
                 .requestMatchers(
                     HttpMethod.GET,

@@ -12,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
 
+  Optional<CompanyEntity> findByIdAndDeletedFalse(Long id);
+
   List<CompanyEntity> findByIdInAndActiveTrueAndPublishedTrueAndDeletedFalse(List<Long> ids);
 
   Optional<CompanyEntity> findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(Long id);

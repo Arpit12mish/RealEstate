@@ -17,7 +17,7 @@ import lombok.*;
 public class BrandMediaEntity extends BaseEntity {
 
   public enum MediaType { IMAGE, VIDEO }
-  public enum Placement { HERO, BANNER, GALLERY } // you can expand later
+  public enum Placement { HERO, BANNER, GALLERY, LOGO, PRODUCT }
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,6 +26,10 @@ public class BrandMediaEntity extends BaseEntity {
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "brand_id", nullable = false)
   private BrandEntity brand;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "brand_sku_id")
+  private BrandSkuEntity brandSku;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "media_type", nullable = false, length = 20)

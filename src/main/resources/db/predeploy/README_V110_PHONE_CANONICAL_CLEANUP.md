@@ -46,6 +46,13 @@ Hard rules, always:
   - the equivalent, earlier runbook pair for the V107 migration (duplicate
   phone detection before the unique index was added). Same non-destructive
   conventions.
+- `V110_LOCAL_DEV_ONLY_synthetic_seed_phone_backfill.sql` - **LOCAL DEV ONLY -
+  NEVER PRODUCTION.** For the case the safe-backfill script correctly refuses
+  to touch: local seed rows created with fake sequential digit strings
+  (`phone_<digits>@phone.local`) that were never real phone numbers to begin
+  with. Only rewrites rows matching that exact synthetic email pattern, to a
+  deterministic, collision-checked `+917` + zero-padded-id placeholder. Never
+  run this against anything but a local database.
 
 ---
 
