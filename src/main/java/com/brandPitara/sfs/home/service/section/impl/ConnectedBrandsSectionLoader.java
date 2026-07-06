@@ -13,18 +13,25 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
+/**
+ * Renamed from TopBrandsSectionLoader (Phase 1D.6). This is the home page's "Connected
+ * Brands" showcase - brands connected/collaborated with projects, builders, architects,
+ * and designers, not a generic top-brands list. TOP_BRANDS is kept in HomeSectionType as
+ * deprecated/legacy, but this loader only supports CONNECTED_BRANDS; V123 renames the
+ * existing config row so no live config still requests the old type.
+ */
 @Component
 @RequiredArgsConstructor
-public class TopBrandsSectionLoader implements HomeSectionLoader {
+public class ConnectedBrandsSectionLoader implements HomeSectionLoader {
 
-  // Delegates to BrandPublicService (Phase 1C) rather than querying BrandRepository
-  // directly, so the home carousel reuses the same tested public-visibility filtering
-  // and batched category/stat lookups as GET /api/brands - no duplicate N+1-prone logic.
+  // Delegates to BrandPublicService (Phase 1C) so the home carousel reuses the same
+  // tested public-visibility filtering and batched category/stat lookups as GET
+  // /api/brands - no duplicate N+1-prone logic.
   private final BrandPublicService brandPublicService;
 
   @Override
   public HomeSectionType supports() {
-    return HomeSectionType.TOP_BRANDS;
+    return HomeSectionType.CONNECTED_BRANDS;
   }
 
   @Override
@@ -40,8 +47,8 @@ public class TopBrandsSectionLoader implements HomeSectionLoader {
     var cards = brandCards.stream().map(BrandCardMapper::toCard).toList();
 
     return HomeSectionDto.<BrandCardDto>builder()
-        .type(HomeSectionType.TOP_BRANDS)
-        .title(cfg.getTitle() != null ? cfg.getTitle() : "Top Brands")
+        .type(HomeSectionType.CONNECTED_BRANDS)
+        .title(cfg.getTitle() != null ? cfg.getTitle() : "Connected Brands")
         .items(cards)
         .build();
   }

@@ -19,7 +19,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.*;
 
-class TopBrandsSectionLoaderTest {
+class ConnectedBrandsSectionLoaderTest {
 
   private PublicBrandCardResponse brandCard(Long id, String name, String slug) {
     return PublicBrandCardResponse.builder()
@@ -39,16 +39,75 @@ class TopBrandsSectionLoaderTest {
         .build();
   }
 
-  // 1 & 2 & 3: public-visible brands (trusted from BrandPublicService), slug + categories/stats present
   @Test
-  void load_mapsBrandPublicServiceCards_includingSlugCategoriesAndStats() {
+  void load_returnsConnectedBrandsSectionType() {
     BrandPublicService brandPublicService = mock(BrandPublicService.class);
-    TopBrandsSectionLoader loader = new TopBrandsSectionLoader(brandPublicService);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
 
     HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
         .id(1L)
-        .sectionType(HomeSectionType.TOP_BRANDS)
-        .title("Top Brands")
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
+        .title("Connected Brands")
+        .maxItems(20)
+        .build();
+
+    when(brandPublicService.listPublicBrands(isNull(), isNull(), any(Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    HomeSectionDto<?> section = loader.load(config, SectionContext.builder().build());
+
+    assertThat(section.getType()).isEqualTo(HomeSectionType.CONNECTED_BRANDS);
+  }
+
+  @Test
+  void load_usesConfiguredTitle_connectedBrands() {
+    BrandPublicService brandPublicService = mock(BrandPublicService.class);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
+
+    HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
+        .id(1L)
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
+        .title("Connected Brands")
+        .maxItems(20)
+        .build();
+
+    when(brandPublicService.listPublicBrands(isNull(), isNull(), any(Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    HomeSectionDto<?> section = loader.load(config, SectionContext.builder().build());
+
+    assertThat(section.getTitle()).isEqualTo("Connected Brands");
+  }
+
+  @Test
+  void load_fallsBackToConnectedBrandsTitle_whenConfigTitleMissing() {
+    BrandPublicService brandPublicService = mock(BrandPublicService.class);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
+
+    HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
+        .id(1L)
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
+        .maxItems(20)
+        .build();
+
+    when(brandPublicService.listPublicBrands(isNull(), isNull(), any(Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of()));
+
+    HomeSectionDto<?> section = loader.load(config, SectionContext.builder().build());
+
+    assertThat(section.getTitle()).isEqualTo("Connected Brands");
+  }
+
+  // Card includes slug/categories/stats/action path
+  @Test
+  void load_mapsBrandPublicServiceCards_includingSlugCategoriesStatsAndActionPath() {
+    BrandPublicService brandPublicService = mock(BrandPublicService.class);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
+
+    HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
+        .id(1L)
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
+        .title("Connected Brands")
         .maxItems(20)
         .build();
 
@@ -58,7 +117,6 @@ class TopBrandsSectionLoaderTest {
 
     HomeSectionDto<?> section = loader.load(config, SectionContext.builder().build());
 
-    assertThat(section.getType()).isEqualTo(HomeSectionType.TOP_BRANDS);
     assertThat(section.getItems()).hasSize(1);
     BrandCardDto card = (BrandCardDto) section.getItems().get(0);
     assertThat(card.getSlug()).isEqualTo("berger-paints");
@@ -66,17 +124,19 @@ class TopBrandsSectionLoaderTest {
     assertThat(card.getProductsCount()).isEqualTo(5);
     assertThat(card.getProjectsCount()).isEqualTo(3);
     assertThat(card.getArchitectsCount()).isEqualTo(1);
+    assertThat(card.getAction().getType()).isEqualTo("NAVIGATE");
+    assertThat(card.getAction().getTarget()).isEqualTo("BRAND_DETAIL");
     assertThat(card.getAction().getPath()).isEqualTo("/brands/berger-paints");
   }
 
   @Test
   void load_usesConfiguredMaxItemsAndPrioritySort() {
     BrandPublicService brandPublicService = mock(BrandPublicService.class);
-    TopBrandsSectionLoader loader = new TopBrandsSectionLoader(brandPublicService);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
 
     HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
         .id(1L)
-        .sectionType(HomeSectionType.TOP_BRANDS)
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
         .maxItems(5)
         .build();
 
@@ -93,16 +153,16 @@ class TopBrandsSectionLoaderTest {
     assertThat(used.getSort().getOrderFor("id").isDescending()).isTrue();
   }
 
-  // 5: no per-brand N+1 - the loader calls the (already-batched) service exactly once
+  // No per-brand N+1 - the loader calls the (already-batched) service exactly once
   // for the whole section, regardless of how many brands come back.
   @Test
   void load_callsBrandPublicServiceExactlyOnce_regardlessOfResultSize() {
     BrandPublicService brandPublicService = mock(BrandPublicService.class);
-    TopBrandsSectionLoader loader = new TopBrandsSectionLoader(brandPublicService);
+    ConnectedBrandsSectionLoader loader = new ConnectedBrandsSectionLoader(brandPublicService);
 
     HomeSectionConfigEntity config = HomeSectionConfigEntity.builder()
         .id(1L)
-        .sectionType(HomeSectionType.TOP_BRANDS)
+        .sectionType(HomeSectionType.CONNECTED_BRANDS)
         .maxItems(20)
         .build();
 

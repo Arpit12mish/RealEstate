@@ -5,7 +5,16 @@ public enum HomeSectionType {
   PROMO_BANNERS,
   TOP_PROJECTS,
   TOP_BUILDERS,
+
+  // @Deprecated - superseded by CONNECTED_BRANDS (Phase 1D.6). Kept only so any
+  // lingering home_section_config row or client still referencing the old value
+  // deserializes safely; no HomeSectionLoader supports it anymore.
   TOP_BRANDS,
+
+  // The home brand showcase, going forward: brands connected/collaborated with
+  // projects, builders, architects, and designers - not a generic "top brands" list.
+  CONNECTED_BRANDS,
+
   TOP_CATEGORIES,
   ARCHITECTS_AND_DESIGNERS,
   ARCHITECTS,
