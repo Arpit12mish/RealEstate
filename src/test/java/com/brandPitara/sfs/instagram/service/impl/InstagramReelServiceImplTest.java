@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.instagram.service.impl;
 
 import com.brandPitara.sfs.instagram.config.InstagramMetaProperties;
+import com.brandPitara.sfs.instagram.config.AppInstagramProperties;
 import com.brandPitara.sfs.instagram.dto.DashboardInstagramReelUpsertRequest;
 import com.brandPitara.sfs.instagram.entity.InstagramReelEntity;
 import com.brandPitara.sfs.instagram.enums.InstagramReelCategory;
@@ -20,6 +21,9 @@ import static org.mockito.Mockito.*;
 
 class InstagramReelServiceImplTest {
 
+    private static final String FALLBACK_THUMBNAIL_URL =
+        "https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/banner/Hero/M3M-Jacob-%26-Co-1.webp";
+
     @Test
     void publicHomeItemsCapsAtTwenty() {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
@@ -27,7 +31,7 @@ class InstagramReelServiceImplTest {
         properties.setPublicLimit(50);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             properties
         );
         InstagramReelEntity reel = reel(1L);
@@ -47,7 +51,7 @@ class InstagramReelServiceImplTest {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             new InstagramMetaProperties()
         );
         when(repository.findByActiveTrueAndDeletedFalseAndCategoryOverrideOrderByDisplayOrderAscPublishedAtDescIdDesc(
@@ -66,7 +70,7 @@ class InstagramReelServiceImplTest {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             new InstagramMetaProperties()
         );
 
@@ -84,7 +88,7 @@ class InstagramReelServiceImplTest {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             new InstagramMetaProperties()
         );
         when(repository.dashboardList(isNull(), isNull(), any(Pageable.class)))
@@ -102,7 +106,7 @@ class InstagramReelServiceImplTest {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             new InstagramMetaProperties()
         );
         when(repository.dashboardList(eq(true), eq(InstagramReelCategory.MANUAL), any(Pageable.class)))
@@ -120,7 +124,7 @@ class InstagramReelServiceImplTest {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(
             repository,
-            new InstagramReelMapper(),
+            mapper(),
             new InstagramMetaProperties()
         );
         when(repository.dashboardSearch(isNull(), isNull(), eq("%reel%"), any(Pageable.class)))
@@ -133,16 +137,136 @@ class InstagramReelServiceImplTest {
         verify(repository, never()).dashboardList(any(), any(), any(Pageable.class));
     }
 
+    @Test
+    void dashboardResponseReturnsCachedThumbnailUrlWhenPresent() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity reel = reel(8L);
+        reel.setThumbnailUrl("https://scontent.cdninstagram.com/temp.jpg?X-Amz-Signature=expired");
+        reel.setCachedThumbnailUrl("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/instagram/reels/media-8/thumb.jpg");
+        when(repository.dashboardList(isNull(), isNull(), any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(reel)));
+
+        var page = service.dashboardList(null, null, null, Pageable.unpaged());
+
+        assertThat(page.getContent().get(0).getThumbnailUrl())
+            .isEqualTo("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/instagram/reels/media-8/thumb.jpg");
+        assertThat(page.getContent().get(0).getCachedThumbnailUrl())
+            .isEqualTo("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/instagram/reels/media-8/thumb.jpg");
+    }
+
+    @Test
+    void dashboardResponseFallsBackWhenCachedThumbnailIsMissing() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity reel = reel(9L);
+        reel.setCachedThumbnailUrl(null);
+        reel.setThumbnailUrl("https://scontent.cdninstagram.com/temp.jpg?oe=expired&_nc_sid=1");
+        when(repository.dashboardList(isNull(), isNull(), any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(reel)));
+
+        var page = service.dashboardList(null, null, null, Pageable.unpaged());
+
+        assertThat(page.getContent().get(0).getThumbnailUrl()).isEqualTo(FALLBACK_THUMBNAIL_URL);
+        assertThat(page.getContent().get(0).getCachedThumbnailUrl()).isNull();
+    }
+
+    @Test
+    void dashboardResponseDoesNotExposeUnsafeCachedThumbnailAsRenderableUrl() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity reel = reel(10L);
+        reel.setCachedThumbnailUrl("https://lookaside.instagram.com/asset/?X-Amz-Signature=expired");
+        reel.setThumbnailUrl("https://scontent.cdninstagram.com/temp.jpg?_nc_ht=scontent");
+        when(repository.dashboardList(isNull(), isNull(), any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(reel)));
+
+        var page = service.dashboardList(null, null, null, Pageable.unpaged());
+
+        String thumbnailUrl = page.getContent().get(0).getThumbnailUrl();
+        assertThat(thumbnailUrl).isEqualTo(FALLBACK_THUMBNAIL_URL);
+        assertThat(page.getContent().get(0).getCachedThumbnailUrl()).isNull();
+        assertThat(thumbnailUrl)
+            .doesNotContain("cdninstagram")
+            .doesNotContain("scontent")
+            .doesNotContain("lookaside")
+            .doesNotContain("X-Amz-Signature");
+    }
+
+    @Test
+    void publicListReturnsCachedThumbnailUrlWhenPresent() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity reel = reel(6L);
+        reel.setThumbnailUrl("https://scontent.cdninstagram.com/temp.jpg?X-Amz-Signature=expired");
+        reel.setCachedThumbnailUrl("https://cdn.squarefootstory.com/instagram/reels/media-6/thumb.jpg");
+        when(repository.findByActiveTrueAndDeletedFalseOrderByPublishedAtDescIdDesc(any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(reel)));
+
+        var items = service.publicList(InstagramReelCategory.LATEST, 0, 10);
+
+        assertThat(items.get(0).getThumbnailUrl())
+            .isEqualTo("https://cdn.squarefootstory.com/instagram/reels/media-6/thumb.jpg");
+    }
+
+    @Test
+    void publicListFallsBackAndDoesNotExposeMetaThumbnailUrl() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity reel = reel(7L);
+        reel.setCachedThumbnailUrl(null);
+        reel.setThumbnailUrl("https://lookaside.instagram.com/asset/?X-Amz-Signature=expired&scontent=1");
+        when(repository.findByActiveTrueAndDeletedFalseOrderByPublishedAtDescIdDesc(any(Pageable.class)))
+            .thenReturn(new PageImpl<>(List.of(reel)));
+
+        var items = service.publicList(InstagramReelCategory.LATEST, 0, 10);
+
+        String thumbnailUrl = items.get(0).getThumbnailUrl();
+        assertThat(thumbnailUrl).isEqualTo(FALLBACK_THUMBNAIL_URL);
+        assertThat(thumbnailUrl)
+            .doesNotContain("scontent")
+            .doesNotContain("lookaside")
+            .doesNotContain("X-Amz-Signature");
+    }
+
     private InstagramReelEntity reel(Long id) {
         return InstagramReelEntity.builder()
             .id(id)
+            .instagramMediaId("media-" + id)
             .title("Reel " + id)
             .caption("Caption")
             .instagramUrl("https://www.instagram.com/reel/" + id + "/")
             .thumbnailUrl("https://cdn.example.com/" + id + ".webp")
+            .cachedThumbnailUrl("https://cdn.example.com/" + id + ".webp")
             .publishedAt(OffsetDateTime.now())
             .active(true)
             .deleted(false)
             .build();
+    }
+
+    private InstagramReelMapper mapper() {
+        AppInstagramProperties properties = new AppInstagramProperties();
+        properties.setFallbackThumbnailUrl(FALLBACK_THUMBNAIL_URL);
+        return new InstagramReelMapper(properties);
     }
 }

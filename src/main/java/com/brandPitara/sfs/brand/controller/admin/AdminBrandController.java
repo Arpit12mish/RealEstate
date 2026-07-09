@@ -30,18 +30,23 @@ public class AdminBrandController {
 
   private final BrandService brandService;
 
+  // DATA_ENTRY can create brand data; ADMIN can too. Brands are created with
+  // published = false by default (see BrandServiceImpl), safe for the dashboard draft flow.
   @PostMapping
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandResponse create(@Valid @RequestBody BrandUpsertRequest request) {
     return brandService.create(request);
   }
 
+  // DATA_ENTRY can update brand data; ADMIN can too.
   @PutMapping("/{id}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandResponse update(@PathVariable Long id, @Valid @RequestBody BrandUpsertRequest request) {
     return brandService.update(id, request);
   }
 
+  // ADMIN-only direct publish, matching DashboardProjectController#setPublished - publishing
+  // is a review/approval action, not a data-entry action.
   @PatchMapping("/{id}/publish")
   @PreAuthorize("hasRole('ADMIN')")
   public BrandResponse publish(@PathVariable Long id, @RequestParam boolean published) {
@@ -54,14 +59,17 @@ public class AdminBrandController {
     brandService.softDelete(id);
   }
 
+  // All dashboard roles can view brand details.
   @GetMapping("/{id}")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
 public BrandResponse getById(@PathVariable Long id) {
   return brandService.adminGetById(id);
 }
 
+// All dashboard roles can list brands - DATA_ENTRY needs this to see added data,
+// REVIEWER needs this to review pending data.
 @GetMapping
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
 public Page<BrandResponse> list(
     @RequestParam(required = false) Boolean published,
     @RequestParam(required = false) Boolean active,

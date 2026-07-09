@@ -3,7 +3,9 @@ package com.brandPitara.sfs.brand.service;
 import com.brandPitara.sfs.brand.dto.BrandSkuResponse;
 import com.brandPitara.sfs.brand.dto.BrandSkuUpsertRequest;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.brand.entity.BrandProductCategoryEntity;
 import com.brandPitara.sfs.brand.entity.BrandSkuEntity;
+import com.brandPitara.sfs.brand.repository.BrandProductCategoryRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.impl.BrandSkuServiceImpl;
@@ -31,6 +33,7 @@ class BrandSkuServiceImplTest {
   @Mock private BrandRepository brandRepository;
   @Mock private BrandSkuRepository brandSkuRepository;
   @Mock private CategoryRepository categoryRepository;
+  @Mock private BrandProductCategoryRepository brandProductCategoryRepository;
   @Mock private ContentVersionService contentVersionService;
 
   @InjectMocks private BrandSkuServiceImpl brandSkuService;
@@ -109,5 +112,49 @@ class BrandSkuServiceImplTest {
 
     assertThatThrownBy(() -> brandSkuService.create(99L, request))
         .isInstanceOf(EntityNotFoundException.class);
+  }
+
+  @Test
+  void create_linksProductCategory_whenItBelongsToSameBrand() {
+    BrandProductCategoryEntity productCategory = BrandProductCategoryEntity.builder()
+        .id(50L).brand(brand()).name("Lamps").slug("lamps").deleted(false).build();
+
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+    when(brandProductCategoryRepository.findByIdAndBrand_IdAndDeletedFalse(50L, 1L))
+        .thenReturn(Optional.of(productCategory));
+    when(brandSkuRepository.findByBrand_IdAndSlugAndDeletedFalse(1L, "table-lamp")).thenReturn(Optional.empty());
+    when(brandSkuRepository.save(any(BrandSkuEntity.class))).thenAnswer(inv -> {
+      BrandSkuEntity e = inv.getArgument(0);
+      e.setId(11L);
+      return e;
+    });
+
+    BrandSkuUpsertRequest request = BrandSkuUpsertRequest.builder()
+        .name("Table Lamp")
+        .productCategoryId(50L)
+        .build();
+
+    BrandSkuResponse response = brandSkuService.create(1L, request);
+
+    assertThat(response.getProductCategoryId()).isEqualTo(50L);
+    assertThat(response.getProductCategoryName()).isEqualTo("Lamps");
+  }
+
+  @Test
+  void create_throwsNotFound_whenProductCategoryBelongsToDifferentBrand() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+    when(brandProductCategoryRepository.findByIdAndBrand_IdAndDeletedFalse(50L, 1L))
+        .thenReturn(Optional.empty());
+
+    BrandSkuUpsertRequest request = BrandSkuUpsertRequest.builder()
+        .name("Table Lamp")
+        .productCategoryId(50L)
+        .build();
+
+    assertThatThrownBy(() -> brandSkuService.create(1L, request))
+        .isInstanceOf(EntityNotFoundException.class)
+        .hasMessageContaining("Product category not found for this brand");
+
+    verify(brandSkuRepository, never()).save(any());
   }
 }

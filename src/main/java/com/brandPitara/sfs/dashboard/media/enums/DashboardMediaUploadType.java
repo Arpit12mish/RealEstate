@@ -16,7 +16,21 @@ public enum DashboardMediaUploadType {
     APP_SCREEN_VIDEO,
     BUILDER_HIGHLIGHT_IMAGE,
     BUILDER_HIGHLIGHT_THUMBNAIL,
-    BUILDER_ANALYSIS_VIDEO_THUMBNAIL;
+    BUILDER_ANALYSIS_VIDEO_THUMBNAIL,
+
+    // Brand dashboard uploads (Phase 2B.2) - brandId must already exist (see
+    // DashboardMediaPresignServiceImpl#assertBrandExistsForBrandUpload), no temp/pre-create
+    // upload path: this codebase has no existing temp-upload pattern for any entity, so brand
+    // media follows the same create-entity-first convention as PROJECT_IMAGE/BUILDER_LOGO/etc.
+    BRAND_LOGO,
+    BRAND_HERO_IMAGE,
+    BRAND_SKU_IMAGE,
+    BRAND_CERTIFICATE_FILE,
+    BRAND_PROMO_MEDIA,
+
+    // Phase 2B.3 follow-up - the brand's own product category (Lamps/Mirrors/Kitchenware)
+    // image, added after brand_product_category was introduced.
+    BRAND_PRODUCT_CATEGORY_IMAGE;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -32,8 +46,20 @@ public enum DashboardMediaUploadType {
                 || this == APP_SCREEN_LOTTIE_JSON;
     }
 
+    // BRAND_CERTIFICATE_FILE is the only upload type that accepts either an image or a PDF.
+    public boolean allowsImageOrPdf() {
+        return this == BRAND_CERTIFICATE_FILE;
+    }
+
+    // BRAND_PROMO_MEDIA is the only upload type that accepts either an image or a video,
+    // each with its own size limit - see DashboardMediaUploadValidator#validateFileSize.
+    public boolean allowsImageOrVideo() {
+        return this == BRAND_PROMO_MEDIA;
+    }
+
     public boolean requiresImage() {
-        return !requiresPdf() && !requiresVideo() && !requiresLottieJson();
+        return !requiresPdf() && !requiresVideo() && !requiresLottieJson()
+                && !allowsImageOrPdf() && !allowsImageOrVideo();
     }
 
     public boolean isProjectScoped() {
@@ -53,5 +79,14 @@ public enum DashboardMediaUploadType {
 
     public boolean isCityScoped() {
         return this == CITY_COVER_IMAGE;
+    }
+
+    public boolean isBrandScoped() {
+        return this == BRAND_LOGO
+                || this == BRAND_HERO_IMAGE
+                || this == BRAND_SKU_IMAGE
+                || this == BRAND_CERTIFICATE_FILE
+                || this == BRAND_PROMO_MEDIA
+                || this == BRAND_PRODUCT_CATEGORY_IMAGE;
     }
 }

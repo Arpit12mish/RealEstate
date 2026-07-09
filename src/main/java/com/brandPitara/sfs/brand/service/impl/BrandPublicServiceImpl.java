@@ -5,12 +5,14 @@ import com.brandPitara.sfs.brand.entity.BrandCertificateEntity;
 import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.entity.BrandFaqEntity;
+import com.brandPitara.sfs.brand.entity.BrandProductCategoryEntity;
 import com.brandPitara.sfs.brand.entity.BrandSkuEntity;
 import com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType;
 import com.brandPitara.sfs.brand.repository.BrandCategoryLinkRepository;
 import com.brandPitara.sfs.brand.repository.BrandCertificateRepository;
 import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.brand.repository.BrandFaqRepository;
+import com.brandPitara.sfs.brand.repository.BrandProductCategoryRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.BrandPublicService;
@@ -27,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Year;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -48,6 +51,7 @@ public class BrandPublicServiceImpl implements BrandPublicService {
   private final BrandCertificateRepository brandCertificateRepository;
   private final BrandFaqRepository brandFaqRepository;
   private final BrandCollaborationRepository brandCollaborationRepository;
+  private final BrandProductCategoryRepository brandProductCategoryRepository;
 
   @Override
   @Transactional(readOnly = true)
@@ -102,10 +106,10 @@ public class BrandPublicServiceImpl implements BrandPublicService {
         .map(this::toSkuResponse)
         .toList();
 
-    List<PublicBrandCategoryResponse> productCategories = brandSkuRepository
-        .findDistinctPublicCategoriesByBrandId(brandId)
+    List<PublicBrandProductCategoryResponse> productCategories = brandProductCategoryRepository
+        .findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandId)
         .stream()
-        .map(this::toCategoryResponse)
+        .map(this::toProductCategoryResponse)
         .toList();
 
     long productsCount = brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(brandId);
@@ -148,6 +152,9 @@ public class BrandPublicServiceImpl implements BrandPublicService {
     }
 
     PublicBrandStatsResponse stats = PublicBrandStatsResponse.builder()
+        .yearsInIndustry(calculateYearsInIndustry(brand.getFoundedYear()))
+        .customerRating(brand.getCustomerRating())
+        .customerRatingCount(brand.getCustomerRatingCount())
         .projectsCount(projectCollaborations.size())
         .buildersCount(builderCollaborations.size())
         .productsCount(productsCount)
@@ -171,6 +178,10 @@ public class BrandPublicServiceImpl implements BrandPublicService {
         .heroImageUrl(brand.getHeroImageUrl())
         .shortDescription(brand.getShortDescription())
         .description(brand.getDescription())
+        .foundedYear(brand.getFoundedYear())
+        .yearsInIndustry(calculateYearsInIndustry(brand.getFoundedYear()))
+        .customerRating(brand.getCustomerRating())
+        .customerRatingCount(brand.getCustomerRatingCount())
         .categories(categories)
         .stats(stats)
         .productCategories(productCategories)
@@ -183,6 +194,11 @@ public class BrandPublicServiceImpl implements BrandPublicService {
         .faqs(faqs)
         .relatedBrands(relatedBrands)
         .build();
+  }
+
+  private Integer calculateYearsInIndustry(Integer foundedYear) {
+    if (foundedYear == null) return null;
+    return Math.max(0, Year.now().getValue() - foundedYear);
   }
 
   // ---------- batch helpers (listPublicBrands) ----------
@@ -289,6 +305,7 @@ public class BrandPublicServiceImpl implements BrandPublicService {
 
   private PublicBrandSkuResponse toSkuResponse(BrandSkuEntity s) {
     CategoryEntity category = s.getCategory();
+    String externalUrl = s.getExternalUrl();
     return PublicBrandSkuResponse.builder()
         .id(s.getId())
         .name(s.getName())
@@ -301,6 +318,20 @@ public class BrandPublicServiceImpl implements BrandPublicService {
         .priceLabel(s.getPriceLabel())
         .featured(Boolean.TRUE.equals(s.getFeatured()))
         .latest(Boolean.TRUE.equals(s.getLatest()))
+        .externalUrl(externalUrl)
+        .ctaLabel(StringUtils.hasText(externalUrl) ? "View Product" : null)
+        .build();
+  }
+
+  private PublicBrandProductCategoryResponse toProductCategoryResponse(BrandProductCategoryEntity c) {
+    return PublicBrandProductCategoryResponse.builder()
+        .id(c.getId())
+        .name(c.getName())
+        .slug(c.getSlug())
+        .description(c.getDescription())
+        .imageUrl(c.getImageUrl())
+        .externalUrl(c.getExternalUrl())
+        .sortOrder(c.getSortOrder() != null ? c.getSortOrder() : 0)
         .build();
   }
 

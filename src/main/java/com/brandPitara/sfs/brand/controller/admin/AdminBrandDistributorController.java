@@ -17,7 +17,7 @@ public class AdminBrandDistributorController {
   private final BrandDistributorService brandDistributorService;
 
   @PostMapping("/{brandId}/distributors")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandDistributorResponse upsert(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandDistributorUpsertRequest request
@@ -26,7 +26,7 @@ public class AdminBrandDistributorController {
   }
 
   @GetMapping("/{brandId}/distributors")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public Page<BrandDistributorResponse> list(
       @PathVariable Long brandId,
       @RequestParam(defaultValue = "0") int page,

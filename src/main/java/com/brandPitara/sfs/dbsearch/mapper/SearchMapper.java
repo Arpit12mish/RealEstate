@@ -5,6 +5,7 @@ import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.dbsearch.dto.SearchEntityType;
 import com.brandPitara.sfs.dbsearch.dto.SearchItemDto;
+import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
 import org.springframework.stereotype.Component;
 
 import java.text.DecimalFormat;
@@ -18,23 +19,45 @@ public class SearchMapper {
             String imageUrl,
             List<String> tags
     ) {
+        return toProjectItem(p, imageUrl, tags, null);
+    }
+
+    public SearchItemDto toProjectItem(
+            ProjectEntity p,
+            String imageUrl,
+            List<String> tags,
+            ProjectMeterSnapshotEntity snapshot
+    ) {
         return SearchItemDto.builder()
                 .id(p.getId())
                 .entityType(SearchEntityType.PROJECT)
+                .projectId(p.getId())
+                .projectName(p.getName())
                 .title(p.getName())
                 .subtitle(buildProjectSubtitle(p))
                 .imageUrl(imageUrl)
+                .coverImageUrl(imageUrl)
                 .slug(p.getSlug())
+                .projectSlug(p.getSlug())
                 .cityId(p.getCity() != null ? p.getCity().getId() : null)
                 .cityName(p.getCity() != null ? p.getCity().getName() : null)
+                .citySlug(p.getCity() != null ? p.getCity().getSlug() : null)
                 .builderId(p.getBuilder() != null ? p.getBuilder().getId() : null)
                 .builderName(p.getBuilder() != null ? p.getBuilder().getName() : null)
+                .builderLogoUrl(p.getBuilder() != null ? p.getBuilder().getLogoUrl() : null)
                 .location(buildProjectLocation(p))
+                .addressLine(p.getAddressLine())
                 .priceMin(p.getPriceMin())
                 .priceMax(p.getPriceMax())
                 .priceLabel(buildPriceLabel(p.getPriceMin(), p.getPriceMax()))
                 .projectStartDate(p.getStartDate())
                 .startedOn(p.getStartDate())
+                .possessionDate(p.getPossessionDate())
+                .status(p.getStatus())
+                .propertyTypes(p.getPropertyTypes())
+                .constructionProgressPercent(snapshot != null ? snapshot.getConstructionProgressPercent() : null)
+                .appreciationPercent(snapshot != null ? snapshot.getPriceAppreciationPercent() : null)
+                .reraNumber(p.getReraNumber())
                 .tags(tags)
                 .build();
     }

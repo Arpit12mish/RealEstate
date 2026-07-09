@@ -10,7 +10,8 @@ import lombok.*;
     name = "brand_sku",
     indexes = {
         @Index(name = "idx_brand_sku_brand_public", columnList = "brand_id,published,active,deleted,priority"),
-        @Index(name = "idx_brand_sku_category",      columnList = "category_id")
+        @Index(name = "idx_brand_sku_category",      columnList = "category_id"),
+        @Index(name = "idx_brand_sku_product_category", columnList = "product_category_id")
     },
     uniqueConstraints = {
         @UniqueConstraint(name = "uk_brand_sku_brand_slug", columnNames = {"brand_id", "slug"})
@@ -35,6 +36,12 @@ public class BrandSkuEntity extends BaseEntity {
   @JoinColumn(name = "category_id")
   private CategoryEntity category;
 
+  // Distinct from `category` above (the global taxonomy) - this points at this brand's own
+  // product category (Lamps/Mirrors/Kitchenware), see BrandProductCategoryEntity.
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "product_category_id")
+  private BrandProductCategoryEntity productCategory;
+
   @Column(nullable = false, length = 150)
   private String name;
 
@@ -55,6 +62,10 @@ public class BrandSkuEntity extends BaseEntity {
 
   @Column(name = "price_label", length = 60)
   private String priceLabel;
+
+  // The product detail page on the brand's own external website.
+  @Column(name = "external_url", columnDefinition = "text")
+  private String externalUrl;
 
   @Column(nullable = false)
   @Builder.Default

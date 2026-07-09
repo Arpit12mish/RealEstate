@@ -88,4 +88,10 @@ public class DashboardInstagramReelController {
     public InstagramReelSyncResult sync() {
         return instagramReelSyncService.syncLatestReels();
     }
+
+    @PostMapping("/recache")
+    @PreAuthorize("hasRole('ADMIN')")
+    public InstagramReelSyncResult recacheMissingThumbnails() {
+        return instagramReelSyncService.recacheMissingThumbnails();
+    }
 }

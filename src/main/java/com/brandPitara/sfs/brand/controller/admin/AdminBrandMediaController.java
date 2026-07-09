@@ -19,7 +19,7 @@ public class AdminBrandMediaController {
   private final BrandMediaService brandMediaService;
 
   @PostMapping("/{brandId}/media")
-  @PreAuthorize("hasAuthority('ADMIN') or hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandMediaResponse addMedia(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandMediaUpsertRequest request
@@ -28,7 +28,7 @@ public class AdminBrandMediaController {
   }
 
   @GetMapping("/{brandId}/media")
-  @PreAuthorize("hasAuthority('ADMIN') or hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public List<BrandMediaResponse> list(
       @PathVariable Long brandId,
       @RequestParam Placement placement
@@ -37,7 +37,7 @@ public class AdminBrandMediaController {
   }
 
   @DeleteMapping("/{brandId}/media/{mediaId}")
-  @PreAuthorize("hasAuthority('ADMIN') or hasRole('ADMIN')")
+  @PreAuthorize("hasRole('ADMIN')")
   public void delete(
       @PathVariable Long brandId,
       @PathVariable Long mediaId

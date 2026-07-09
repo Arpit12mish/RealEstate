@@ -71,12 +71,14 @@ public class InstagramReelServiceImpl implements InstagramReelService {
         if (!StringUtils.hasText(request.getThumbnailUrl())) {
             throw new IllegalArgumentException("thumbnailUrl is required for manual Instagram reels");
         }
+        String thumbnailUrl = clean(request.getThumbnailUrl());
 
         InstagramReelEntity entity = InstagramReelEntity.builder()
             .title(clean(request.getTitle()))
             .caption(clean(request.getCaption()))
             .instagramUrl(instagramUrl)
-            .thumbnailUrl(clean(request.getThumbnailUrl()))
+            .thumbnailUrl(thumbnailUrl)
+            .cachedThumbnailUrl(thumbnailUrl)
             .previewVideoUrl(clean(request.getPreviewVideoUrl()))
             .categoryOverride(request.getCategoryOverride() != null ? request.getCategoryOverride() : InstagramReelCategory.MANUAL)
             .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
@@ -100,7 +102,11 @@ public class InstagramReelServiceImpl implements InstagramReelService {
         entity.setTitle(clean(request.getTitle()));
         entity.setCaption(clean(request.getCaption()));
         entity.setInstagramUrl(instagramUrl);
-        entity.setThumbnailUrl(clean(request.getThumbnailUrl()));
+        String thumbnailUrl = clean(request.getThumbnailUrl());
+        entity.setThumbnailUrl(thumbnailUrl);
+        if (StringUtils.hasText(thumbnailUrl)) {
+            entity.setCachedThumbnailUrl(thumbnailUrl);
+        }
         entity.setPreviewVideoUrl(clean(request.getPreviewVideoUrl()));
         entity.setCategoryOverride(request.getCategoryOverride());
         entity.setDisplayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0);

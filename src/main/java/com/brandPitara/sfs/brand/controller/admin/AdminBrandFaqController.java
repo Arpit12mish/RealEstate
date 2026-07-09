@@ -18,7 +18,7 @@ public class AdminBrandFaqController {
   private final BrandFaqService brandFaqService;
 
   @PostMapping("/{brandId}/faqs")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandFaqResponse create(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandFaqUpsertRequest request
@@ -27,7 +27,7 @@ public class AdminBrandFaqController {
   }
 
   @PutMapping("/{brandId}/faqs/{faqId}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandFaqResponse update(
       @PathVariable Long brandId,
       @PathVariable Long faqId,
@@ -37,7 +37,7 @@ public class AdminBrandFaqController {
   }
 
   @GetMapping("/{brandId}/faqs")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public List<BrandFaqResponse> list(@PathVariable Long brandId) {
     return brandFaqService.adminList(brandId);
   }

@@ -4,10 +4,13 @@ import com.brandPitara.sfs.instagram.client.InstagramMetaClient;
 import com.brandPitara.sfs.instagram.client.InstagramMetaException;
 import com.brandPitara.sfs.instagram.client.InstagramMetaInsights;
 import com.brandPitara.sfs.instagram.client.InstagramMetaMedia;
+import com.brandPitara.sfs.instagram.config.AppInstagramProperties;
 import com.brandPitara.sfs.instagram.config.InstagramMetaProperties;
+import com.brandPitara.sfs.instagram.dto.InstagramCachedAsset;
 import com.brandPitara.sfs.instagram.dto.InstagramReelSyncResult;
 import com.brandPitara.sfs.instagram.entity.InstagramReelEntity;
 import com.brandPitara.sfs.instagram.repository.InstagramReelRepository;
+import com.brandPitara.sfs.instagram.service.InstagramAssetCacheService;
 import com.brandPitara.sfs.instagram.service.InstagramReelMapper;
 import com.brandPitara.sfs.instagram.service.InstagramReelSyncService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -29,7 +33,9 @@ import java.util.Locale;
 public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
 
     private final InstagramMetaProperties properties;
+    private final AppInstagramProperties appInstagramProperties;
     private final InstagramMetaClient instagramMetaClient;
+    private final InstagramAssetCacheService instagramAssetCacheService;
     private final InstagramReelRepository instagramReelRepository;
     private final InstagramReelMapper instagramReelMapper;
 
@@ -55,6 +61,50 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             .forEach(entity -> entity.setTrendingScore(calculateTrendingScore(entity)));
     }
 
+    @Override
+    @Transactional
+    public InstagramReelSyncResult recacheMissingThumbnails() {
+        OffsetDateTime startedAt = OffsetDateTime.now();
+        int cached = 0;
+        int failed = 0;
+        int skipped = 0;
+
+        List<InstagramReelEntity> reels = instagramReelRepository.findByActiveTrueAndDeletedFalseAndCachedThumbnailUrlIsNull();
+        for (InstagramReelEntity entity : reels) {
+            String sourceThumbnailUrl = firstText(entity.getSourceThumbnailUrl(), entity.getThumbnailUrl());
+            if (!StringUtils.hasText(entity.getInstagramMediaId()) || !StringUtils.hasText(sourceThumbnailUrl)) {
+                skipped++;
+                continue;
+            }
+            if (cacheThumbnail(entity, sourceThumbnailUrl, OffsetDateTime.now())) {
+                cached++;
+            } else {
+                failed++;
+            }
+            instagramReelRepository.save(entity);
+        }
+
+        OffsetDateTime completedAt = OffsetDateTime.now();
+        log.info(
+            "Instagram thumbnail recache completed: fetched={}, cached={}, failed={}, skipped={}",
+            reels.size(),
+            cached,
+            failed,
+            skipped
+        );
+        return InstagramReelSyncResult.builder()
+            .fetchedCount(reels.size())
+            .createdCount(0)
+            .updatedCount(0)
+            .skippedCount(skipped)
+            .failedInsightCount(0)
+            .thumbnailCachedCount(cached)
+            .thumbnailCacheFailedCount(failed)
+            .startedAt(startedAt)
+            .completedAt(completedAt)
+            .build();
+    }
+
     private InstagramReelSyncResult sync(String onlyMediaId) {
         validateConfig();
 
@@ -65,6 +115,8 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
         int updated = 0;
         int skipped = 0;
         int failedInsights = 0;
+        int thumbnailCached = 0;
+        int thumbnailCacheFailed = 0;
 
         for (InstagramMetaMedia media : mediaItems) {
             if (media == null) {
@@ -111,8 +163,14 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
                 wasNew = true;
             }
 
-            applyMeta(media, insights, entity);
+            CacheOutcome cacheOutcome = applyMeta(media, insights, entity);
             instagramReelRepository.save(entity);
+
+            if (cacheOutcome == CacheOutcome.CACHED) {
+                thumbnailCached++;
+            } else if (cacheOutcome == CacheOutcome.FAILED) {
+                thumbnailCacheFailed++;
+            }
 
             if (wasNew) {
                 created++;
@@ -129,35 +187,42 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             .updatedCount(updated)
             .skippedCount(skipped)
             .failedInsightCount(failedInsights)
+            .thumbnailCachedCount(thumbnailCached)
+            .thumbnailCacheFailedCount(thumbnailCacheFailed)
             .startedAt(startedAt)
             .completedAt(completedAt)
             .build();
 
         log.info(
-            "Instagram reel sync completed: fetched={}, created={}, updated={}, skipped={}, failedInsights={}",
+            "Instagram reel sync completed: fetched={}, created={}, updated={}, skipped={}, failedInsights={}, thumbnailsCached={}, thumbnailCacheFailed={}",
             result.getFetchedCount(),
             result.getCreatedCount(),
             result.getUpdatedCount(),
             result.getSkippedCount(),
-            result.getFailedInsightCount()
+            result.getFailedInsightCount(),
+            result.getThumbnailCachedCount(),
+            result.getThumbnailCacheFailedCount()
         );
         return result;
     }
 
-    private void applyMeta(
+    private CacheOutcome applyMeta(
         InstagramMetaMedia media,
         InstagramMetaInsights insights,
         InstagramReelEntity entity
     ) {
+        OffsetDateTime now = OffsetDateTime.now();
+        String previousSourceThumbnailUrl = clean(entity.getSourceThumbnailUrl());
+        String sourceThumbnailUrl = clean(media.thumbnailUrl());
+
         entity.setInstagramMediaId(media.id());
         entity.setCaption(media.caption());
         if (!StringUtils.hasText(entity.getTitle())) {
             entity.setTitle(instagramReelMapper.deriveTitle(media.caption()));
         }
         entity.setInstagramUrl(media.permalink().trim());
-        if (StringUtils.hasText(media.thumbnailUrl())) {
-            entity.setThumbnailUrl(media.thumbnailUrl().trim());
-        }
+        entity.setSourceThumbnailUrl(sourceThumbnailUrl);
+        entity.setMetaFetchedAt(now);
         entity.setMediaType(media.mediaType());
         entity.setMediaProductType(media.mediaProductType());
         entity.setPublishedAt(media.timestamp());
@@ -167,8 +232,69 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
         entity.setShareCount(nonNull(insights.getShareCount()));
         entity.setSaveCount(nonNull(insights.getSaveCount()));
         entity.setSyncedFromMeta(true);
-        entity.setLastSyncedAt(OffsetDateTime.now());
+        entity.setLastSyncedAt(now);
         entity.setTrendingScore(calculateTrendingScore(entity));
+
+        CacheOutcome cacheOutcome = CacheOutcome.SKIPPED;
+        if (StringUtils.hasText(sourceThumbnailUrl) && shouldCacheThumbnail(entity, previousSourceThumbnailUrl, sourceThumbnailUrl, now)) {
+            cacheOutcome = cacheThumbnail(entity, sourceThumbnailUrl, now) ? CacheOutcome.CACHED : CacheOutcome.FAILED;
+        }
+
+        if (cacheOutcome != CacheOutcome.FAILED) {
+            entity.setLastSyncStatus("SUCCESS");
+            entity.setLastSyncError(null);
+        }
+        return cacheOutcome;
+    }
+
+    private boolean shouldCacheThumbnail(
+        InstagramReelEntity entity,
+        String previousSourceThumbnailUrl,
+        String sourceThumbnailUrl,
+        OffsetDateTime now
+    ) {
+        if (!StringUtils.hasText(entity.getCachedThumbnailUrl())) {
+            return true;
+        }
+        if (!StringUtils.hasText(entity.getCachedThumbnailStorageKey())) {
+            return true;
+        }
+        if (!Objects.equals(previousSourceThumbnailUrl, sourceThumbnailUrl)) {
+            return true;
+        }
+        OffsetDateTime cachedAt = entity.getThumbnailCachedAt();
+        if (cachedAt == null) {
+            return true;
+        }
+        return cachedAt.isBefore(now.minusHours(appInstagramProperties.effectiveThumbnailCacheTtlHours()));
+    }
+
+    private boolean cacheThumbnail(InstagramReelEntity entity, String sourceThumbnailUrl, OffsetDateTime now) {
+        try {
+            InstagramCachedAsset cached = instagramAssetCacheService.cacheThumbnail(
+                entity.getInstagramMediaId(),
+                sourceThumbnailUrl
+            );
+            if (cached == null) {
+                throw new IllegalStateException("thumbnail cache returned no asset");
+            }
+            entity.setCachedThumbnailUrl(cached.publicUrl());
+            entity.setCachedThumbnailStorageKey(cached.storageKey());
+            entity.setThumbnailCachedAt(now);
+            entity.setThumbnailUrl(cached.publicUrl());
+            entity.setLastSyncStatus("SUCCESS");
+            entity.setLastSyncError(null);
+            return true;
+        } catch (RuntimeException ex) {
+            entity.setLastSyncStatus("THUMBNAIL_CACHE_FAILED");
+            entity.setLastSyncError(limitError(ex.getMessage()));
+            log.warn(
+                "Instagram thumbnail cache failed mediaId={} reason={}",
+                entity.getInstagramMediaId(),
+                ex.getMessage()
+            );
+            return false;
+        }
     }
 
     private boolean isReel(InstagramMetaMedia media) {
@@ -219,5 +345,28 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
 
     private String lower(String value) {
         return StringUtils.hasText(value) ? value.trim().toLowerCase(Locale.ROOT) : null;
+    }
+
+    private String clean(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String firstText(String first, String second) {
+        String cleanedFirst = clean(first);
+        return cleanedFirst != null ? cleanedFirst : clean(second);
+    }
+
+    private String limitError(String message) {
+        String cleaned = clean(message);
+        if (cleaned == null) {
+            return null;
+        }
+        return cleaned.length() <= 500 ? cleaned : cleaned.substring(0, 500);
+    }
+
+    private enum CacheOutcome {
+        CACHED,
+        FAILED,
+        SKIPPED
     }
 }

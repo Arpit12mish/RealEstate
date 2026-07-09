@@ -45,6 +45,27 @@ public class InstagramReelEntity extends BaseEntity {
     @Column(name = "thumbnail_url", length = 1000)
     private String thumbnailUrl;
 
+    @Column(name = "source_thumbnail_url", columnDefinition = "TEXT")
+    private String sourceThumbnailUrl;
+
+    @Column(name = "cached_thumbnail_url", columnDefinition = "TEXT")
+    private String cachedThumbnailUrl;
+
+    @Column(name = "cached_thumbnail_storage_key", length = 500)
+    private String cachedThumbnailStorageKey;
+
+    @Column(name = "thumbnail_cached_at")
+    private OffsetDateTime thumbnailCachedAt;
+
+    @Column(name = "meta_fetched_at")
+    private OffsetDateTime metaFetchedAt;
+
+    @Column(name = "last_sync_status", length = 40)
+    private String lastSyncStatus;
+
+    @Column(name = "last_sync_error", columnDefinition = "TEXT")
+    private String lastSyncError;
+
     @Column(name = "preview_video_url", length = 1000)
     private String previewVideoUrl;
 

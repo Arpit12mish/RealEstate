@@ -8,7 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
-public interface ProjectSearchRepository extends Repository<ProjectEntity, Long> {
+public interface ProjectSearchRepository extends Repository<ProjectEntity, Long>, ProjectSearchRepositoryCustom {
 
     @Query("""
         select p
@@ -21,13 +21,15 @@ public interface ProjectSearchRepository extends Repository<ProjectEntity, Long>
           and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
           and (:cityId is null or c.id = :cityId)
           and (
-                lower(p.name) like lower(concat(:query, '%'))
+                :query = ''
+             or lower(p.name) like lower(concat(:query, '%'))
              or lower(p.name) like lower(concat('%', :query, '%'))
              or lower(b.name) like lower(concat(:query, '%'))
              or lower(b.name) like lower(concat('%', :query, '%'))
           )
         order by
           case
+            when :query = '' then 0
             when lower(p.name) = lower(:query) then 1
             when lower(p.name) like lower(concat(:query, '%')) then 2
             when lower(b.name) = lower(:query) then 3
@@ -43,5 +45,28 @@ public interface ProjectSearchRepository extends Repository<ProjectEntity, Long>
             @Param("query") String query,
             @Param("cityId") Long cityId,
             Pageable pageable
+    );
+
+    @Query("""
+        select count(p.id)
+        from ProjectEntity p
+        left join p.builder b
+        left join p.city c
+        where p.active = true
+          and p.published = true
+          and p.deleted = false
+          and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
+          and (:cityId is null or c.id = :cityId)
+          and (
+                :query = ''
+             or lower(p.name) like lower(concat(:query, '%'))
+             or lower(p.name) like lower(concat('%', :query, '%'))
+             or lower(b.name) like lower(concat(:query, '%'))
+             or lower(b.name) like lower(concat('%', :query, '%'))
+          )
+        """)
+    long countSearchProjects(
+            @Param("query") String query,
+            @Param("cityId") Long cityId
     );
 }

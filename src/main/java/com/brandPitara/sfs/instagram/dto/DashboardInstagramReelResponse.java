@@ -18,6 +18,13 @@ public class DashboardInstagramReelResponse {
     private String title;
     private String instagramUrl;
     private String thumbnailUrl;
+    private String sourceThumbnailUrl;
+    private String cachedThumbnailUrl;
+    private String cachedThumbnailStorageKey;
+    private OffsetDateTime thumbnailCachedAt;
+    private OffsetDateTime metaFetchedAt;
+    private String lastSyncStatus;
+    private String lastSyncError;
     private String previewVideoUrl;
     private String mediaType;
     private String mediaProductType;
@@ -31,6 +38,7 @@ public class DashboardInstagramReelResponse {
     private InstagramReelCategory categoryOverride;
     private Integer displayOrder;
     private Boolean active;
+    private Boolean deleted;
     private Boolean syncedFromMeta;
     private OffsetDateTime lastSyncedAt;
     private OffsetDateTime createdAt;

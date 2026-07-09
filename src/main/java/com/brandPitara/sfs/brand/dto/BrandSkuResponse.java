@@ -12,10 +12,13 @@ public class BrandSkuResponse {
   private String skuCode;
   private Long categoryId;
   private String categoryName;
+  private Long productCategoryId;
+  private String productCategoryName;
   private String shortDescription;
   private String description;
   private String imageUrl;
   private String priceLabel;
+  private String externalUrl;
   private boolean featured;
   private boolean latest;
   private int displayOrder;

@@ -29,5 +29,9 @@ public record DashboardPresignUploadRequest(
         Long builderId,
 
         // Required when uploadType is CITY_COVER_IMAGE
-        Long cityId
+        Long cityId,
+
+        // Required when uploadType is a BRAND_* upload - the brand must already exist
+        // (create-first-then-upload flow, no temp/pre-create upload path).
+        Long brandId
 ) {}

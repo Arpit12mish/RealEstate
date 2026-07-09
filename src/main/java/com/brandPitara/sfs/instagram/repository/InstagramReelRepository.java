@@ -34,6 +34,8 @@ public interface InstagramReelRepository extends JpaRepository<InstagramReelEnti
 
     List<InstagramReelEntity> findByDeletedFalse();
 
+    List<InstagramReelEntity> findByActiveTrueAndDeletedFalseAndCachedThumbnailUrlIsNull();
+
     @Query("""
         select r
         from InstagramReelEntity r

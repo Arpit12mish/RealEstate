@@ -26,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Year;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,6 +55,9 @@ public class BrandServiceImpl implements BrandService {
         .slug(resolveSlugForCreate(clean(request.getSlug()), name))
         .heroImageUrl(clean(request.getHeroImageUrl()))
         .shortDescription(clean(request.getShortDescription()))
+        .foundedYear(request.getFoundedYear())
+        .customerRating(request.getCustomerRating())
+        .customerRatingCount(request.getCustomerRatingCount())
         .priority(request.getPriority() != null ? request.getPriority() : 0)
         .active(request.getActive() != null ? request.getActive() : true)
         .published(false)
@@ -85,6 +89,9 @@ public class BrandServiceImpl implements BrandService {
     if (request.getSlug() != null) entity.setSlug(resolveSlugForUpdate(clean(request.getSlug()), id));
     if (request.getHeroImageUrl() != null) entity.setHeroImageUrl(clean(request.getHeroImageUrl()));
     if (request.getShortDescription() != null) entity.setShortDescription(clean(request.getShortDescription()));
+    if (request.isFoundedYearPresent()) entity.setFoundedYear(request.getFoundedYear());
+    if (request.isCustomerRatingPresent()) entity.setCustomerRating(request.getCustomerRating());
+    if (request.isCustomerRatingCountPresent()) entity.setCustomerRatingCount(request.getCustomerRatingCount());
     if (request.getPriority() != null) entity.setPriority(request.getPriority());
     if (request.getActive() != null) entity.setActive(request.getActive());
 
@@ -277,6 +284,10 @@ public class BrandServiceImpl implements BrandService {
         .slug(e.getSlug())
         .heroImageUrl(e.getHeroImageUrl())
         .shortDescription(e.getShortDescription())
+        .foundedYear(e.getFoundedYear())
+        .yearsInIndustry(calculateYearsInIndustry(e.getFoundedYear()))
+        .customerRating(e.getCustomerRating())
+        .customerRatingCount(e.getCustomerRatingCount())
         .categoryIds(categoryIds)
         .active(Boolean.TRUE.equals(e.getActive()))
         .published(Boolean.TRUE.equals(e.getPublished()))
@@ -285,6 +296,11 @@ public class BrandServiceImpl implements BrandService {
         .promoMediaType(e.getPromoMediaType())
         .promoMediaUrl(e.getPromoMediaUrl())
         .build();
+  }
+
+  private Integer calculateYearsInIndustry(Integer foundedYear) {
+    if (foundedYear == null) return null;
+    return Math.max(0, Year.now().getValue() - foundedYear);
   }
 
   // ---------- slug helpers ----------
@@ -327,44 +343,72 @@ public class BrandServiceImpl implements BrandService {
   }
 
   // ---------- category link helpers ----------
-
   /**
-   * Full replace of this brand's category tags when categoryIds is non-null (null means
-   * "leave existing tags untouched"). Simple resync: soft-delete everything currently
-   * linked, then re-create fresh links for the requested ids. The dedicated
-   * BrandCategoryLinkService is the primary surface for fine-grained per-link management
-   * (display order, reactivation); this is a convenience bulk-set on the brand itself.
-   */
-  private void replaceCategoryLinks(BrandEntity brand, List<Long> categoryIds) {
-    if (categoryIds == null) return;
+ * Full replace of this brand's category tags when categoryIds is non-null.
+ *
+ * Contract:
+ * - categoryIds == null means "leave existing tags untouched".
+ * - empty categoryIds means "remove all category tags".
+ * - existing links are reactivated instead of reinserted, because the DB unique
+ *   constraint is on (brand_id, category_id) and includes soft-deleted rows.
+ */
+private void replaceCategoryLinks(BrandEntity brand, List<Long> categoryIds) {
+  if (categoryIds == null) return;
 
-    Map<Long, CategoryEntity> categories = new LinkedHashMap<>();
-    for (Long categoryId : categoryIds) {
-      if (categoryId == null || categories.containsKey(categoryId)) continue;
-      CategoryEntity category = categoryRepository.findByIdAndActiveTrue(categoryId)
-          .orElseThrow(() -> new EntityNotFoundException("Category not found or inactive: " + categoryId));
-      categories.put(categoryId, category);
-    }
+  Map<Long, CategoryEntity> requestedCategories = new LinkedHashMap<>();
+  for (Long categoryId : categoryIds) {
+    if (categoryId == null || requestedCategories.containsKey(categoryId)) continue;
 
-    List<BrandCategoryLinkEntity> existing = brandCategoryLinkRepository
-        .findByBrand_IdAndDeletedFalseOrderBySortOrderAscIdAsc(brand.getId());
-    for (BrandCategoryLinkEntity link : existing) {
-      link.setDeleted(true);
-      link.setActive(false);
-      brandCategoryLinkRepository.save(link);
-    }
+    CategoryEntity category = categoryRepository.findByIdAndActiveTrue(categoryId)
+        .orElseThrow(() -> new EntityNotFoundException("Category not found or inactive: " + categoryId));
 
-    int order = 0;
-    for (CategoryEntity category : categories.values()) {
-      brandCategoryLinkRepository.save(BrandCategoryLinkEntity.builder()
-          .brand(brand)
-          .category(category)
-          .sortOrder(order++)
-          .active(true)
-          .deleted(false)
-          .build());
+    requestedCategories.put(categoryId, category);
+  }
+
+  List<BrandCategoryLinkEntity> existingLinks = brandCategoryLinkRepository
+      .findByBrand_IdOrderBySortOrderAscIdAsc(brand.getId());
+
+  Map<Long, BrandCategoryLinkEntity> existingByCategoryId = existingLinks.stream()
+      .collect(Collectors.toMap(
+          link -> link.getCategory().getId(),
+          link -> link,
+          (first, second) -> first,
+          LinkedHashMap::new
+      ));
+
+  for (BrandCategoryLinkEntity existing : existingLinks) {
+    Long existingCategoryId = existing.getCategory().getId();
+
+    if (!requestedCategories.containsKey(existingCategoryId)) {
+      existing.setDeleted(true);
+      existing.setActive(false);
+      brandCategoryLinkRepository.save(existing);
     }
   }
+
+  int order = 0;
+  for (Map.Entry<Long, CategoryEntity> entry : requestedCategories.entrySet()) {
+    Long categoryId = entry.getKey();
+    CategoryEntity category = entry.getValue();
+
+    BrandCategoryLinkEntity link = existingByCategoryId.get(categoryId);
+
+    if (link == null) {
+      link = BrandCategoryLinkEntity.builder()
+          .brand(brand)
+          .category(category)
+          .build();
+    } else {
+      link.setDeleted(false);
+      link.setActive(true);
+    }
+
+    link.setSortOrder(order++);
+    brandCategoryLinkRepository.save(link);
+  }
+}
+
+
 
   private BrandMediaResponse toMediaResponse(BrandMediaEntity m) {
     return BrandMediaResponse.builder()

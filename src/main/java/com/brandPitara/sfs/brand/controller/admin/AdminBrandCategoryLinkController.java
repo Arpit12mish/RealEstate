@@ -18,7 +18,7 @@ public class AdminBrandCategoryLinkController {
   private final BrandCategoryLinkService brandCategoryLinkService;
 
   @PostMapping("/{brandId}/categories")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandCategoryLinkResponse upsert(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandCategoryLinkUpsertRequest request
@@ -27,7 +27,7 @@ public class AdminBrandCategoryLinkController {
   }
 
   @GetMapping("/{brandId}/categories")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public List<BrandCategoryLinkResponse> list(@PathVariable Long brandId) {
     return brandCategoryLinkService.adminList(brandId);
   }

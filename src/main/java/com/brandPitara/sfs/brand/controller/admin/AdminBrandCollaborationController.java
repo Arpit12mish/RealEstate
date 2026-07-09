@@ -20,7 +20,7 @@ public class AdminBrandCollaborationController {
   private final BrandCollaborationService brandCollaborationService;
 
   @PostMapping("/{brandId}/collaborations")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandCollaborationResponse create(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandCollaborationUpsertRequest request
@@ -29,7 +29,7 @@ public class AdminBrandCollaborationController {
   }
 
   @PutMapping("/{brandId}/collaborations/{collaborationId}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandCollaborationResponse update(
       @PathVariable Long brandId,
       @PathVariable Long collaborationId,
@@ -39,7 +39,7 @@ public class AdminBrandCollaborationController {
   }
 
   @GetMapping("/{brandId}/collaborations")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public Page<BrandCollaborationResponse> list(
       @PathVariable Long brandId,
       @RequestParam(defaultValue = "0") int page,

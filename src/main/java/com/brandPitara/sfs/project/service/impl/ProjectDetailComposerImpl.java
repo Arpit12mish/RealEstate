@@ -4,6 +4,7 @@ import com.brandPitara.sfs.project.dto.*;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.enums.ProjectMediaType;
+import com.brandPitara.sfs.project.enums.UnitConfigurationType;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
 import com.brandPitara.sfs.project.mapper.ProjectMediaMapper;
 import com.brandPitara.sfs.project.service.ProjectConnectivityService;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +29,7 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
   private static final int DEFAULT_DOWN_PAYMENT_PERCENT = 20;
   private static final double DEFAULT_ANNUAL_INTEREST_RATE = 8.5;
   private static final int DEFAULT_TENURE_YEARS = 20;
+  private static final Pattern BHK_PATTERN = Pattern.compile("\\b(5\\+|[1-5](?:\\.5)?)\\s*BHK\\b");
 
   private final ProjectFloorPlanService projectFloorPlanService;
   private final ProjectConnectivityService projectConnectivityService;
@@ -262,21 +266,47 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
     }
 
     String normalized = raw.trim().toUpperCase(Locale.ROOT);
+    String normalizedForBhk = normalized.replace('_', '.');
 
     if (normalized.contains("STUDIO")) return "STUDIO";
     if (normalized.contains("OFFICE")) return "OFFICE";
-    if (normalized.contains("1 BHK") || normalized.contains("1BHK")) return "1_BHK";
-    if (normalized.contains("2 BHK") || normalized.contains("2BHK")) return "2_BHK";
-    if (normalized.contains("3 BHK") || normalized.contains("3BHK")) return "3_BHK";
-    if (normalized.contains("4 BHK") || normalized.contains("4BHK")) return "4_BHK";
+    if (normalized.contains("RETAIL")) return "RETAIL";
+    if (normalized.contains("PLOT")) return "PLOT";
+
+    Matcher bhkMatcher = BHK_PATTERN.matcher(normalizedForBhk);
+    if (bhkMatcher.find()) {
+      return toUnitConfigurationKey(bhkMatcher.group(1));
+    }
+
     if (normalized.contains("PENTHOUSE")) return "PENTHOUSE";
     if (normalized.contains("VILLA")) return "VILLA";
 
     return normalized.replaceAll("\\s+", "_");
   }
 
+  private String toUnitConfigurationKey(String bhkValue) {
+    return switch (bhkValue) {
+      case "1" -> "BHK_1";
+      case "1.5" -> "BHK_1_5";
+      case "2" -> "BHK_2";
+      case "2.5" -> "BHK_2_5";
+      case "3" -> "BHK_3";
+      case "3.5" -> "BHK_3_5";
+      case "4" -> "BHK_4";
+      case "4.5" -> "BHK_4_5";
+      case "5" -> "BHK_5";
+      case "5+" -> "BHK_5_PLUS";
+      default -> "OTHER";
+    };
+  }
+
   private String toReadableGroupLabel(String key) {
     if (key == null || key.isBlank()) return "Other";
+    try {
+      return UnitConfigurationType.valueOf(key).toLabel();
+    } catch (IllegalArgumentException ignored) {
+      // Legacy non-enum group keys still fall back to a readable label.
+    }
     return key.replace("_", " ");
   }
 

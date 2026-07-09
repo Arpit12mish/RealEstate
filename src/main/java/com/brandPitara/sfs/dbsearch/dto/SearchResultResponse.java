@@ -14,5 +14,7 @@ public class SearchResultResponse {
     private Integer page;
     private Integer size;
     private Long totalElements;
+    private Integer totalPages;
+    private Boolean hasNextPage;
     private List<SearchItemDto> items;
 }

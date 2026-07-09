@@ -4,6 +4,7 @@ import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadRequest;
 import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadResponse;
 import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
 import com.brandPitara.sfs.dashboard.media.service.DashboardMediaPresignService;
+import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
 import com.brandPitara.sfs.media.service.MediaStorageService;
@@ -29,17 +30,23 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
     private final DashboardMediaUploadValidator uploadValidator;
     private final CityRepository cityRepository;
     private final ProjectRepository projectRepository;
+    private final BrandRepository brandRepository;
 
     @Override
     public DashboardPresignUploadResponse createPresignedUpload(DashboardPresignUploadRequest request) {
         uploadValidator.validateContentType(request.uploadType(), request.contentType());
-        uploadValidator.validateFileSize(request.uploadType(), request.fileSizeBytes());
-        uploadValidator.validateContextIds(request.uploadType(), request.projectId(), request.builderId(), request.cityId());
+        uploadValidator.validateFileSize(request.uploadType(), request.contentType(), request.fileSizeBytes());
+        uploadValidator.validateContextIds(
+                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId()
+        );
         assertProjectUploadAllowed(request.uploadType(), request.projectId());
         assertCityExistsForCityUpload(request.uploadType(), request.cityId());
+        assertBrandExistsForBrandUpload(request.uploadType(), request.brandId());
 
         String ext = extFromContentType(request.contentType());
-        String key = buildKey(request.uploadType(), request.projectId(), request.builderId(), request.cityId(), ext);
+        String key = buildKey(
+                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(), ext
+        );
 
         Map<String, String> requiredHeaders = Map.of(
                 "Content-Type", request.contentType(),
@@ -84,9 +91,17 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         }
     }
 
+    private void assertBrandExistsForBrandUpload(DashboardMediaUploadType uploadType, Long brandId) {
+        if (uploadType.isBrandScoped() && brandRepository.findByIdAndDeletedFalse(brandId).isEmpty()) {
+            throw new EntityNotFoundException("Brand not found: " + brandId);
+        }
+    }
+
     // --- key building ---
 
-    private String buildKey(DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, String ext) {
+    private String buildKey(
+            DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, Long brandId, String ext
+    ) {
         String filename = UUID.randomUUID() + "." + ext;
         return switch (uploadType) {
             case PROJECT_IMAGE    -> "dashboard/projects/" + projectId + "/images/" + filename;
@@ -104,6 +119,12 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case BUILDER_HIGHLIGHT_IMAGE -> "dashboard/builders/" + builderId + "/highlights/images/" + filename;
             case BUILDER_HIGHLIGHT_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/thumbnails/" + filename;
             case BUILDER_ANALYSIS_VIDEO_THUMBNAIL -> "dashboard/builders/" + builderId + "/highlights/analysis-thumbnails/" + filename;
+            case BRAND_LOGO       -> "dashboard/brands/" + brandId + "/logo/" + filename;
+            case BRAND_HERO_IMAGE -> "dashboard/brands/" + brandId + "/hero/" + filename;
+            case BRAND_SKU_IMAGE  -> "dashboard/brands/" + brandId + "/skus/" + filename;
+            case BRAND_CERTIFICATE_FILE -> "dashboard/brands/" + brandId + "/certificates/" + filename;
+            case BRAND_PROMO_MEDIA -> "dashboard/brands/" + brandId + "/promo/" + filename;
+            case BRAND_PRODUCT_CATEGORY_IMAGE -> "dashboard/brands/" + brandId + "/product-categories/" + filename;
         };
     }
 

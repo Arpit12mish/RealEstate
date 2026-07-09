@@ -7,6 +7,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import com.brandPitara.sfs.brand.enums.PromoMediaType;
 
+import java.math.BigDecimal;
+
 @Entity
 @Table(
     name = "brand",
@@ -46,6 +48,15 @@ public class BrandEntity extends BaseEntity {
 
   @Column(columnDefinition = "text")
   private String description;
+
+  @Column(name = "founded_year")
+  private Integer foundedYear;
+
+  @Column(name = "customer_rating", precision = 2, scale = 1)
+  private BigDecimal customerRating;
+
+  @Column(name = "customer_rating_count")
+  private Integer customerRatingCount;
 
   // ✅ NEW (promo animation)
   @Enumerated(EnumType.STRING)

@@ -38,7 +38,7 @@ public class CompanyConnectedBrandPublicServiceImpl implements CompanyConnectedB
     }
 
     for (CompanyBrandLinkEntity link : companyBrandLinkRepository
-        .findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(companyId)) {
+        .findPublicFallbackByCompanyId(companyId)) {
       BrandEntity brand = link.getBrand();
       if (brand == null || brand.getId() == null || !seenBrandIds.add(brand.getId())) {
         continue;

@@ -36,4 +36,6 @@ public interface BrandCategoryLinkRepository extends JpaRepository<BrandCategory
       order by l.category.priority asc, l.category.name asc
       """)
   List<CategoryEntity> findDistinctPublicCategories();
+
+  List<BrandCategoryLinkEntity> findByBrand_IdOrderBySortOrderAscIdAsc(Long brandId);
 }

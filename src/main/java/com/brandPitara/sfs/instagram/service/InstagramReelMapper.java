@@ -1,16 +1,24 @@
 package com.brandPitara.sfs.instagram.service;
 
+import com.brandPitara.sfs.instagram.config.AppInstagramProperties;
 import com.brandPitara.sfs.instagram.dto.DashboardInstagramReelResponse;
 import com.brandPitara.sfs.instagram.dto.PublicInstagramReelItemResponse;
 import com.brandPitara.sfs.instagram.entity.InstagramReelEntity;
 import com.brandPitara.sfs.instagram.enums.InstagramReelCategory;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+
 @Component
+@RequiredArgsConstructor
 public class InstagramReelMapper {
 
     private static final int CAPTION_PREVIEW_LIMIT = 140;
+
+    private final AppInstagramProperties appInstagramProperties;
 
     public PublicInstagramReelItemResponse toPublicResponse(
         InstagramReelEntity entity,
@@ -24,7 +32,7 @@ public class InstagramReelMapper {
             .id(entity.getId())
             .title(resolveTitle(entity))
             .captionPreview(captionPreview(entity.getCaption()))
-            .thumbnailUrl(entity.getThumbnailUrl())
+            .thumbnailUrl(resolvePublicThumbnailUrl(entity))
             .previewVideoUrl(entity.getPreviewVideoUrl())
             .instagramUrl(entity.getInstagramUrl())
             .category(resolvedCategory)
@@ -42,7 +50,14 @@ public class InstagramReelMapper {
             .caption(entity.getCaption())
             .title(entity.getTitle())
             .instagramUrl(entity.getInstagramUrl())
-            .thumbnailUrl(entity.getThumbnailUrl())
+            .thumbnailUrl(resolveDisplayThumbnailUrl(entity))
+            .sourceThumbnailUrl(entity.getSourceThumbnailUrl())
+            .cachedThumbnailUrl(resolveSafeCachedThumbnailUrl(entity))
+            .cachedThumbnailStorageKey(entity.getCachedThumbnailStorageKey())
+            .thumbnailCachedAt(entity.getThumbnailCachedAt())
+            .metaFetchedAt(entity.getMetaFetchedAt())
+            .lastSyncStatus(entity.getLastSyncStatus())
+            .lastSyncError(entity.getLastSyncError())
             .previewVideoUrl(entity.getPreviewVideoUrl())
             .mediaType(entity.getMediaType())
             .mediaProductType(entity.getMediaProductType())
@@ -56,6 +71,7 @@ public class InstagramReelMapper {
             .categoryOverride(entity.getCategoryOverride())
             .displayOrder(entity.getDisplayOrder())
             .active(entity.getActive())
+            .deleted(entity.getDeleted())
             .syncedFromMeta(entity.getSyncedFromMeta())
             .lastSyncedAt(entity.getLastSyncedAt())
             .createdAt(entity.getCreatedAt())
@@ -79,6 +95,59 @@ public class InstagramReelMapper {
             return entity.getTitle();
         }
         return deriveTitle(entity.getCaption());
+    }
+
+    private String resolvePublicThumbnailUrl(InstagramReelEntity entity) {
+        return resolveDisplayThumbnailUrl(entity);
+    }
+
+    private String resolveDisplayThumbnailUrl(InstagramReelEntity entity) {
+        String cachedThumbnailUrl = resolveSafeCachedThumbnailUrl(entity);
+        if (StringUtils.hasText(cachedThumbnailUrl)) {
+            return cachedThumbnailUrl;
+        }
+        return appInstagramProperties.getFallbackThumbnailUrl();
+    }
+
+    private String resolveSafeCachedThumbnailUrl(InstagramReelEntity entity) {
+        String cachedThumbnailUrl = entity.getCachedThumbnailUrl();
+        if (StringUtils.hasText(cachedThumbnailUrl) && !isUnsafeExternalInstagramUrl(cachedThumbnailUrl)) {
+            return cachedThumbnailUrl;
+        }
+        return null;
+    }
+
+    boolean isUnsafeExternalInstagramUrl(String url) {
+        if (!StringUtils.hasText(url)) {
+            return false;
+        }
+        String normalized = url.toLowerCase();
+        if (normalized.contains("x-amz-signature")
+            || normalized.contains("oe=")
+            || normalized.contains("_nc_")) {
+            return true;
+        }
+
+        String host = host(url);
+        if (!StringUtils.hasText(host)) {
+            return normalized.contains("cdninstagram")
+                || normalized.contains("scontent")
+                || normalized.contains("lookaside")
+                || normalized.contains("instagram");
+        }
+        return host.contains("cdninstagram")
+            || host.contains("scontent")
+            || host.contains("lookaside")
+            || host.contains("instagram");
+    }
+
+    private String host(String url) {
+        try {
+            URI uri = new URI(url.trim());
+            return uri.getHost() != null ? uri.getHost().toLowerCase() : null;
+        } catch (URISyntaxException ex) {
+            return null;
+        }
     }
 
     private String captionPreview(String caption) {

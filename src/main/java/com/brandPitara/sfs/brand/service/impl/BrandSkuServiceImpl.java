@@ -3,7 +3,9 @@ package com.brandPitara.sfs.brand.service.impl;
 import com.brandPitara.sfs.brand.dto.BrandSkuResponse;
 import com.brandPitara.sfs.brand.dto.BrandSkuUpsertRequest;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.brand.entity.BrandProductCategoryEntity;
 import com.brandPitara.sfs.brand.entity.BrandSkuEntity;
+import com.brandPitara.sfs.brand.repository.BrandProductCategoryRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.BrandSkuService;
@@ -27,6 +29,7 @@ public class BrandSkuServiceImpl implements BrandSkuService {
   private final BrandRepository brandRepository;
   private final BrandSkuRepository brandSkuRepository;
   private final CategoryRepository categoryRepository;
+  private final BrandProductCategoryRepository brandProductCategoryRepository;
   private final ContentVersionService contentVersionService;
 
   private static final String KEY_BRANDS = "BRANDS";
@@ -38,11 +41,13 @@ public class BrandSkuServiceImpl implements BrandSkuService {
         .orElseThrow(() -> new EntityNotFoundException("Brand not found: " + brandId));
 
     CategoryEntity category = resolveCategory(request.getCategoryId());
+    BrandProductCategoryEntity productCategory = resolveProductCategory(brandId, request.getProductCategoryId());
     String name = clean(request.getName());
 
     BrandSkuEntity entity = BrandSkuEntity.builder()
         .brand(brand)
         .category(category)
+        .productCategory(productCategory)
         .name(name)
         .slug(resolveSlugForCreate(brandId, clean(request.getSlug()), name))
         .skuCode(clean(request.getSkuCode()))
@@ -50,6 +55,7 @@ public class BrandSkuServiceImpl implements BrandSkuService {
         .description(clean(request.getDescription()))
         .imageUrl(clean(request.getImageUrl()))
         .priceLabel(clean(request.getPriceLabel()))
+        .externalUrl(clean(request.getExternalUrl()))
         .featured(request.getFeatured() != null ? request.getFeatured() : false)
         .latest(request.getLatest() != null ? request.getLatest() : false)
         .sortOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
@@ -74,11 +80,15 @@ public class BrandSkuServiceImpl implements BrandSkuService {
     if (StringUtils.hasText(request.getName())) entity.setName(clean(request.getName()));
     if (request.getSlug() != null) entity.setSlug(resolveSlugForUpdate(brandId, clean(request.getSlug()), skuId));
     if (request.getCategoryId() != null) entity.setCategory(resolveCategory(request.getCategoryId()));
+    if (request.getProductCategoryId() != null) {
+      entity.setProductCategory(resolveProductCategory(brandId, request.getProductCategoryId()));
+    }
     if (request.getSkuCode() != null) entity.setSkuCode(clean(request.getSkuCode()));
     if (request.getShortDescription() != null) entity.setShortDescription(clean(request.getShortDescription()));
     if (request.getDescription() != null) entity.setDescription(clean(request.getDescription()));
     if (request.getImageUrl() != null) entity.setImageUrl(clean(request.getImageUrl()));
     if (request.getPriceLabel() != null) entity.setPriceLabel(clean(request.getPriceLabel()));
+    if (request.getExternalUrl() != null) entity.setExternalUrl(clean(request.getExternalUrl()));
     if (request.getFeatured() != null) entity.setFeatured(request.getFeatured());
     if (request.getLatest() != null) entity.setLatest(request.getLatest());
     if (request.getDisplayOrder() != null) entity.setSortOrder(request.getDisplayOrder());
@@ -128,6 +138,16 @@ public class BrandSkuServiceImpl implements BrandSkuService {
         .orElseThrow(() -> new EntityNotFoundException("Category not found or inactive: " + categoryId));
   }
 
+  // Must belong to the same brand as the SKU - a product category is brand-scoped, so
+  // silently accepting another brand's category id would let a SKU appear grouped under
+  // a category it has no business relationship to.
+  private BrandProductCategoryEntity resolveProductCategory(Long brandId, Long productCategoryId) {
+    if (productCategoryId == null) return null;
+    return brandProductCategoryRepository.findByIdAndBrand_IdAndDeletedFalse(productCategoryId, brandId)
+        .orElseThrow(() -> new EntityNotFoundException(
+            "Product category not found for this brand: " + productCategoryId));
+  }
+
   private String resolveSlugForCreate(Long brandId, String requestedSlug, String name) {
     if (StringUtils.hasText(requestedSlug)) {
       brandSkuRepository.findByBrand_IdAndSlugAndDeletedFalse(brandId, requestedSlug).ifPresent(existing -> {
@@ -167,6 +187,7 @@ public class BrandSkuServiceImpl implements BrandSkuService {
 
   private BrandSkuResponse toResponse(BrandSkuEntity e) {
     CategoryEntity category = e.getCategory();
+    BrandProductCategoryEntity productCategory = e.getProductCategory();
     return BrandSkuResponse.builder()
         .id(e.getId())
         .brandId(e.getBrand().getId())
@@ -175,10 +196,13 @@ public class BrandSkuServiceImpl implements BrandSkuService {
         .skuCode(e.getSkuCode())
         .categoryId(category != null ? category.getId() : null)
         .categoryName(category != null ? category.getName() : null)
+        .productCategoryId(productCategory != null ? productCategory.getId() : null)
+        .productCategoryName(productCategory != null ? productCategory.getName() : null)
         .shortDescription(e.getShortDescription())
         .description(e.getDescription())
         .imageUrl(e.getImageUrl())
         .priceLabel(e.getPriceLabel())
+        .externalUrl(e.getExternalUrl())
         .featured(Boolean.TRUE.equals(e.getFeatured()))
         .latest(Boolean.TRUE.equals(e.getLatest()))
         .displayOrder(e.getSortOrder() != null ? e.getSortOrder() : 0)

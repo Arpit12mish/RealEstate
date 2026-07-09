@@ -17,6 +17,8 @@ public interface CityRepository extends JpaRepository<CityEntity, Long> {
 
     Optional<CityEntity> findBySlugIgnoreCase(String slug);
 
+    Optional<CityEntity> findBySlugIgnoreCaseAndActiveTrue(String slug);
+
     Optional<CityEntity> findBySlugIgnoreCaseAndIdNot(String slug, Long id);
 
     List<CityEntity> findByNameContainingIgnoreCaseOrderByNameAsc(String name);

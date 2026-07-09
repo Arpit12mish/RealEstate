@@ -24,6 +24,10 @@ public class BrandSkuUpsertRequest {
 
   private Long categoryId;
 
+  // The brand's own product category (Lamps/Mirrors/Kitchenware) - distinct from categoryId
+  // above, which is the global taxonomy. Must belong to the same brand as this SKU.
+  private Long productCategoryId;
+
   @Size(max = 255)
   private String shortDescription;
 
@@ -35,6 +39,11 @@ public class BrandSkuUpsertRequest {
 
   @Size(max = 80)
   private String priceLabel;
+
+  // The product detail page on the brand's own external website.
+  @Pattern(regexp = "^https?://.+", message = "externalUrl must be a valid http/https URL")
+  @Size(max = 500)
+  private String externalUrl;
 
   private Boolean featured;
   private Boolean latest;

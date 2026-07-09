@@ -26,6 +26,11 @@ spring:
             enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
 
 app:
+  instagram:
+    fallback-thumbnail-url: ${APP_INSTAGRAM_FALLBACK_THUMBNAIL_URL:https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/banner/Hero/M3M-Jacob-%26-Co-1.webp}
+    thumbnail-cache-ttl-hours: ${APP_INSTAGRAM_THUMBNAIL_CACHE_TTL_HOURS:24}
+    asset-download-timeout-seconds: ${APP_INSTAGRAM_ASSET_DOWNLOAD_TIMEOUT_SECONDS:10}
+    max-thumbnail-bytes: ${APP_INSTAGRAM_MAX_THUMBNAIL_BYTES:5242880}
   logging:
     path: /var/log/sfs/app
   media:

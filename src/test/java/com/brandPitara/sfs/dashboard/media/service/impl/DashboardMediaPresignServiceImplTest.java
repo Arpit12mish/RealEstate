@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.dashboard.media.service.impl;
 
+import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadRequest;
 import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadResponse;
 import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
@@ -45,7 +47,8 @@ class DashboardMediaPresignServiceImplTest {
                 524288L,
                 null,
                 null,
-                7L
+                7L,
+                null
         ));
 
         assertThat(response.uploadUrl()).isEqualTo("https://upload.example.com/presigned");
@@ -74,7 +77,8 @@ class DashboardMediaPresignServiceImplTest {
                 1000L,
                 null,
                 null,
-                999L
+                999L,
+                null
         )))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessageContaining("City not found: 999");
@@ -97,6 +101,7 @@ class DashboardMediaPresignServiceImplTest {
                 "image/png",
                 524288L,
                 42L,
+                null,
                 null,
                 null
         ));
@@ -124,6 +129,7 @@ class DashboardMediaPresignServiceImplTest {
                 524288L,
                 42L,
                 null,
+                null,
                 null
         )))
                 .isInstanceOf(EntityNotFoundException.class)
@@ -148,6 +154,7 @@ class DashboardMediaPresignServiceImplTest {
                 524288L,
                 42L,
                 null,
+                null,
                 null
         ));
 
@@ -167,6 +174,7 @@ class DashboardMediaPresignServiceImplTest {
                 DashboardMediaUploadType.INSTAGRAM_REEL_THUMBNAIL,
                 "image/webp",
                 524288L,
+                null,
                 null,
                 null,
                 null
@@ -192,6 +200,7 @@ class DashboardMediaPresignServiceImplTest {
                 1024L * 1024L,
                 null,
                 null,
+                null,
                 null
         ));
 
@@ -215,6 +224,7 @@ class DashboardMediaPresignServiceImplTest {
                 524288L,
                 null,
                 7L,
+                null,
                 null
         ));
 
@@ -235,10 +245,193 @@ class DashboardMediaPresignServiceImplTest {
                 1024L,
                 null,
                 null,
+                null,
                 null
         )))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("BUILDER_ANALYSIS_VIDEO_THUMBNAIL requires builderId");
+    }
+
+    // --- Brand uploads (Phase 2B.2) ---
+
+    @Test
+    void brandLogoPresignBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_LOGO,
+                "image/png",
+                1024L * 1024L,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/logo/")
+                .endsWith(".png");
+        assertThat(response.publicUrl()).isEqualTo("https://cdn.squarefootstory.com/" + response.storageKey());
+        verify(mediaStorageService).createPresignedUpload(any(PresignedUploadRequest.class));
+    }
+
+    @Test
+    void brandHeroImagePresignBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_HERO_IMAGE,
+                "image/webp",
+                3L * 1024 * 1024,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/hero/")
+                .endsWith(".webp");
+    }
+
+    @Test
+    void brandSkuImagePresignBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_SKU_IMAGE,
+                "image/jpeg",
+                1024L * 1024L,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/skus/")
+                .endsWith(".jpg");
+    }
+
+    @Test
+    void brandCertificateFilePresignAllowsPdfAndBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_CERTIFICATE_FILE,
+                "application/pdf",
+                4L * 1024 * 1024,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/certificates/")
+                .endsWith(".pdf");
+    }
+
+    @Test
+    void brandPromoMediaPresignAllowsVideoAndBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_PROMO_MEDIA,
+                "video/mp4",
+                20L * 1024 * 1024,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/promo/")
+                .endsWith(".mp4");
+    }
+
+    @Test
+    void brandProductCategoryImagePresignBuildsBrandScopedStorageKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(5L)).thenReturn(Optional.of(BrandEntity.builder().id(5L).build()));
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_PRODUCT_CATEGORY_IMAGE,
+                "image/png",
+                1024L * 1024L,
+                null,
+                null,
+                null,
+                5L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/brands/5/product-categories/")
+                .endsWith(".png");
+    }
+
+    @Test
+    void brandLogoPresignRejectsMissingBrand() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        BrandRepository brandRepository = mock(BrandRepository.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class), brandRepository);
+
+        when(brandRepository.findByIdAndDeletedFalse(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_LOGO,
+                "image/png",
+                1024L,
+                null,
+                null,
+                null,
+                999L
+        )))
+                .isInstanceOf(EntityNotFoundException.class)
+                .hasMessageContaining("Brand not found: 999");
+
+        verify(mediaStorageService, never()).createPresignedUpload(any(PresignedUploadRequest.class));
+    }
+
+    @Test
+    void brandLogoPresignRequiresBrandId() {
+        DashboardMediaPresignServiceImpl service = service(fakeMediaStorageService(), mock(CityRepository.class));
+
+        assertThatThrownBy(() -> service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.BRAND_LOGO,
+                "image/png",
+                1024L,
+                null,
+                null,
+                null,
+                null
+        )))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("BRAND_LOGO requires brandId");
     }
 
     /**
@@ -263,15 +456,24 @@ class DashboardMediaPresignServiceImplTest {
     }
 
     private DashboardMediaPresignServiceImpl service(MediaStorageService mediaStorageService, CityRepository cityRepository) {
-        return service(mediaStorageService, cityRepository, mock(DashboardProjectOwnershipService.class));
+        return service(mediaStorageService, cityRepository, mock(ProjectRepository.class), mock(BrandRepository.class));
     }
 
     private DashboardMediaPresignServiceImpl service(
             MediaStorageService mediaStorageService,
             CityRepository cityRepository,
-            DashboardProjectOwnershipService ownershipService
+            BrandRepository brandRepository
     ) {
-        return service(mediaStorageService, cityRepository, ownershipService, mock(ProjectRepository.class));
+        return service(mediaStorageService, cityRepository, mock(ProjectRepository.class), brandRepository);
+    }
+
+    private DashboardMediaPresignServiceImpl service(
+            MediaStorageService mediaStorageService,
+            CityRepository cityRepository,
+            ProjectRepository projectRepository,
+            BrandRepository brandRepository
+    ) {
+        return service(mediaStorageService, cityRepository, mock(DashboardProjectOwnershipService.class), projectRepository, brandRepository);
     }
 
     private DashboardMediaPresignServiceImpl service(
@@ -280,12 +482,23 @@ class DashboardMediaPresignServiceImplTest {
             DashboardProjectOwnershipService ownershipService,
             ProjectRepository projectRepository
     ) {
+        return service(mediaStorageService, cityRepository, ownershipService, projectRepository, mock(BrandRepository.class));
+    }
+
+    private DashboardMediaPresignServiceImpl service(
+            MediaStorageService mediaStorageService,
+            CityRepository cityRepository,
+            DashboardProjectOwnershipService ownershipService,
+            ProjectRepository projectRepository,
+            BrandRepository brandRepository
+    ) {
         return new DashboardMediaPresignServiceImpl(
                 mediaStorageService,
                 ownershipService,
                 new DashboardMediaUploadValidator(),
                 cityRepository,
-                projectRepository
+                projectRepository,
+                brandRepository
         );
     }
 }

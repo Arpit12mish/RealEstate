@@ -15,6 +15,8 @@ public class InstagramReelSyncResult {
     private Integer updatedCount;
     private Integer skippedCount;
     private Integer failedInsightCount;
+    private Integer thumbnailCachedCount;
+    private Integer thumbnailCacheFailedCount;
     private OffsetDateTime startedAt;
     private OffsetDateTime completedAt;
 }

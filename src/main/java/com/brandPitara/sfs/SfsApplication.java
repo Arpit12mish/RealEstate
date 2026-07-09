@@ -2,6 +2,7 @@ package com.brandPitara.sfs;
 
 import com.brandPitara.sfs.config.AppReviewLoginProperties;
 import com.brandPitara.sfs.config.TwilioProperties;
+import com.brandPitara.sfs.instagram.config.AppInstagramProperties;
 import com.brandPitara.sfs.instagram.config.InstagramMetaProperties;
 import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
 import org.springframework.boot.SpringApplication;
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
         TwilioProperties.class,
         AppReviewLoginProperties.class,
+        AppInstagramProperties.class,
         InstagramMetaProperties.class,
         RateLimitProperties.class
 })

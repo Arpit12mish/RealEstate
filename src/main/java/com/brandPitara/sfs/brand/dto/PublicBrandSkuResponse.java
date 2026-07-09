@@ -16,4 +16,9 @@ public class PublicBrandSkuResponse {
   private String priceLabel;
   private boolean featured;
   private boolean latest;
+  // The product detail page on the brand's own external website; null when not set.
+  private String externalUrl;
+  // "View Product" when externalUrl is present, else null - lets mobile decide whether to
+  // render the CTA button without re-deriving the label itself.
+  private String ctaLabel;
 }

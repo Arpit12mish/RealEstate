@@ -20,7 +20,7 @@ public class AdminBrandSkuController {
   private final BrandSkuService brandSkuService;
 
   @PostMapping("/{brandId}/skus")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandSkuResponse create(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandSkuUpsertRequest request
@@ -29,7 +29,7 @@ public class AdminBrandSkuController {
   }
 
   @PutMapping("/{brandId}/skus/{skuId}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandSkuResponse update(
       @PathVariable Long brandId,
       @PathVariable Long skuId,
@@ -39,7 +39,7 @@ public class AdminBrandSkuController {
   }
 
   @GetMapping("/{brandId}/skus")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public Page<BrandSkuResponse> list(
       @PathVariable Long brandId,
       @RequestParam(defaultValue = "0") int page,
@@ -51,7 +51,7 @@ public class AdminBrandSkuController {
   }
 
   @GetMapping("/{brandId}/skus/{skuId}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public BrandSkuResponse getById(@PathVariable Long brandId, @PathVariable Long skuId) {
     return brandSkuService.adminGetById(brandId, skuId);
   }

@@ -8,11 +8,17 @@ import com.brandPitara.sfs.dbsearch.infra.BuilderSearchRepository;
 import com.brandPitara.sfs.dbsearch.infra.CompanySearchRepository;
 import com.brandPitara.sfs.dbsearch.infra.ProjectSearchRepository;
 import com.brandPitara.sfs.dbsearch.mapper.SearchMapper;
+import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
+import com.brandPitara.sfs.project.enums.ProjectStatus;
+import com.brandPitara.sfs.project.enums.PropertyType;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
+import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
+import com.brandPitara.sfs.repository.CityRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.domain.PageImpl;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
@@ -20,13 +26,17 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,11 +49,15 @@ class SearchServiceImplTest {
     @Mock private ProjectMediaRepository projectMediaRepository;
     @Mock private SearchMapper searchMapper;
     @Mock private ProjectFavoriteService projectFavoriteService;
+    @Mock private CityRepository cityRepository;
+    @Mock private ProjectMeterSnapshotRepository projectMeterSnapshotRepository;
 
     @InjectMocks private SearchServiceImpl service;
 
     @Captor private ArgumentCaptor<Pageable> pageableCaptor;
     @Captor private ArgumentCaptor<String> queryCaptor;
+    @Captor private ArgumentCaptor<Long> cityIdCaptor;
+    @Captor private ArgumentCaptor<SearchCriteria> criteriaCaptor;
 
     // ── suggest: empty/blank/short query → no DB call ─────────────────────────
 
@@ -132,6 +146,206 @@ class SearchServiceImplTest {
         verify(projectSearchRepository, never()).searchProjects(anyString(), any(), any());
     }
 
+    @Test
+    void search_withCityOnlyReturnsProjectsInCity() {
+        ProjectEntity project = new ProjectEntity();
+        project.setId(101L);
+
+        SearchItemDto projectItem = SearchItemDto.builder()
+                .id(101L)
+                .entityType(SearchEntityType.PROJECT)
+                .build();
+
+        when(projectSearchRepository.searchProjects(any(SearchCriteria.class), any()))
+                .thenReturn(new PageImpl<>(List.of(project), org.springframework.data.domain.PageRequest.of(0, 20), 1));
+        when(projectMediaRepository.findActiveByProjectIds(List.of(101L)))
+                .thenReturn(List.of());
+        when(projectMeterSnapshotRepository.findByProjectIdIn(List.of(101L)))
+                .thenReturn(List.of());
+        when(searchMapper.toProjectItem(project, null, List.of(), null))
+                .thenReturn(projectItem);
+
+        SearchResultResponse response = service.search("", 1L, 0, 20);
+
+        assertThat(response.getItems()).containsExactly(projectItem);
+        assertThat(response.getTotalElements()).isEqualTo(1L);
+        verify(builderSearchRepository, never()).searchBuilders(anyString(), any(), any());
+        verify(companySearchRepository, never()).searchCompanies(anyString(), any());
+        verify(projectFavoriteService).enrichSearchProjectItems(response.getItems());
+    }
+
+    @Test
+    void search_withKeywordAndCityKeepsFiltersSeparate() {
+        stubEmptyRepos();
+
+        service.search("  m3m  ", 1L, 0, 10);
+
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        assertThat(criteriaCaptor.getValue().query()).isEqualTo("m3m");
+        assertThat(criteriaCaptor.getValue().cityId()).isEqualTo(1L);
+    }
+
+    @Test
+    void search_withPriceRangePassesPriceCriteria() {
+        stubEmptyRepos();
+
+        service.search(new SearchCriteria(
+                null,
+                1L,
+                null,
+                10_000_000L,
+                30_000_000L,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                0,
+                10
+        ));
+
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        assertThat(criteriaCaptor.getValue().priceMin()).isEqualTo(10_000_000L);
+        assertThat(criteriaCaptor.getValue().priceMax()).isEqualTo(30_000_000L);
+    }
+
+    @Test
+    void search_withProgressRangePassesProgressCriteria() {
+        stubEmptyRepos();
+
+        service.search(new SearchCriteria(
+                null,
+                1L,
+                null,
+                null,
+                null,
+                40,
+                80,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                0,
+                10
+        ));
+
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        assertThat(criteriaCaptor.getValue().constructionProgressMin()).isEqualTo(40);
+        assertThat(criteriaCaptor.getValue().constructionProgressMax()).isEqualTo(80);
+    }
+
+    @Test
+    void search_withPossessionStatusAndPropertyTypesPassesCriteria() {
+        stubEmptyRepos();
+        LocalDate from = LocalDate.of(2026, 7, 8);
+        LocalDate to = LocalDate.of(2027, 7, 8);
+
+        service.search(new SearchCriteria(
+                "m3m",
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                from,
+                to,
+                List.of(ProjectStatus.UNDER_CONSTRUCTION),
+                List.of(PropertyType.APARTMENT, PropertyType.VILLA),
+                SearchSort.PRICE_LOW,
+                0,
+                10
+        ));
+
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        SearchCriteria value = criteriaCaptor.getValue();
+        assertThat(value.possessionFrom()).isEqualTo(from);
+        assertThat(value.possessionTo()).isEqualTo(to);
+        assertThat(value.statuses()).containsExactly(ProjectStatus.UNDER_CONSTRUCTION);
+        assertThat(value.propertyTypes()).containsExactly(PropertyType.APARTMENT, PropertyType.VILLA);
+        assertThat(value.sort()).isEqualTo(SearchSort.PRICE_LOW);
+    }
+
+    @Test
+    void search_rejectsInvalidPriceRange() {
+        assertThatThrownBy(() -> service.search(new SearchCriteria(
+                null,
+                1L,
+                null,
+                30_000_000L,
+                10_000_000L,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                0,
+                10
+        ))).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    @Test
+    void search_rejectsInvalidProgressRange() {
+        assertThatThrownBy(() -> service.search(new SearchCriteria(
+                null,
+                1L,
+                null,
+                null,
+                null,
+                101,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                null,
+                0,
+                10
+        ))).isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+    }
+
+    @Test
+    void search_withCitySlugResolvesCityId() {
+        CityEntity city = CityEntity.builder()
+                .id(7L)
+                .name("Gurugram")
+                .slug("gurugram")
+                .active(true)
+                .build();
+
+        when(cityRepository.findBySlugIgnoreCaseAndActiveTrue("gurugram"))
+                .thenReturn(Optional.of(city));
+        when(projectSearchRepository.searchProjects(any(SearchCriteria.class), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        SearchResultResponse response = service.search(
+                new SearchCriteria("", null, " gurugram ", 0, 10)
+        );
+
+        assertThat(response.getItems()).isEmpty();
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        assertThat(criteriaCaptor.getValue().cityId()).isEqualTo(7L);
+    }
+
+    @Test
+    void search_withInvalidCitySlugReturnsEmptyResultWithoutBroadSearch() {
+        when(cityRepository.findBySlugIgnoreCaseAndActiveTrue("missing"))
+                .thenReturn(Optional.empty());
+
+        SearchResultResponse response = service.search(
+                new SearchCriteria("", null, "missing", 0, 10)
+        );
+
+        assertThat(response.getItems()).isEmpty();
+        assertThat(response.getTotalElements()).isZero();
+        verify(projectSearchRepository, never()).searchProjects(anyString(), any(), any());
+    }
+
     // ── search: page size cap at 20 ───────────────────────────────────────────
 
     @Test
@@ -140,19 +354,16 @@ class SearchServiceImplTest {
 
         service.search("prestige", null, 0, 500);
 
-        verify(projectSearchRepository).searchProjects(anyString(), any(), pageableCaptor.capture());
+        verify(projectSearchRepository).searchProjects(any(SearchCriteria.class), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageSize()).isLessThanOrEqualTo(20);
     }
 
-    // ── search: negative page defaults to 0 ──────────────────────────────────
+    // ── search: invalid page returns 400 ─────────────────────────────────────
 
     @Test
-    void search_treatsNegativePageAsZero() {
-        stubEmptyRepos();
-
-        SearchResultResponse response = service.search("dlf", null, -5, 10);
-
-        assertThat(response.getPage()).isZero();
+    void search_rejectsNegativePage() {
+        assertThatThrownBy(() -> service.search("dlf", null, -5, 10))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
     }
 
     // ── search: query is trimmed ──────────────────────────────────────────────
@@ -163,8 +374,8 @@ class SearchServiceImplTest {
 
         service.search("  brigade  ", null, 0, 10);
 
-        verify(projectSearchRepository).searchProjects(queryCaptor.capture(), any(), any());
-        assertThat(queryCaptor.getValue()).isEqualTo("brigade");
+        verify(projectSearchRepository).searchProjects(criteriaCaptor.capture(), any());
+        assertThat(criteriaCaptor.getValue().query()).isEqualTo("brigade");
     }
 
     @Test
@@ -177,15 +388,17 @@ class SearchServiceImplTest {
                 .entityType(SearchEntityType.PROJECT)
                 .build();
 
-        when(projectSearchRepository.searchProjects(anyString(), any(), any()))
-                .thenReturn(List.of(project));
+        when(projectSearchRepository.searchProjects(any(SearchCriteria.class), any()))
+                .thenReturn(new PageImpl<>(List.of(project)));
         when(builderSearchRepository.searchBuilders(anyString(), any(), any()))
                 .thenReturn(List.of());
         when(companySearchRepository.searchCompanies(anyString(), any()))
                 .thenReturn(List.of());
         when(projectMediaRepository.findActiveByProjectIds(List.of(101L)))
                 .thenReturn(List.of());
-        when(searchMapper.toProjectItem(project, null, List.of()))
+        when(projectMeterSnapshotRepository.findByProjectIdIn(List.of(101L)))
+                .thenReturn(List.of());
+        when(searchMapper.toProjectItem(project, null, List.of(), null))
                 .thenReturn(projectItem);
 
         SearchResultResponse response = service.search("m3m", null, 0, 10);
@@ -225,11 +438,13 @@ class SearchServiceImplTest {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void stubEmptyRepos() {
-        when(projectSearchRepository.searchProjects(anyString(), any(), any()))
+        lenient().when(projectSearchRepository.searchProjects(any(SearchCriteria.class), any()))
+                .thenReturn(new PageImpl<>(List.of()));
+        lenient().when(projectSearchRepository.searchProjects(anyString(), any(), any()))
                 .thenReturn(List.of());
-        when(builderSearchRepository.searchBuilders(anyString(), any(), any()))
+        lenient().when(builderSearchRepository.searchBuilders(anyString(), any(), any()))
                 .thenReturn(List.of());
-        when(companySearchRepository.searchCompanies(anyString(), any()))
+        lenient().when(companySearchRepository.searchCompanies(anyString(), any()))
                 .thenReturn(List.of());
     }
 }

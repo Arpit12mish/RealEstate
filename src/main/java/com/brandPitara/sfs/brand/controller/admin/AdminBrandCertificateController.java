@@ -18,7 +18,7 @@ public class AdminBrandCertificateController {
   private final BrandCertificateService brandCertificateService;
 
   @PostMapping("/{brandId}/certificates")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandCertificateResponse create(
       @PathVariable Long brandId,
       @Valid @RequestBody BrandCertificateUpsertRequest request
@@ -27,7 +27,7 @@ public class AdminBrandCertificateController {
   }
 
   @PutMapping("/{brandId}/certificates/{certificateId}")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'DATA_ENTRY')")
   public BrandCertificateResponse update(
       @PathVariable Long brandId,
       @PathVariable Long certificateId,
@@ -37,7 +37,7 @@ public class AdminBrandCertificateController {
   }
 
   @GetMapping("/{brandId}/certificates")
-  @PreAuthorize("hasRole('ADMIN')")
+  @PreAuthorize("hasAnyRole('ADMIN', 'REVIEWER', 'DATA_ENTRY')")
   public List<BrandCertificateResponse> list(@PathVariable Long brandId) {
     return brandCertificateService.adminList(brandId);
   }

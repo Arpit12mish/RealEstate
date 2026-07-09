@@ -15,6 +15,7 @@ import com.brandPitara.sfs.home.repository.PromoBannerSlotConfigRepository;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.home.service.section.impl.NearbyListingsSectionLoader;
+import com.brandPitara.sfs.home.service.section.impl.PromoBannersSectionLoader;
 import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
 import com.brandPitara.sfs.project.service.PublicProjectNearbyListingService;
 import com.brandPitara.sfs.repository.CityRepository;
@@ -84,18 +85,80 @@ class HomeFeedServiceImplTest {
         .map(HomeSectionDto::getType)
         .toList();
 
+    // Canonical order (PROJECT_ANALYTICS, NEARBY_LISTINGS, TRENDING_CITIES, ARCHITECTS, DESIGNERS)
+    // wins regardless of home_section_config sort_order; TOP_PROJECTS/TOP_BUILDERS are legacy
+    // types with no slot in the canonical order, so they trail at the end, in their original
+    // relative order, instead of being dropped.
     assertThat(sectionTypes).containsExactly(
         HomeSectionType.PROJECT_ANALYTICS,
         HomeSectionType.NEARBY_LISTINGS,
         HomeSectionType.TRENDING_CITIES,
-        HomeSectionType.TOP_PROJECTS,
         HomeSectionType.ARCHITECTS,
         HomeSectionType.DESIGNERS,
+        HomeSectionType.TOP_PROJECTS,
         HomeSectionType.TOP_BUILDERS
     );
-    assertThat(sectionTypes).contains(HomeSectionType.PROJECT_ANALYTICS, HomeSectionType.TOP_PROJECTS);
     assertThat(sectionTypes).filteredOn(type -> type == HomeSectionType.TRENDING_CITIES).hasSize(1);
     assertThat(response.getSections()).allSatisfy(section -> assertThat(section.getItems()).isNotEmpty());
+  }
+
+  @Test
+  void getHomeAppliesCanonicalOrderAcrossAllElevenSections() {
+    ContentVersionRepository contentVersionRepository = mock(ContentVersionRepository.class);
+    HomeSectionConfigRepository homeSectionConfigRepository = mock(HomeSectionConfigRepository.class);
+    PromoBannerSlotConfigRepository promoBannerSlotConfigRepository = mock(PromoBannerSlotConfigRepository.class);
+    PromoBannerService promoBannerService = mock(PromoBannerService.class);
+    CityRepository cityRepository = mock(CityRepository.class);
+
+    // Deliberately scrambled relative to the desired order, to prove the fix doesn't just
+    // happen to match because home_section_config already agrees with it.
+    List<HomeSectionType> dbOrder = List.of(
+        HomeSectionType.DESIGNERS,
+        HomeSectionType.INSTAGRAM_REELS,
+        HomeSectionType.ARCHITECTS,
+        HomeSectionType.SMART_CALCULATORS,
+        HomeSectionType.TRENDING_CITIES,
+        HomeSectionType.CONNECTED_BRANDS,
+        HomeSectionType.BUILDER_CREDIBILITY_CARDS,
+        HomeSectionType.COMPARE_PROPERTIES,
+        HomeSectionType.NEARBY_LISTINGS,
+        HomeSectionType.PROJECT_ANALYTICS
+    );
+
+    HomeFeedServiceImpl service = new HomeFeedServiceImpl(
+        contentVersionRepository,
+        homeSectionConfigRepository,
+        dbOrder.stream().map(HomeFeedServiceImplTest::loader).toList(),
+        promoBannerSlotConfigRepository,
+        promoBannerService,
+        new PromoBannerInjector(),
+        cityRepository
+    );
+
+    when(contentVersionRepository.findById("HOME:ALL")).thenReturn(Optional.empty());
+    when(homeSectionConfigRepository.findByHomeCategory_IdAndEnabledTrueOrderBySortOrderAscIdAsc(0L))
+        .thenReturn(dbOrder.stream().map(HomeFeedServiceImplTest::config).toList());
+    when(promoBannerSlotConfigRepository
+        .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(any(), eq(0L)))
+        .thenReturn(List.of());
+
+    HomeFeedResponse response = service.getHome(null, null, null, null);
+    List<HomeSectionType> sectionTypes = response.getSections().stream()
+        .map(HomeSectionDto::getType)
+        .toList();
+
+    assertThat(sectionTypes).containsExactly(
+        HomeSectionType.PROJECT_ANALYTICS,
+        HomeSectionType.NEARBY_LISTINGS,
+        HomeSectionType.COMPARE_PROPERTIES,
+        HomeSectionType.BUILDER_CREDIBILITY_CARDS,
+        HomeSectionType.CONNECTED_BRANDS,
+        HomeSectionType.TRENDING_CITIES,
+        HomeSectionType.SMART_CALCULATORS,
+        HomeSectionType.INSTAGRAM_REELS,
+        HomeSectionType.ARCHITECTS,
+        HomeSectionType.DESIGNERS
+    );
   }
 
   @Test
@@ -232,8 +295,8 @@ class HomeFeedServiceImplTest {
     when(promoBannerSlotConfigRepository
         .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(any(), eq(0L)))
         .thenReturn(List.of(heroRule));
-    when(promoBannerService.getBannersForCategoryAndSlot(0L, "HERO", 10))
-        .thenReturn(List.of(lottieBanner));
+    // when(promoBannerService.getBannersForCategoryAndSlot(0L, "HERO", 10))
+    //     .thenReturn(List.of(lottieBanner));
 
     HomeFeedResponse response = service.getHome(null, null, null, null);
 
@@ -250,6 +313,135 @@ class HomeFeedServiceImplTest {
     assertThat(heroItem.getDisplayDurationMs()).isEqualTo(12000);
     assertThat(response.getSections()).extracting(HomeSectionDto::getType)
         .contains(HomeSectionType.TOP_PROJECTS);
+  }
+
+  
+    ContentVersionRepository contentVersionRepository = mock(ContentVersionRepository.class);
+    HomeSectionConfigRepository homeSectionConfigRepository = mock(HomeSectionConfigRepository.class);
+    PromoBannerSlotConfigRepository promoBannerSlotConfigRepository = mock(PromoBannerSlotConfigRepository.class);
+    PromoBannerService promoBannerService = mock(PromoBannerService.class);
+    CityRepository cityRepository = mock(CityRepository.class);
+
+    // Reproduces the real duplicate-HERO scenario: a home_section_config PROMO_BANNERS/HERO
+    // row (loader-driven, max_items=4) coexists with a promo_banner_slot_config HERO rule
+    // (injector-driven, max_items=1) for the same category/screen.
+    HomeSectionConfigEntity heroConfig = HomeSectionConfigEntity.builder()
+        .sectionType(HomeSectionType.PROMO_BANNERS)
+        .maxItems(4)
+        .build();
+    HomeSectionConfigEntity midConfigPlaceholder = config(HomeSectionType.TOP_PROJECTS);
+
+    PromoBannerSlotConfigEntity heroRule = PromoBannerSlotConfigEntity.builder()
+        .screen(FeedScreen.HOME)
+        .slotKey("HERO")
+        .maxItems(1)
+        .active(true)
+        .build();
+    PromoBannerSlotConfigEntity midRule = PromoBannerSlotConfigEntity.builder()
+        .screen(FeedScreen.HOME)
+        .slotKey("MID")
+        .insertAfterSectionType("TOP_PROJECTS")
+        .maxItems(10)
+        .active(true)
+        .build();
+
+    // PromoBannerResponse banner25 = bannerResponse(25L, 1);
+    PromoBannerResponse banner29 = bannerResponse(29L, 2);
+    // PromoBannerResponse banner27 = bannerResponse(27L, 3);
+    // PromoBannerResponse banner28 = bannerResponse(28L, 4);
+    PromoBannerResponse midBanner21 = bannerResponse(21L, 1);
+
+    HomeFeedServiceImpl service = new HomeFeedServiceImpl(
+        contentVersionRepository,
+        homeSectionConfigRepository,
+        List.of(new PromoBannersSectionLoader(promoBannerService), loader(HomeSectionType.TOP_PROJECTS)),
+        promoBannerSlotConfigRepository,
+        promoBannerService,
+        new PromoBannerInjector(),
+        cityRepository
+    );
+
+    @Test
+void getHomeSkipsGlobalPromoBannerConfigAndUsesSlotConfigHero() {
+  ContentVersionRepository contentVersionRepository = mock(ContentVersionRepository.class);
+  HomeSectionConfigRepository homeSectionConfigRepository = mock(HomeSectionConfigRepository.class);
+  PromoBannerSlotConfigRepository promoBannerSlotConfigRepository = mock(PromoBannerSlotConfigRepository.class);
+  PromoBannerService promoBannerService = mock(PromoBannerService.class);
+  CityRepository cityRepository = mock(CityRepository.class);
+
+  HomeSectionConfigEntity heroConfig = HomeSectionConfigEntity.builder()
+      .sectionType(HomeSectionType.PROMO_BANNERS)
+      .maxItems(4)
+      .build();
+  HomeSectionConfigEntity midConfigPlaceholder = config(HomeSectionType.TOP_PROJECTS);
+
+  PromoBannerSlotConfigEntity heroRule = PromoBannerSlotConfigEntity.builder()
+      .screen(FeedScreen.HOME)
+      .slotKey("HERO")
+      .maxItems(1)
+      .active(true)
+      .build();
+  PromoBannerSlotConfigEntity midRule = PromoBannerSlotConfigEntity.builder()
+      .screen(FeedScreen.HOME)
+      .slotKey("MID")
+      .insertAfterSectionType("TOP_PROJECTS")
+      .maxItems(10)
+      .active(true)
+      .build();
+
+  PromoBannerResponse banner25 = bannerResponse(25L, 1);
+  PromoBannerResponse midBanner21 = bannerResponse(21L, 1);
+
+  HomeFeedServiceImpl service = new HomeFeedServiceImpl(
+      contentVersionRepository,
+      homeSectionConfigRepository,
+      List.of(new PromoBannersSectionLoader(promoBannerService), loader(HomeSectionType.TOP_PROJECTS)),
+      promoBannerSlotConfigRepository,
+      promoBannerService,
+      new PromoBannerInjector(),
+      cityRepository
+  );
+
+  when(contentVersionRepository.findById("HOME:ALL")).thenReturn(Optional.empty());
+  when(homeSectionConfigRepository.findByHomeCategory_IdAndEnabledTrueOrderBySortOrderAscIdAsc(0L))
+      .thenReturn(List.of(heroConfig, midConfigPlaceholder));
+  when(promoBannerSlotConfigRepository
+      .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(any(), eq(0L)))
+      .thenReturn(List.of(heroRule, midRule));
+
+  when(promoBannerService.getBannersForCategoryAndSlot(0L, "HERO", 1))
+      .thenReturn(List.of(banner25));
+  when(promoBannerService.getBannersForCategoryAndSlot(0L, "MID", 10))
+      .thenReturn(List.of(midBanner21));
+
+  HomeFeedResponse response = service.getHome(null, null, null, null);
+
+  List<HomeSectionDto<?>> heroSections = response.getSections().stream()
+      .filter(section -> section.getType() == HomeSectionType.PROMO_BANNERS)
+      .filter(section -> "HERO".equals(section.getKey()))
+      .toList();
+  List<HomeSectionDto<?>> midSections = response.getSections().stream()
+      .filter(section -> section.getType() == HomeSectionType.PROMO_BANNERS)
+      .filter(section -> "MID".equals(section.getKey()))
+      .toList();
+
+  assertThat(heroSections).hasSize(1);
+  assertThat(heroSections.get(0).getItems())
+      .extracting(item -> ((PromoBannerResponse) item).getId())
+      .containsExactly(25L);
+
+  assertThat(midSections).hasSize(1);
+  assertThat(midSections.get(0).getItems())
+      .extracting(item -> ((PromoBannerResponse) item).getId())
+      .containsExactly(21L);
+}
+
+  private static PromoBannerResponse bannerResponse(Long id, int priority) {
+    return PromoBannerResponse.builder()
+        .id(id)
+        .priority(priority)
+        .active(true)
+        .build();
   }
 
   private static HomeSectionConfigEntity config(HomeSectionType type) {

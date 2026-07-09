@@ -32,12 +32,14 @@ public class InstagramReelSyncScheduler {
         try {
             InstagramReelSyncResult result = instagramReelSyncService.syncLatestReels();
             log.info(
-                "Instagram scheduled sync completed: fetched={}, created={}, updated={}, skipped={}, failedInsights={}",
+                "Instagram scheduled sync completed: fetched={}, created={}, updated={}, skipped={}, failedInsights={}, thumbnailsCached={}, thumbnailCacheFailed={}",
                 result.getFetchedCount(),
                 result.getCreatedCount(),
                 result.getUpdatedCount(),
                 result.getSkippedCount(),
-                result.getFailedInsightCount()
+                result.getFailedInsightCount(),
+                result.getThumbnailCachedCount(),
+                result.getThumbnailCacheFailedCount()
             );
         } catch (RuntimeException ex) {
             log.warn("Instagram scheduled sync failed: {}", ex.getMessage());

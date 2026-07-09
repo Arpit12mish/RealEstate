@@ -5,8 +5,8 @@ import com.brandPitara.sfs.common.contentVersion.entity.ContentVersionEntity;
 import com.brandPitara.sfs.common.contentVersion.repository.ContentVersionRepository;
 import com.brandPitara.sfs.dto.PromoBannerResponse;
 import com.brandPitara.sfs.feed.enums.FeedScreen;
-import com.brandPitara.sfs.home.dto.HomeFeedResponse;
 import com.brandPitara.sfs.home.dto.HomeFeedRequest;
+import com.brandPitara.sfs.home.dto.HomeFeedResponse;
 import com.brandPitara.sfs.home.dto.HomeHeaderDto;
 import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.PromoBannerSlotConfigEntity;
@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,30 @@ import java.util.Map;
 public class HomeFeedServiceImpl implements HomeFeedService {
 
   private static final Long GLOBAL_CITY_ID = 0L;
+  private static final Long GLOBAL_HOME_CATEGORY_ID = 0L;
+  private static final int DEFAULT_PROMO_MAX_ITEMS = 10;
+
+  /**
+   * Canonical Home API section order. Keyed by HomeSectionType#name() so a not-yet-implemented
+   * type (QUICK_SQUARE) can be pre-registered without needing the enum constant to exist yet.
+   * Types absent from this map (legacy/overlapping sections such as TOP_PROJECTS, TOP_BUILDERS)
+   * sort after every canonical section, in their original relative order - see
+   * docs/home-api-section-order-audit.md for the full rationale.
+   */
+  private static final Map<String, Integer> HOME_SECTION_ORDER = Map.ofEntries(
+      Map.entry("TRENDING_PROPERTIES", 10),
+      Map.entry("PROJECT_ANALYTICS", 10),
+      Map.entry("NEARBY_LISTINGS", 20),
+      Map.entry("COMPARE_PROPERTIES", 30),
+      Map.entry("BUILDER_CREDIBILITY_CARDS", 40),
+      Map.entry("CONNECTED_BRANDS", 50),
+      Map.entry("TRENDING_CITIES", 60),
+      Map.entry("SMART_CALCULATORS", 70),
+      Map.entry("INSTAGRAM_REELS", 80),
+      Map.entry("QUICK_SQUARE", 90),
+      Map.entry("ARCHITECTS", 100),
+      Map.entry("DESIGNERS", 110)
+  );
 
   private final ContentVersionRepository contentVersionRepository;
   private final HomeSectionConfigRepository homeSectionConfigRepository;
@@ -76,6 +101,7 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     Long resolvedCityId = normalizeCityId(safeRequest.getCityId());
     Double latitude = normalizeLatitude(safeRequest.getLatitude());
     Double longitude = normalizeLongitude(safeRequest.getLongitude());
+
     if ((latitude == null) != (longitude == null)) {
       latitude = null;
       longitude = null;
@@ -83,10 +109,16 @@ public class HomeFeedServiceImpl implements HomeFeedService {
 
     boolean hasUserCoordinates = latitude != null && longitude != null;
 
-    boolean isAllCategory = safeRequest.getCategoryId() == null || safeRequest.getCategoryId() == 0;
-    Long homeCategoryId = isAllCategory ? 0L : safeRequest.getCategoryId();
+    boolean isAllCategory =
+        safeRequest.getCategoryId() == null || safeRequest.getCategoryId() == 0;
 
-    String contentVersionKey = isAllCategory ? "HOME:ALL" : "HOME:" + safeRequest.getCategoryId();
+    Long homeCategoryId = isAllCategory
+        ? GLOBAL_HOME_CATEGORY_ID
+        : safeRequest.getCategoryId();
+
+    String contentVersionKey = isAllCategory
+        ? "HOME:ALL"
+        : "HOME:" + safeRequest.getCategoryId();
 
     long version = contentVersionRepository.findById(contentVersionKey)
         .map(ContentVersionEntity::getVersion)
@@ -119,6 +151,14 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     List<HomeSectionDto<?>> sections = new ArrayList<>();
 
     for (var cfg : configs) {
+      if (isGlobalPromoBannerConfig(homeCategoryId, cfg.getSectionType())) {
+        log.warn(
+            "Skipping global PROMO_BANNERS configId={} because global promo placements are controlled by promo_banner_slot_config",
+            cfg.getId()
+        );
+        continue;
+      }
+
       HomeSectionLoader loader = loaderMap.get(cfg.getSectionType());
 
       if (loader == null) {
@@ -132,6 +172,7 @@ public class HomeFeedServiceImpl implements HomeFeedService {
 
       long startNanos = System.nanoTime();
       HomeSectionDto<?> section;
+
       try {
         section = loader.load(cfg, ctx);
       } catch (Exception ex) {
@@ -157,21 +198,25 @@ public class HomeFeedServiceImpl implements HomeFeedService {
       }
     }
 
+    sections = sortHomeSections(sections);
+
     List<PromoBannerSlotConfigEntity> rules =
         loadPromoRules(FeedScreen.HOME, homeCategoryId, resolvedCityId);
+
     Long promoResolvedCityId = resolvedCityId;
 
     sections = promoBannerInjector.inject(
         sections,
         rules,
         rule -> {
-          String slotKey = rule.getSlotKey();
+          String slotKey = normalizePromoSlotKey(rule.getSlotKey());
+          Integer maxItems = normalizePromoMaxItems(rule.getMaxItems());
 
           List<PromoBannerResponse> items =
               promoBannerService.getBannersForCategoryAndSlot(
                   homeCategoryId,
                   slotKey,
-                  rule.getMaxItems()
+                  maxItems
               );
 
           if (items == null || items.isEmpty()) {
@@ -196,8 +241,6 @@ public class HomeFeedServiceImpl implements HomeFeedService {
               .build();
         }
     );
-
-    sections = orderLocationAwareHomeSections(sections);
 
     return HomeFeedResponse.builder()
         .version(version)
@@ -250,35 +293,36 @@ public class HomeFeedServiceImpl implements HomeFeedService {
         );
   }
 
-  static List<HomeSectionDto<?>> orderLocationAwareHomeSections(List<HomeSectionDto<?>> sections) {
-    if (sections == null || sections.isEmpty()) {
+  /**
+   * Applies the canonical Home API section order (see HOME_SECTION_ORDER). Stable sort: types
+   * absent from the map keep their existing relative order and trail after every canonical
+   * section. Must run before promo banner injection so banner anchor rules
+   * (insertAfterSectionType) resolve against the final, correctly-ordered content list.
+   */
+  static List<HomeSectionDto<?>> sortHomeSections(List<HomeSectionDto<?>> sections) {
+    if (sections == null || sections.size() < 2) {
       return sections;
     }
 
     List<HomeSectionDto<?>> ordered = new ArrayList<>(sections);
-    int projectAnalyticsIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS);
-    if (projectAnalyticsIndex < 0) {
-      return ordered;
-    }
-
-    HomeSectionDto<?> nearbyListings = removeSectionType(ordered, HomeSectionType.NEARBY_LISTINGS);
-    HomeSectionDto<?> trendingCities = removeSectionType(ordered, HomeSectionType.TRENDING_CITIES);
-
-    int insertIndex = indexOfSectionType(ordered, HomeSectionType.PROJECT_ANALYTICS) + 1;
-    if (nearbyListings != null) {
-      ordered.add(insertIndex, nearbyListings);
-      insertIndex++;
-    }
-
-    if (trendingCities != null) {
-      ordered.add(insertIndex, trendingCities);
-    }
-
+    ordered.sort(Comparator.comparingInt(HomeFeedServiceImpl::homeSectionRank));
     return ordered;
   }
 
-  static List<HomeSectionDto<?>> moveTrendingCitiesAfterProjectAnalytics(List<HomeSectionDto<?>> sections) {
-    return orderLocationAwareHomeSections(sections);
+  private static int homeSectionRank(HomeSectionDto<?> section) {
+    if (section == null || section.getType() == null) {
+      return Integer.MAX_VALUE;
+    }
+
+    return HOME_SECTION_ORDER.getOrDefault(section.getType().name(), Integer.MAX_VALUE);
+  }
+
+  private boolean isGlobalPromoBannerConfig(
+      Long homeCategoryId,
+      HomeSectionType sectionType
+  ) {
+    return GLOBAL_HOME_CATEGORY_ID.equals(homeCategoryId)
+        && sectionType == HomeSectionType.PROMO_BANNERS;
   }
 
   private boolean shouldIncludeSection(HomeSectionDto<?> section) {
@@ -291,31 +335,6 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     }
 
     return section.getItems() != null && !section.getItems().isEmpty();
-  }
-
-  private static HomeSectionDto<?> removeSectionType(
-      List<HomeSectionDto<?>> sections,
-      HomeSectionType sectionType
-  ) {
-    int index = indexOfSectionType(sections, sectionType);
-    if (index < 0) {
-      return null;
-    }
-    return sections.remove(index);
-  }
-
-  private static int indexOfSectionType(
-      List<HomeSectionDto<?>> sections,
-      HomeSectionType sectionType
-  ) {
-    for (int i = 0; i < sections.size(); i++) {
-      HomeSectionDto<?> section = sections.get(i);
-      if (section != null && section.getType() == sectionType) {
-        return i;
-      }
-    }
-
-    return -1;
   }
 
   private String resolveCityName(Long resolvedCityId) {
@@ -338,6 +357,7 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     if (latitude == null || latitude < -90.0 || latitude > 90.0) {
       return null;
     }
+
     return latitude;
   }
 
@@ -345,10 +365,23 @@ public class HomeFeedServiceImpl implements HomeFeedService {
     if (longitude == null || longitude < -180.0 || longitude > 180.0) {
       return null;
     }
+
     return longitude;
   }
 
-  private boolean hasText(String value) {
+  private String normalizePromoSlotKey(String slotKey) {
+    return hasText(slotKey) ? slotKey.trim() : "HERO";
+  }
+
+  private Integer normalizePromoMaxItems(Integer maxItems) {
+    if (maxItems == null || maxItems <= 0) {
+      return DEFAULT_PROMO_MAX_ITEMS;
+    }
+
+    return maxItems;
+  }
+
+  private static boolean hasText(String value) {
     return value != null && !value.trim().isEmpty();
   }
 

@@ -16,6 +16,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,7 +54,7 @@ class CompanyConnectedBrandPublicServiceImplTest {
         .deleted(false)
         .build();
     when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
-    when(companyBrandLinkRepository.findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L))
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L))
         .thenReturn(List.of(legacyLink));
 
     List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
@@ -68,6 +70,8 @@ class CompanyConnectedBrandPublicServiceImplTest {
     assertThat(dto.isVerified()).isFalse();
     assertThat(dto.isFeatured()).isFalse();
     assertThat(dto.getDisplayOrder()).isEqualTo(3);
+    verify(companyBrandLinkRepository).findPublicFallbackByCompanyId(7L);
+    verify(companyBrandLinkRepository, never()).findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L);
   }
 
   @Test
@@ -99,7 +103,7 @@ class CompanyConnectedBrandPublicServiceImplTest {
         .build();
 
     when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of(canonical));
-    when(companyBrandLinkRepository.findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L))
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L))
         .thenReturn(List.of(duplicateLegacy, legacyOnly));
 
     List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
@@ -112,5 +116,41 @@ class CompanyConnectedBrandPublicServiceImplTest {
     assertThat(canonicalDto.isFeatured()).isTrue();
     assertThat(canonicalDto.getDisplayOrder()).isEqualTo(1);
     assertThat(result.get(1).getSlug()).isEqualTo("incor");
+  }
+
+  @Test
+  void getConnectedBrands_usesStrictPublicLegacyFallbackThatExcludesUnpublishedBrands() {
+    when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L)).thenReturn(List.of());
+
+    List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
+
+    assertThat(result).isEmpty();
+    verify(companyBrandLinkRepository).findPublicFallbackByCompanyId(7L);
+    verify(companyBrandLinkRepository, never()).findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L);
+  }
+
+  @Test
+  void getConnectedBrands_usesStrictPublicLegacyFallbackThatExcludesInactiveBrands() {
+    when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L)).thenReturn(List.of());
+
+    List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
+
+    assertThat(result).isEmpty();
+    verify(companyBrandLinkRepository).findPublicFallbackByCompanyId(7L);
+    verify(companyBrandLinkRepository, never()).findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L);
+  }
+
+  @Test
+  void getConnectedBrands_usesStrictPublicLegacyFallbackThatExcludesDeletedBrands() {
+    when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L)).thenReturn(List.of());
+
+    List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
+
+    assertThat(result).isEmpty();
+    verify(companyBrandLinkRepository).findPublicFallbackByCompanyId(7L);
+    verify(companyBrandLinkRepository, never()).findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L);
   }
 }
