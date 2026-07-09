@@ -29,11 +29,13 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
   boolean existsByBrand_IdAndBuilder_IdAndDeletedFalse(Long brandId, Long builderId);
   boolean existsByBrand_IdAndCompany_IdAndDeletedFalse(Long brandId, Long companyId);
   boolean existsByBrand_IdAndBusiness_IdAndDeletedFalse(Long brandId, Long businessId);
+  boolean existsByBrand_IdAndCompanyProject_IdAndDeletedFalse(Long brandId, Long companyProjectId);
 
   boolean existsByBrand_IdAndProject_IdAndDeletedFalseAndIdNot(Long brandId, Long projectId, Long id);
   boolean existsByBrand_IdAndBuilder_IdAndDeletedFalseAndIdNot(Long brandId, Long builderId, Long id);
   boolean existsByBrand_IdAndCompany_IdAndDeletedFalseAndIdNot(Long brandId, Long companyId, Long id);
   boolean existsByBrand_IdAndBusiness_IdAndDeletedFalseAndIdNot(Long brandId, Long businessId, Long id);
+  boolean existsByBrand_IdAndCompanyProject_IdAndDeletedFalseAndIdNot(Long brandId, Long companyProjectId, Long id);
 
   // Single query with all four target associations left-joined so an admin list page
   // never triggers per-row lazy loads regardless of which target type each row has.
@@ -49,6 +51,7 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
             left join fetch c.builder
             left join fetch c.company
             left join fetch c.business
+            left join fetch c.companyProject
           where c.brand.id = :brandId
             and c.deleted = false
           """,
@@ -74,6 +77,7 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
         left join c.company co
       where c.brand.id in :brandIds
         and c.active = true and c.deleted = false and c.publicVisible = true
+        and c.targetType <> com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY_PROJECT
       group by c.brand.id, c.targetType, co.companyType
       """)
   List<Object[]> findPublicStatRowsByBrandIds(@Param("brandIds") Collection<Long> brandIds);
@@ -144,4 +148,34 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
       order by c.featured desc, c.sortOrder asc, c.id asc
       """)
   List<BrandCollaborationEntity> findPublicByBuilderId(@Param("builderId") Long builderId, Pageable pageable);
+
+  // Company profile "connected brands" from the canonical collaboration model. Legacy
+  // company_brand_link fallback is handled in CompanyConnectedBrandPublicServiceImpl.
+  @Query("""
+      select c
+      from BrandCollaborationEntity c
+        join fetch c.brand b
+      where c.company.id = :companyId
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY
+        and c.active = true and c.deleted = false and c.publicVisible = true
+        and b.published = true and b.active = true and b.deleted = false
+      order by c.featured desc, c.sortOrder asc, c.id asc
+      """)
+  List<BrandCollaborationEntity> findPublicByCompanyId(@Param("companyId") Long companyId);
+
+  // Company portfolio project detail "Brands Used".
+  @Query("""
+      select c
+      from BrandCollaborationEntity c
+        join fetch c.brand b
+      where c.companyProject.id = :companyProjectId
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY_PROJECT
+        and c.active = true and c.deleted = false and c.publicVisible = true
+        and b.published = true and b.active = true and b.deleted = false
+      order by c.featured desc, c.sortOrder asc, c.id asc
+      """)
+  List<BrandCollaborationEntity> findPublicByCompanyProjectId(
+      @Param("companyProjectId") Long companyProjectId,
+      Pageable pageable
+  );
 }

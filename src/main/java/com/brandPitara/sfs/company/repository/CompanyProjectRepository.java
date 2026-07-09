@@ -16,6 +16,10 @@ public interface CompanyProjectRepository extends JpaRepository<CompanyProjectEn
 
   Optional<CompanyProjectEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
 
+  Optional<CompanyProjectEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(Long id);
+
+  Optional<CompanyProjectEntity> findByIdAndDeletedFalse(Long id);
+
   List<CompanyProjectEntity> findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
       Collection<Long> companyIds
   );

@@ -1,5 +1,9 @@
 package com.brandPitara.sfs.company.service.impl;
 
+import com.brandPitara.sfs.brand.dto.PublicBrandConnectedResponse;
+import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
+import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
@@ -17,7 +21,10 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RequiredArgsConstructor
 public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicService {
 
+  private static final int BRANDS_USED_LIMIT = 50;
+
   private final CompanyProjectRepository repo;
+  private final BrandCollaborationRepository brandCollaborationRepository;
 
   @Override
   public Page<CompanyProjectCardDto> publicListByCompany(Long companyId, Pageable pageable) {
@@ -27,7 +34,8 @@ public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicServ
 
   @Override
   public CompanyProjectResponse publicGet(Long companyProjectId) {
-    CompanyProjectEntity p = repo.findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(companyProjectId)
+    CompanyProjectEntity p = repo
+        .findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(companyProjectId)
         .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Company project not found"));
 
     return toResponse(p);
@@ -57,6 +65,12 @@ public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicServ
 
   private CompanyProjectResponse toResponse(CompanyProjectEntity p) {
     CompanyEntity c = p.getCompany();
+    var brandsUsed = brandCollaborationRepository
+        .findPublicByCompanyProjectId(p.getId(), PageRequest.of(0, BRANDS_USED_LIMIT))
+        .stream()
+        .map(this::toConnectedBrand)
+        .toList();
+
     return CompanyProjectResponse.builder()
         .id(p.getId())
         .name(p.getName())
@@ -76,6 +90,23 @@ public class CompanyProjectPublicServiceImpl implements CompanyProjectPublicServ
         .description(p.getDescription())
         .coverMediaUrl(p.getCoverMediaUrl())
         .coverMediaType(p.getCoverMediaType())
+        .brandsUsed(brandsUsed)
+        .build();
+  }
+
+  private PublicBrandConnectedResponse toConnectedBrand(BrandCollaborationEntity collaboration) {
+    BrandEntity brand = collaboration.getBrand();
+    return PublicBrandConnectedResponse.builder()
+        .brandId(brand.getId())
+        .name(brand.getName())
+        .slug(brand.getSlug())
+        .logoUrl(brand.getLogoUrl())
+        .shortDescription(brand.getShortDescription())
+        .relationType(collaboration.getRelationType())
+        .sourceType(collaboration.getSourceType())
+        .verified(Boolean.TRUE.equals(collaboration.getVerified()))
+        .featured(Boolean.TRUE.equals(collaboration.getFeatured()))
+        .displayOrder(collaboration.getSortOrder() != null ? collaboration.getSortOrder() : 0)
         .build();
   }
 }

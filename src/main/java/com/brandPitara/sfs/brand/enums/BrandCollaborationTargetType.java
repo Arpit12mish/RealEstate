@@ -4,5 +4,6 @@ public enum BrandCollaborationTargetType {
   PROJECT,
   BUILDER,
   COMPANY,
-  BUSINESS
+  BUSINESS,
+  COMPANY_PROJECT
 }

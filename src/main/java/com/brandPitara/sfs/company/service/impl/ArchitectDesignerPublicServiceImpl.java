@@ -5,7 +5,7 @@ import com.brandPitara.sfs.company.entity.*;
 import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
 import com.brandPitara.sfs.company.repository.*;
 import com.brandPitara.sfs.company.service.ArchitectDesignerPublicService;
-import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.company.service.CompanyConnectedBrandPublicService;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,7 +24,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
   private final CompanyStatRepository companyStatRepository;
   private final CompanyAwardRepository companyAwardRepository;
   private final CompanyCertificateRepository companyCertificateRepository;
-  private final CompanyBrandLinkRepository companyBrandLinkRepository;
+  private final CompanyConnectedBrandPublicService companyConnectedBrandPublicService;
 
   @Override
   public ArchitectDesignerDetailResponse getDetail(Long companyId) {
@@ -70,18 +70,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
             .build())
         .toList();
 
-    List<ConnectedBrandDto> connectedBrands = companyBrandLinkRepository
-        .findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(companyId)
-        .stream()
-        .map(link -> {
-        BrandEntity brand = link.getBrand();
-        return ConnectedBrandDto.builder()
-            .brandId(brand.getId())
-            .name(brand.getName())
-            .logoUrl(brand.getLogoUrl())
-            .build();
-        })
-        .toList();
+    List<ConnectedBrandDto> connectedBrands = companyConnectedBrandPublicService.getConnectedBrands(companyId);
 
     return ArchitectDesignerDetailResponse.builder()
         .companyId(company.getId())
@@ -121,4 +110,3 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .build();
   }
 }
-

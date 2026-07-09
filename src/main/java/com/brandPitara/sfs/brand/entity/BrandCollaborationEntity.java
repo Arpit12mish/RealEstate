@@ -5,6 +5,7 @@ import com.brandPitara.sfs.brand.enums.BrandRelationType;
 import com.brandPitara.sfs.brand.enums.BrandSourceType;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
+import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
 import com.brandPitara.sfs.entity.BaseEntity;
 import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -12,9 +13,9 @@ import jakarta.persistence.*;
 import lombok.*;
 
 /**
- * Connects a brand to exactly one of project/builder/company/business.
+ * Connects a brand to exactly one of project/builder/company/business/companyProject.
  * Which FK is populated must match {@link #targetType}; this is enforced at
- * the database level by chk_brand_collaboration_single_target (see V118).
+ * the database level by chk_brand_collaboration_single_target (see V118/V130).
  * Architects and interior designers are both {@code company} rows, reached
  * via {@link BrandCollaborationTargetType#COMPANY}.
  */
@@ -54,6 +55,10 @@ public class BrandCollaborationEntity extends BaseEntity {
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "business_id")
   private BusinessEntity business;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "company_project_id")
+  private CompanyProjectEntity companyProject;
 
   @Column(length = 50)
   private String role;

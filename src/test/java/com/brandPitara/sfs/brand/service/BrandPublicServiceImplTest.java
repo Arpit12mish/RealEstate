@@ -3,11 +3,14 @@ package com.brandPitara.sfs.brand.service;
 import com.brandPitara.sfs.brand.dto.PublicBrandCardResponse;
 import com.brandPitara.sfs.brand.dto.PublicBrandDetailResponse;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
+import com.brandPitara.sfs.brand.entity.BrandProductCategoryEntity;
 import com.brandPitara.sfs.brand.entity.BrandSkuEntity;
+import com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType;
 import com.brandPitara.sfs.brand.repository.BrandCategoryLinkRepository;
 import com.brandPitara.sfs.brand.repository.BrandCertificateRepository;
 import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.brand.repository.BrandFaqRepository;
+import com.brandPitara.sfs.brand.repository.BrandProductCategoryRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.impl.BrandPublicServiceImpl;
@@ -23,6 +26,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
+import java.time.Year;
 import java.util.List;
 import java.util.Optional;
 
@@ -40,6 +45,7 @@ class BrandPublicServiceImplTest {
   @Mock private BrandCertificateRepository brandCertificateRepository;
   @Mock private BrandFaqRepository brandFaqRepository;
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
+  @Mock private BrandProductCategoryRepository brandProductCategoryRepository;
 
   @InjectMocks private BrandPublicServiceImpl brandPublicService;
 
@@ -64,7 +70,8 @@ class BrandPublicServiceImplTest {
         .thenReturn(List.of());
     when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
         .thenReturn(Page.empty());
-    when(brandSkuRepository.findDistinctPublicCategoriesByBrandId(1L)).thenReturn(List.of());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
     when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(0L);
     when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
         .thenReturn(List.of());
@@ -80,8 +87,47 @@ class BrandPublicServiceImplTest {
     assertThat(response.getName()).isEqualTo("Berger");
     assertThat(response.getSlug()).isEqualTo("berger-paints");
     assertThat(response.getStats().getProductsCount()).isEqualTo(0L);
+    assertThat(response.getFoundedYear()).isNull();
+    assertThat(response.getYearsInIndustry()).isNull();
+    assertThat(response.getStats().getYearsInIndustry()).isNull();
     // brand has no linked categories -> related brands lookup must be skipped entirely
     verify(brandRepository, never()).findRelatedBrands(any(), any(), any());
+  }
+
+  @Test
+  void getPublicBrandBySlug_mapsPublicStatsFields() {
+    BrandEntity brand = brand(1L, "Ikea", "ikea");
+    brand.setFoundedYear(1943);
+    brand.setCustomerRating(new BigDecimal("4.7"));
+    brand.setCustomerRatingCount(350);
+
+    when(brandRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse("ikea"))
+        .thenReturn(Optional.of(brand));
+    when(brandCategoryLinkRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
+        .thenReturn(Page.empty());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(2L);
+    when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandFaqRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicProjectCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicBuilderCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L)).thenReturn(List.of());
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("ikea");
+
+    int expectedYears = Year.now().getValue() - 1943;
+    assertThat(response.getFoundedYear()).isEqualTo(1943);
+    assertThat(response.getYearsInIndustry()).isEqualTo(expectedYears);
+    assertThat(response.getCustomerRating()).isEqualByComparingTo("4.7");
+    assertThat(response.getCustomerRatingCount()).isEqualTo(350);
+    assertThat(response.getStats().getYearsInIndustry()).isEqualTo(expectedYears);
+    assertThat(response.getStats().getCustomerRating()).isEqualByComparingTo("4.7");
+    assertThat(response.getStats().getCustomerRatingCount()).isEqualTo(350);
   }
 
   @Test
@@ -131,6 +177,31 @@ class BrandPublicServiceImplTest {
     verify(brandCollaborationRepository, times(1)).findPublicStatRowsByBrandIds(anyCollection());
     verify(brandCategoryLinkRepository, never())
         .findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(any());
+  }
+
+  @Test
+  void listPublicBrands_doesNotSurfaceCompanyProjectRowsInPublicStats() {
+    Pageable pageable = PageRequest.of(0, 20);
+    BrandEntity brand = brand(1L, "Berger", "berger");
+    Page<BrandEntity> page = new PageImpl<>(List.of(brand), pageable, 1);
+
+    when(brandRepository.findPublicBrands(isNull(), eq(pageable))).thenReturn(page);
+    when(brandCategoryLinkRepository.findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(anyCollection()))
+        .thenReturn(List.of());
+    when(brandSkuRepository.countPublicByBrandIds(anyCollection())).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicStatRowsByBrandIds(anyCollection()))
+        .thenReturn(List.of(
+            new Object[] {1L, BrandCollaborationTargetType.PROJECT, null, 3L},
+            new Object[] {1L, BrandCollaborationTargetType.COMPANY_PROJECT, null, 9L}
+        ));
+
+    Page<PublicBrandCardResponse> result = brandPublicService.listPublicBrands(null, null, pageable);
+
+    PublicBrandCardResponse card = result.getContent().get(0);
+    assertThat(card.getProjectsCount()).isEqualTo(3L);
+    assertThat(card.getBuildersCount()).isZero();
+    assertThat(card.getArchitectsCount()).isZero();
+    assertThat(card.getDesignersCount()).isZero();
   }
 
   // ---------- Phase 1C.7 Bug B regression coverage: never pass null/blank q to lower(:q) ----------
@@ -187,7 +258,8 @@ class BrandPublicServiceImplTest {
         .thenReturn(List.of());
     when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
         .thenReturn(new PageImpl<>(List.of(sku)));
-    when(brandSkuRepository.findDistinctPublicCategoriesByBrandId(1L)).thenReturn(List.of());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
     when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(1L);
     when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
         .thenReturn(List.of());
@@ -205,6 +277,86 @@ class BrandPublicServiceImplTest {
     // asserting this exact method (not a generic findByBrandId) was called is the
     // service-level guarantee that only public-visible SKUs are ever requested.
     verify(brandSkuRepository).findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class));
+  }
+
+  // ---------- Phase 2B.3: brand-owned product categories + SKU externalUrl ----------
+
+  @Test
+  void getPublicBrandBySlug_productCategories_onlyUsesPublicVisibleQuery() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    BrandProductCategoryEntity productCategory = BrandProductCategoryEntity.builder()
+        .id(5L).brand(brand).name("Lamps").slug("lamps")
+        .description("Decorative lamps").imageUrl("lamps.png").externalUrl("https://berger.com/lamps")
+        .active(true).publicVisible(true).sortOrder(0).deleted(false)
+        .build();
+
+    when(brandRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse("berger-paints"))
+        .thenReturn(Optional.of(brand));
+    when(brandCategoryLinkRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
+        .thenReturn(Page.empty());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of(productCategory));
+    when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(0L);
+    when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandFaqRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicProjectCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicBuilderCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L)).thenReturn(List.of());
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    assertThat(response.getProductCategories()).hasSize(1);
+    assertThat(response.getProductCategories().get(0).getName()).isEqualTo("Lamps");
+    assertThat(response.getProductCategories().get(0).getExternalUrl()).isEqualTo("https://berger.com/lamps");
+    // The active/publicVisible/deleted filtering is the repository method's own contract -
+    // asserting this exact method was called is the service-level guarantee that only
+    // publicly-visible product categories are ever requested.
+    verify(brandProductCategoryRepository)
+        .findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L);
+  }
+
+  @Test
+  void getPublicBrandBySlug_latestProducts_includesExternalUrlAndCtaLabel() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    BrandSkuEntity skuWithUrl = BrandSkuEntity.builder()
+        .id(10L).brand(brand).name("Silk Glamour").slug("silk-glamour")
+        .externalUrl("https://berger.com/products/silk-glamour")
+        .published(true).active(true).deleted(false).build();
+    BrandSkuEntity skuWithoutUrl = BrandSkuEntity.builder()
+        .id(11L).brand(brand).name("Weathercoat").slug("weathercoat")
+        .published(true).active(true).deleted(false).build();
+
+    when(brandRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse("berger-paints"))
+        .thenReturn(Optional.of(brand));
+    when(brandCategoryLinkRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of(skuWithUrl, skuWithoutUrl)));
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(2L);
+    when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandFaqRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicProjectCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicBuilderCollaborationsByBrandId(1L)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L)).thenReturn(List.of());
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    var products = response.getLatestProducts();
+    var withUrl = products.stream().filter(p -> p.getId().equals(10L)).findFirst().orElseThrow();
+    var withoutUrl = products.stream().filter(p -> p.getId().equals(11L)).findFirst().orElseThrow();
+
+    assertThat(withUrl.getExternalUrl()).isEqualTo("https://berger.com/products/silk-glamour");
+    assertThat(withUrl.getCtaLabel()).isEqualTo("View Product");
+    assertThat(withoutUrl.getExternalUrl()).isNull();
+    assertThat(withoutUrl.getCtaLabel()).isNull();
   }
 
   // ---------- 9: related brands exclude current brand ----------
@@ -225,7 +377,8 @@ class BrandPublicServiceImplTest {
         .thenReturn(List.of(categoryLink));
     when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(1L), any(Pageable.class)))
         .thenReturn(Page.empty());
-    when(brandSkuRepository.findDistinctPublicCategoriesByBrandId(1L)).thenReturn(List.of());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
     when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(1L)).thenReturn(0L);
     when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
         .thenReturn(List.of());

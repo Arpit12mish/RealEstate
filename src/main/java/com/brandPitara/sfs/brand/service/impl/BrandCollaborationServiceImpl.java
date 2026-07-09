@@ -13,6 +13,8 @@ import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
+import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -36,6 +38,7 @@ public class BrandCollaborationServiceImpl implements BrandCollaborationService 
   private final ProjectRepository projectRepository;
   private final BuilderRepository builderRepository;
   private final CompanyRepository companyRepository;
+  private final CompanyProjectRepository companyProjectRepository;
   private final BusinessRepository businessRepository;
   private final BrandCollaborationRepository brandCollaborationRepository;
   private final ContentVersionService contentVersionService;
@@ -115,7 +118,7 @@ public class BrandCollaborationServiceImpl implements BrandCollaborationService 
   // ---------- helpers ----------
 
   /**
-   * Clears all four target FKs, resolves the requested target by targetType, and sets only
+   * Clears all target FKs, resolves the requested target by targetType, and sets only
    * the matching FK - never accepts raw project/builder/company/businessId from the request.
    * Rejects (404) if the target doesn't exist, and (409) if this brand already has a
    * non-deleted collaboration with that exact target.
@@ -127,10 +130,18 @@ public class BrandCollaborationServiceImpl implements BrandCollaborationService 
       Long targetId,
       Long excludeCollaborationId
   ) {
+    if (targetType == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetType is required");
+    }
+    if (targetId == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "targetId is required");
+    }
+
     entity.setProject(null);
     entity.setBuilder(null);
     entity.setCompany(null);
     entity.setBusiness(null);
+    entity.setCompanyProject(null);
     entity.setTargetType(targetType);
 
     switch (targetType) {
@@ -173,6 +184,16 @@ public class BrandCollaborationServiceImpl implements BrandCollaborationService 
           throw duplicateConflict(targetType, targetId);
         }
         entity.setBusiness(business);
+      }
+      case COMPANY_PROJECT -> {
+        CompanyProjectEntity companyProject = companyProjectRepository.findByIdAndDeletedFalse(targetId)
+            .orElseThrow(() -> new EntityNotFoundException("Company project not found: " + targetId));
+        if (isDuplicate(excludeCollaborationId,
+            () -> brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalse(brandId, targetId),
+            id -> brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalseAndIdNot(brandId, targetId, id))) {
+          throw duplicateConflict(targetType, targetId);
+        }
+        entity.setCompanyProject(companyProject);
       }
     }
   }
@@ -229,6 +250,10 @@ public class BrandCollaborationServiceImpl implements BrandCollaborationService 
       case BUSINESS -> {
         targetId = e.getBusiness().getId();
         targetName = e.getBusiness().getName();
+      }
+      case COMPANY_PROJECT -> {
+        targetId = e.getCompanyProject().getId();
+        targetName = e.getCompanyProject().getName();
       }
     }
 

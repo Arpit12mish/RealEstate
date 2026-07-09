@@ -12,6 +12,8 @@ import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.service.impl.BrandCollaborationServiceImpl;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -41,6 +43,7 @@ class BrandCollaborationServiceImplTest {
   @Mock private ProjectRepository projectRepository;
   @Mock private BuilderRepository builderRepository;
   @Mock private CompanyRepository companyRepository;
+  @Mock private CompanyProjectRepository companyProjectRepository;
   @Mock private BusinessRepository businessRepository;
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
   @Mock private ContentVersionService contentVersionService;
@@ -53,6 +56,10 @@ class BrandCollaborationServiceImplTest {
 
   private ProjectEntity project() {
     return ProjectEntity.builder().id(27L).name("Skyline Residency").build();
+  }
+
+  private CompanyProjectEntity companyProject() {
+    return CompanyProjectEntity.builder().id(88L).name("Knowledge Center Hub").deleted(false).build();
   }
 
   @Test
@@ -84,6 +91,7 @@ class BrandCollaborationServiceImplTest {
     assertThat(saved.getBuilder()).isNull();
     assertThat(saved.getCompany()).isNull();
     assertThat(saved.getBusiness()).isNull();
+    assertThat(saved.getCompanyProject()).isNull();
     assertThat(saved.getRelationType()).isEqualTo(BrandRelationType.USED_IN_PROJECT);
 
     assertThat(response.getTargetType()).isEqualTo(BrandCollaborationTargetType.PROJECT);
@@ -91,7 +99,45 @@ class BrandCollaborationServiceImplTest {
     assertThat(response.getTargetName()).isEqualTo("Skyline Residency");
     assertThat(response.getRelationType()).isEqualTo(BrandRelationType.USED_IN_PROJECT);
 
-    verifyNoInteractions(builderRepository, companyRepository, businessRepository);
+    verifyNoInteractions(builderRepository, companyRepository, companyProjectRepository, businessRepository);
+  }
+
+  @Test
+  void create_companyProjectTarget_setsOnlyCompanyProjectFk() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+    when(companyProjectRepository.findByIdAndDeletedFalse(88L)).thenReturn(Optional.of(companyProject()));
+    when(brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalse(1L, 88L)).thenReturn(false);
+    when(brandCollaborationRepository.save(any(BrandCollaborationEntity.class))).thenAnswer(inv -> {
+      BrandCollaborationEntity e = inv.getArgument(0);
+      e.setId(700L);
+      return e;
+    });
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetType(BrandCollaborationTargetType.COMPANY_PROJECT)
+        .targetId(88L)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .publicVisible(true)
+        .build();
+
+    BrandCollaborationResponse response = brandCollaborationService.create(1L, request);
+
+    ArgumentCaptor<BrandCollaborationEntity> captor = ArgumentCaptor.forClass(BrandCollaborationEntity.class);
+    verify(brandCollaborationRepository).save(captor.capture());
+    BrandCollaborationEntity saved = captor.getValue();
+
+    assertThat(saved.getTargetType()).isEqualTo(BrandCollaborationTargetType.COMPANY_PROJECT);
+    assertThat(saved.getCompanyProject()).isNotNull();
+    assertThat(saved.getCompanyProject().getId()).isEqualTo(88L);
+    assertThat(saved.getProject()).isNull();
+    assertThat(saved.getBuilder()).isNull();
+    assertThat(saved.getCompany()).isNull();
+    assertThat(saved.getBusiness()).isNull();
+
+    assertThat(response.getTargetType()).isEqualTo(BrandCollaborationTargetType.COMPANY_PROJECT);
+    assertThat(response.getTargetId()).isEqualTo(88L);
+    assertThat(response.getTargetName()).isEqualTo("Knowledge Center Hub");
+    assertThat(response.isPublicVisible()).isTrue();
   }
 
   @Test
@@ -108,6 +154,42 @@ class BrandCollaborationServiceImplTest {
         .isInstanceOf(EntityNotFoundException.class);
 
     verify(brandCollaborationRepository, never()).save(any());
+  }
+
+  @Test
+  void create_throwsBadRequest_whenTargetTypeMissing() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetId(27L)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .build();
+
+    assertThatThrownBy(() -> brandCollaborationService.create(1L, request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400")
+        .hasMessageContaining("targetType is required");
+
+    verify(brandCollaborationRepository, never()).save(any());
+    verifyNoInteractions(projectRepository, builderRepository, companyRepository, companyProjectRepository, businessRepository);
+  }
+
+  @Test
+  void create_throwsBadRequest_whenTargetIdMissing() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetType(BrandCollaborationTargetType.PROJECT)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .build();
+
+    assertThatThrownBy(() -> brandCollaborationService.create(1L, request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("400")
+        .hasMessageContaining("targetId is required");
+
+    verify(brandCollaborationRepository, never()).save(any());
+    verifyNoInteractions(projectRepository, builderRepository, companyRepository, companyProjectRepository, businessRepository);
   }
 
   @Test
@@ -157,6 +239,79 @@ class BrandCollaborationServiceImplTest {
 
     assertThat(response.getId()).isEqualTo(501L);
     verify(brandCollaborationRepository).save(any(BrandCollaborationEntity.class));
+  }
+
+  @Test
+  void create_companyProject_allowsRecreation_whenOnlyExistingCollaborationWasSoftDeleted() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+    when(companyProjectRepository.findByIdAndDeletedFalse(88L)).thenReturn(Optional.of(companyProject()));
+    when(brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalse(1L, 88L)).thenReturn(false);
+    when(brandCollaborationRepository.save(any(BrandCollaborationEntity.class))).thenAnswer(inv -> {
+      BrandCollaborationEntity e = inv.getArgument(0);
+      e.setId(701L);
+      return e;
+    });
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetType(BrandCollaborationTargetType.COMPANY_PROJECT)
+        .targetId(88L)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .build();
+
+    BrandCollaborationResponse response = brandCollaborationService.create(1L, request);
+
+    assertThat(response.getId()).isEqualTo(701L);
+    verify(brandCollaborationRepository).save(any(BrandCollaborationEntity.class));
+  }
+
+  @Test
+  void create_companyProject_throwsConflict_whenActiveCollaborationAlreadyExists() {
+    when(brandRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(brand()));
+    when(companyProjectRepository.findByIdAndDeletedFalse(88L)).thenReturn(Optional.of(companyProject()));
+    when(brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalse(1L, 88L)).thenReturn(true);
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetType(BrandCollaborationTargetType.COMPANY_PROJECT)
+        .targetId(88L)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .build();
+
+    assertThatThrownBy(() -> brandCollaborationService.create(1L, request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("409");
+
+    verify(brandCollaborationRepository, never()).save(any());
+  }
+
+  @Test
+  void update_companyProjectTarget_replacesTargetAndReturnsCompanyProjectSummary() {
+    BrandCollaborationEntity existing = BrandCollaborationEntity.builder()
+        .id(900L)
+        .brand(brand())
+        .project(project())
+        .targetType(BrandCollaborationTargetType.PROJECT)
+        .deleted(false)
+        .active(true)
+        .build();
+    when(brandCollaborationRepository.findByIdAndBrand_IdAndDeletedFalse(900L, 1L)).thenReturn(Optional.of(existing));
+    when(companyProjectRepository.findByIdAndDeletedFalse(88L)).thenReturn(Optional.of(companyProject()));
+    when(brandCollaborationRepository.existsByBrand_IdAndCompanyProject_IdAndDeletedFalseAndIdNot(1L, 88L, 900L))
+        .thenReturn(false);
+    when(brandCollaborationRepository.save(any(BrandCollaborationEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    BrandCollaborationUpsertRequest request = BrandCollaborationUpsertRequest.builder()
+        .targetType(BrandCollaborationTargetType.COMPANY_PROJECT)
+        .targetId(88L)
+        .relationType(BrandRelationType.USED_IN_PROJECT)
+        .build();
+
+    BrandCollaborationResponse response = brandCollaborationService.update(1L, 900L, request);
+
+    assertThat(existing.getProject()).isNull();
+    assertThat(existing.getCompanyProject()).isNotNull();
+    assertThat(response.getTargetType()).isEqualTo(BrandCollaborationTargetType.COMPANY_PROJECT);
+    assertThat(response.getTargetId()).isEqualTo(88L);
+    assertThat(response.getTargetName()).isEqualTo("Knowledge Center Hub");
   }
 
   @Test
@@ -226,6 +381,6 @@ class BrandCollaborationServiceImplTest {
         .isInstanceOf(EntityNotFoundException.class);
 
     verify(brandCollaborationRepository, never()).save(any());
-    verifyNoInteractions(projectRepository, builderRepository, companyRepository);
+    verifyNoInteractions(projectRepository, builderRepository, companyRepository, companyProjectRepository);
   }
 }
