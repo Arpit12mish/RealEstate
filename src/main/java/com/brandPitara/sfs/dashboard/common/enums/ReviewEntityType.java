@@ -21,6 +21,7 @@ public enum ReviewEntityType {
     BUILDER_HIGHLIGHT_ITEM,
 
     COMPANY,
+    COMPANY_PROJECT_BRAND,
     PROMO_BANNER,
     APP_CONTENT,
     CITY,

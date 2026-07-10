@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.brand.repository;
 
 import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
+import com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -177,5 +178,30 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
   List<BrandCollaborationEntity> findPublicByCompanyProjectId(
       @Param("companyProjectId") Long companyProjectId,
       Pageable pageable
+  );
+
+  // ---------- dashboard admin read/write paths (Company Project Brands Used) ----------
+
+  // Admin view of a company project's brands used - includes rows the admin has deactivated
+  // (active = false) so they remain visible/toggleable, unlike the public-only query above
+  // which only ever returns active + public-visible rows.
+  @Query("""
+      select c
+      from BrandCollaborationEntity c
+        join fetch c.brand b
+      where c.companyProject.id = :companyProjectId
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY_PROJECT
+        and c.deleted = false
+      order by c.sortOrder asc, c.id asc
+      """)
+  List<BrandCollaborationEntity> findByCompanyProject_IdAndTargetTypeAndDeletedFalseOrderBySortOrderAscIdAsc(
+      @Param("companyProjectId") Long companyProjectId,
+      BrandCollaborationTargetType targetType
+  );
+
+  Optional<BrandCollaborationEntity> findByIdAndCompanyProject_IdAndTargetTypeAndDeletedFalse(
+      Long id,
+      Long companyProjectId,
+      BrandCollaborationTargetType targetType
   );
 }
