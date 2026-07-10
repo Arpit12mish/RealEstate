@@ -6,11 +6,16 @@ import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
 import com.brandPitara.sfs.company.repository.*;
 import com.brandPitara.sfs.company.service.ArchitectDesignerPublicService;
 import com.brandPitara.sfs.company.service.CompanyConnectedBrandPublicService;
+import com.brandPitara.sfs.publicreview.dto.PublicReviewSampleResponse;
+import com.brandPitara.sfs.publicreview.dto.PublicReviewSignalResponse;
+import com.brandPitara.sfs.publicreview.enums.PublicReviewTargetType;
+import com.brandPitara.sfs.publicreview.service.PublicReviewService;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Comparator;
 import java.util.List;
 
 import static org.springframework.http.HttpStatus.NOT_FOUND;
@@ -19,12 +24,18 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 @RequiredArgsConstructor
 public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPublicService {
 
+  private static final String HERO_USAGE_TYPE = "HERO";
+  private static final int MAX_SAMPLE_REVIEWS = 5;
+
   private final CompanyRepository companyRepository;
   private final CompanyProjectRepository companyProjectRepository;
   private final CompanyStatRepository companyStatRepository;
   private final CompanyAwardRepository companyAwardRepository;
   private final CompanyCertificateRepository companyCertificateRepository;
+  private final CompanyMediaRepository companyMediaRepository;
+  private final CompanyPricingPlanRepository companyPricingPlanRepository;
   private final CompanyConnectedBrandPublicService companyConnectedBrandPublicService;
+  private final PublicReviewService publicReviewService;
 
   @Override
   public ArchitectDesignerDetailResponse getDetail(Long companyId) {
@@ -38,11 +49,14 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .toList();
 
     List<CompanyStatDto> stats = companyStatRepository
-        .findByCompany_IdAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyId)
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyId)
         .stream()
         .map(s -> CompanyStatDto.builder()
+            .id(s.getId())
             .label(s.getLabel())
             .value(s.getValue())
+            .iconKey(s.getIconKey())
+            .sortOrder(s.getDisplayOrder())
             .build())
         .toList();
 
@@ -59,7 +73,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .toList();
 
     List<CompanyCertificateDto> certificates = companyCertificateRepository
-        .findByCompany_IdAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyId)
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyId)
         .stream()
         .map(c -> CompanyCertificateDto.builder()
             .id(c.getId())
@@ -67,7 +81,61 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
             .issuer(c.getIssuer())
             .certificateUrl(c.getCertificateUrl())
             .displayOrder(c.getDisplayOrder())
+            .description(c.getDescription())
+            .fileUrl(c.getCertificateFileUrl())
+            .year(c.getYear())
+            .verified(c.getVerified())
             .build())
+        .toList();
+
+    List<CompanyHeroImageDto> heroImages = companyMediaRepository
+        .findByCompany_IdAndUsageTypeAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
+            companyId, HERO_USAGE_TYPE
+        )
+        .stream()
+        .map(m -> CompanyHeroImageDto.builder()
+            .id(m.getId())
+            .mediaUrl(m.getMediaUrl())
+            .mediaType(m.getMediaType())
+            .title(m.getTitle())
+            .altText(m.getAltText())
+            .sortOrder(m.getSortOrder())
+            .build())
+        .toList();
+
+    List<CompanyPricingPlanPublicDto> pricingPlans = companyPricingPlanRepository
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(companyId)
+        .stream()
+        .map(p -> CompanyPricingPlanPublicDto.builder()
+            .id(p.getId())
+            .pricingType(p.getPricingType())
+            .planName(p.getPlanName())
+            .priceAmount(p.getPriceAmount())
+            .currency(p.getCurrency())
+            .billingUnit(p.getBillingUnit())
+            .description(p.getDescription())
+            .features(p.getFeatures() != null ? p.getFeatures() : List.of())
+            .sortOrder(p.getSortOrder())
+            .build())
+        .toList();
+
+    PublicReviewSignalResponse signal = publicReviewService.getPublicSignal(PublicReviewTargetType.COMPANY, companyId);
+    CompanyReviewSummaryDto reviewSummary = CompanyReviewSummaryDto.builder()
+        .rating(signal.getRating())
+        .reviewCount(signal.getUserRatingCount())
+        .source(mapReviewSource(signal))
+        .displayMode(signal.getPlaces().isEmpty() ? null : signal.getPlaces().get(0).getDisplayMode().name())
+        .build();
+
+    // Public profile shows a short highlight reel, not the full moderation list -
+    // best-rated first, capped at MAX_SAMPLE_REVIEWS. The underlying signal is
+    // already filtered to APPROVED_PUBLIC samples only (PublicReviewServiceImpl).
+    List<PublicReviewSampleResponse> sampleReviews = signal.getSamples().stream()
+        .sorted(Comparator.comparing(
+            PublicReviewSampleResponse::getRating,
+            Comparator.nullsLast(Comparator.reverseOrder())
+        ))
+        .limit(MAX_SAMPLE_REVIEWS)
         .toList();
 
     List<ConnectedBrandDto> connectedBrands = companyConnectedBrandPublicService.getConnectedBrands(companyId);
@@ -84,6 +152,10 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .stats(stats)
         .awardsAndPublications(awards)
         .certificates(certificates)
+        .heroImages(heroImages)
+        .pricingPlans(pricingPlans)
+        .reviewSummary(reviewSummary)
+        .sampleReviews(sampleReviews)
         .connectedBrands(connectedBrands)
         .build();
   }
@@ -108,5 +180,18 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .coverMediaUrl(p.getCoverMediaUrl())
         .coverMediaType(p.getCoverMediaType())
         .build();
+  }
+
+  // No place attached yet -> no source to report at all (null, not a guessed
+  // default) rather than "GOOGLE" every time, since buildSignal's empty-state
+  // response always defaults sourceType to GOOGLE_PLACES regardless of whether
+  // a place was ever configured.
+  private String mapReviewSource(PublicReviewSignalResponse signal) {
+    if (signal.getPlaces().isEmpty()) return null;
+    if (signal.getSourceType() == null) return null;
+    return switch (signal.getSourceType()) {
+      case GOOGLE_PLACES -> "GOOGLE";
+      case SFS_REVIEW -> "SFS";
+    };
   }
 }

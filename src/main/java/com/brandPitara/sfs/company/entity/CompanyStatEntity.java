@@ -31,6 +31,13 @@ public class CompanyStatEntity extends BaseEntity {
   @Builder.Default
   private Integer displayOrder = 0;
 
+  @Column(name = "icon_key", length = 60)
+  private String iconKey;
+
+  @Column(name = "public_visible", nullable = false)
+  @Builder.Default
+  private Boolean publicVisible = true;
+
   @Column(nullable = false)
   @Builder.Default
   private Boolean active = true;

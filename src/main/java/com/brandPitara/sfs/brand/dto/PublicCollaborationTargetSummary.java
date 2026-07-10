@@ -18,4 +18,16 @@ public class PublicCollaborationTargetSummary {
   private BrandRelationType relationType;
   private boolean verified;
   private boolean featured;
+
+  // Additive - only populated for topArchitects/interiorDesigners (company targets), so
+  // those cards can match the Home screen's ArchitectDesignerCardDto card exactly.
+  // topProjects/topBuilders targets leave these null - the mobile card already treats
+  // them as optional and hides the corresponding UI when absent.
+  private String coverImageUrl;
+  private String description;
+  private String subtitle;
+  private String specializationText;
+  private String yearsExperience;
+  private String awardsCount;
+  private String citiesServed;
 }

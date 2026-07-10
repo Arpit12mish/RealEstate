@@ -30,6 +30,23 @@ public class CompanyCertificateEntity extends BaseEntity {
   @Column(name = "certificate_url", columnDefinition = "text")
   private String certificateUrl;
 
+  @Column(columnDefinition = "text")
+  private String description;
+
+  @Column(name = "certificate_file_url", columnDefinition = "text")
+  private String certificateFileUrl;
+
+  @Column
+  private Integer year;
+
+  @Column(nullable = false)
+  @Builder.Default
+  private Boolean verified = false;
+
+  @Column(name = "public_visible", nullable = false)
+  @Builder.Default
+  private Boolean publicVisible = true;
+
   @Column(name = "display_order", nullable = false)
   @Builder.Default
   private Integer displayOrder = 0;

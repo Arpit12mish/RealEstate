@@ -5,6 +5,7 @@ import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadResponse;
 import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
 import com.brandPitara.sfs.dashboard.media.service.DashboardMediaPresignService;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
+import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
 import com.brandPitara.sfs.media.service.MediaStorageService;
@@ -31,21 +32,25 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
     private final CityRepository cityRepository;
     private final ProjectRepository projectRepository;
     private final BrandRepository brandRepository;
+    private final CompanyRepository companyRepository;
 
     @Override
     public DashboardPresignUploadResponse createPresignedUpload(DashboardPresignUploadRequest request) {
         uploadValidator.validateContentType(request.uploadType(), request.contentType());
         uploadValidator.validateFileSize(request.uploadType(), request.contentType(), request.fileSizeBytes());
         uploadValidator.validateContextIds(
-                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId()
+                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(),
+                request.companyId()
         );
         assertProjectUploadAllowed(request.uploadType(), request.projectId());
         assertCityExistsForCityUpload(request.uploadType(), request.cityId());
         assertBrandExistsForBrandUpload(request.uploadType(), request.brandId());
+        assertCompanyExistsForCompanyUpload(request.uploadType(), request.companyId());
 
         String ext = extFromContentType(request.contentType());
         String key = buildKey(
-                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(), ext
+                request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(),
+                request.companyId(), ext
         );
 
         Map<String, String> requiredHeaders = Map.of(
@@ -97,10 +102,17 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         }
     }
 
+    private void assertCompanyExistsForCompanyUpload(DashboardMediaUploadType uploadType, Long companyId) {
+        if (uploadType.isCompanyScoped() && companyRepository.findByIdAndDeletedFalse(companyId).isEmpty()) {
+            throw new EntityNotFoundException("Company not found: " + companyId);
+        }
+    }
+
     // --- key building ---
 
     private String buildKey(
-            DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, Long brandId, String ext
+            DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, Long brandId,
+            Long companyId, String ext
     ) {
         String filename = UUID.randomUUID() + "." + ext;
         return switch (uploadType) {
@@ -125,6 +137,10 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case BRAND_CERTIFICATE_FILE -> "dashboard/brands/" + brandId + "/certificates/" + filename;
             case BRAND_PROMO_MEDIA -> "dashboard/brands/" + brandId + "/promo/" + filename;
             case BRAND_PRODUCT_CATEGORY_IMAGE -> "dashboard/brands/" + brandId + "/product-categories/" + filename;
+            case COMPANY_LOGO         -> "dashboard/companies/" + companyId + "/logo/" + filename;
+            case COMPANY_COVER_IMAGE  -> "dashboard/companies/" + companyId + "/cover/" + filename;
+            case COMPANY_MEDIA_IMAGE  -> "dashboard/companies/" + companyId + "/media/" + filename;
+            case COMPANY_CERTIFICATE_IMAGE -> "dashboard/companies/" + companyId + "/certificates/" + filename;
         };
     }
 

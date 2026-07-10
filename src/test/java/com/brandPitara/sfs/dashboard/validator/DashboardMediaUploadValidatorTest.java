@@ -22,8 +22,7 @@ class DashboardMediaUploadValidatorTest {
                 null,
                 null,
                 null,
-                null
-        ))
+                null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("CITY_COVER_IMAGE requires cityId");
     }
@@ -55,8 +54,7 @@ class DashboardMediaUploadValidatorTest {
                 null,
                 null,
                 null,
-                null
-        ))
+                null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("MASTER_PLAN_IMAGE requires projectId");
     }
@@ -158,7 +156,7 @@ class DashboardMediaUploadValidatorTest {
 
     @Test
     void homeLottieJsonRequiresNoContextId() {
-        validator.validateContextIds(DashboardMediaUploadType.HOME_LOTTIE_JSON, null, null, null, null);
+        validator.validateContextIds(DashboardMediaUploadType.HOME_LOTTIE_JSON, null, null, null, null, null);
     }
 
     // --- Brand uploads (Phase 2B.2) ---
@@ -184,8 +182,7 @@ class DashboardMediaUploadValidatorTest {
                 null,
                 null,
                 null,
-                null
-        ))
+                null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("BRAND_LOGO requires brandId");
     }
@@ -322,8 +319,7 @@ class DashboardMediaUploadValidatorTest {
                 null,
                 null,
                 null,
-                null
-        ))
+                null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("BRAND_PRODUCT_CATEGORY_IMAGE requires brandId");
     }

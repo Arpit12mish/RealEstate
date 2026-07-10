@@ -1,13 +1,16 @@
 package com.brandPitara.sfs.company.service.impl;
 
+import com.brandPitara.sfs.brand.entity.BrandCategoryLinkEntity;
 import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.enums.BrandRelationType;
 import com.brandPitara.sfs.brand.enums.BrandSourceType;
+import com.brandPitara.sfs.brand.repository.BrandCategoryLinkRepository;
 import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.company.dto.ConnectedBrandDto;
 import com.brandPitara.sfs.company.entity.CompanyBrandLinkEntity;
 import com.brandPitara.sfs.company.repository.CompanyBrandLinkRepository;
+import com.brandPitara.sfs.entity.CategoryEntity;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -16,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,9 +29,11 @@ class CompanyConnectedBrandPublicServiceImplTest {
 
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
   @Mock private CompanyBrandLinkRepository companyBrandLinkRepository;
+  @Mock private BrandCategoryLinkRepository brandCategoryLinkRepository;
 
   private CompanyConnectedBrandPublicServiceImpl service() {
-    return new CompanyConnectedBrandPublicServiceImpl(brandCollaborationRepository, companyBrandLinkRepository);
+    return new CompanyConnectedBrandPublicServiceImpl(
+        brandCollaborationRepository, companyBrandLinkRepository, brandCategoryLinkRepository);
   }
 
   private BrandEntity brand(Long id, String name, String slug) {
@@ -36,6 +42,7 @@ class CompanyConnectedBrandPublicServiceImplTest {
         .name(name)
         .slug(slug)
         .logoUrl("logo-" + id + ".png")
+        .heroImageUrl("hero-" + id + ".png")
         .shortDescription("short " + id)
         .description("description " + id)
         .published(true)
@@ -56,6 +63,8 @@ class CompanyConnectedBrandPublicServiceImplTest {
     when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
     when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L))
         .thenReturn(List.of(legacyLink));
+    when(brandCategoryLinkRepository.findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(any()))
+        .thenReturn(List.of());
 
     List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
 
@@ -65,13 +74,64 @@ class CompanyConnectedBrandPublicServiceImplTest {
     assertThat(dto.getName()).isEqualTo("Berger");
     assertThat(dto.getSlug()).isEqualTo("berger-paints");
     assertThat(dto.getLogoUrl()).isEqualTo("logo-42.png");
+    assertThat(dto.getHeroImageUrl()).isEqualTo("hero-42.png");
     assertThat(dto.getShortDescription()).isEqualTo("short 42");
     assertThat(dto.getDescription()).isEqualTo("description 42");
+    assertThat(dto.getCategories()).isEmpty();
     assertThat(dto.isVerified()).isFalse();
     assertThat(dto.isFeatured()).isFalse();
     assertThat(dto.getDisplayOrder()).isEqualTo(3);
     verify(companyBrandLinkRepository).findPublicFallbackByCompanyId(7L);
     verify(companyBrandLinkRepository, never()).findByCompany_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(7L);
+  }
+
+  @Test
+  void getConnectedBrands_populatesCategoriesViaBatchedLookup() {
+    BrandEntity legacyBrand = brand(42L, "Berger", "berger-paints");
+    CompanyBrandLinkEntity legacyLink = CompanyBrandLinkEntity.builder()
+        .brand(legacyBrand)
+        .sortOrder(3)
+        .active(true)
+        .deleted(false)
+        .build();
+    CategoryEntity paintsCategory = CategoryEntity.builder()
+        .id(9L)
+        .name("Paints")
+        .slug("paints")
+        .priority(1)
+        .active(true)
+        .build();
+    BrandCategoryLinkEntity categoryLink = BrandCategoryLinkEntity.builder()
+        .brand(legacyBrand)
+        .category(paintsCategory)
+        .sortOrder(0)
+        .active(true)
+        .deleted(false)
+        .build();
+    when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L))
+        .thenReturn(List.of(legacyLink));
+    when(brandCategoryLinkRepository.findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(any()))
+        .thenReturn(List.of(categoryLink));
+
+    List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).getCategories()).hasSize(1);
+    assertThat(result.get(0).getCategories().get(0).getName()).isEqualTo("Paints");
+    assertThat(result.get(0).getCategories().get(0).getSlug()).isEqualTo("paints");
+  }
+
+  @Test
+  void getConnectedBrands_skipsCategoryLookupWhenNoConnectedBrands() {
+    when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of());
+    when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L)).thenReturn(List.of());
+
+    List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
+
+    assertThat(result).isEmpty();
+    verify(brandCategoryLinkRepository, never())
+        .findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(any());
   }
 
   @Test
@@ -105,6 +165,8 @@ class CompanyConnectedBrandPublicServiceImplTest {
     when(brandCollaborationRepository.findPublicByCompanyId(7L)).thenReturn(List.of(canonical));
     when(companyBrandLinkRepository.findPublicFallbackByCompanyId(7L))
         .thenReturn(List.of(duplicateLegacy, legacyOnly));
+    when(brandCategoryLinkRepository.findByBrand_IdInAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(any()))
+        .thenReturn(List.of());
 
     List<ConnectedBrandDto> result = service().getConnectedBrands(7L);
 

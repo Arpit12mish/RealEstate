@@ -3,6 +3,8 @@ package com.brandPitara.sfs.publicreview.service.impl;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.company.entity.CompanyEntity;
+import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -49,6 +51,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
 
     private static final String KEY_PROJECTS = "PROJECTS";
     private static final String KEY_BUILDERS = "BUILDERS";
+    private static final String KEY_COMPANIES = "COMPANIES";
 
     private final PublicReviewPlaceRepository placeRepository;
     private final PublicReviewSummaryRepository summaryRepository;
@@ -57,6 +60,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
 
     private final ProjectRepository projectRepository;
     private final BuilderRepository builderRepository;
+    private final CompanyRepository companyRepository;
     private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
     private final ReviewPlaceProvider reviewPlaceProvider;
     private final ContentVersionService contentVersionService;
@@ -633,6 +637,12 @@ public class PublicReviewServiceImpl implements PublicReviewService {
             return;
         }
 
+        if (targetType == PublicReviewTargetType.COMPANY) {
+            companyRepository.findByIdAndDeletedFalse(targetId)
+                .orElseThrow(() -> new NotFoundException("Company not found: " + targetId));
+            return;
+        }
+
         throw new IllegalArgumentException("Unsupported target type: " + targetType);
     }
 
@@ -653,6 +663,18 @@ public class PublicReviewServiceImpl implements PublicReviewService {
                 || !Boolean.TRUE.equals(builder.getActive())
                 || Boolean.TRUE.equals(builder.getDeleted())) {
                 throw new NotFoundException("Builder not found: " + targetId);
+            }
+            return;
+        }
+
+        if (targetType == PublicReviewTargetType.COMPANY) {
+            CompanyEntity company = companyRepository.findByIdAndDeletedFalse(targetId)
+                .orElseThrow(() -> new NotFoundException("Company not found: " + targetId));
+
+            if (!Boolean.TRUE.equals(company.getPublished())
+                || !Boolean.TRUE.equals(company.getActive())
+                || Boolean.TRUE.equals(company.getDeleted())) {
+                throw new NotFoundException("Company not found: " + targetId);
             }
             return;
         }
@@ -755,6 +777,8 @@ public class PublicReviewServiceImpl implements PublicReviewService {
             contentVersionService.bump(KEY_PROJECTS);
         } else if (targetType == PublicReviewTargetType.BUILDER) {
             contentVersionService.bump(KEY_BUILDERS);
+        } else if (targetType == PublicReviewTargetType.COMPANY) {
+            contentVersionService.bump(KEY_COMPANIES);
         }
     }
 

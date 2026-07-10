@@ -18,6 +18,10 @@ import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.BrandPublicService;
 import com.brandPitara.sfs.brand.util.BrandCompanyClassifier;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
+import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.entity.CompanyStatEntity;
+import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
+import com.brandPitara.sfs.company.repository.CompanyStatRepository;
 import com.brandPitara.sfs.entity.CategoryEntity;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +40,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,6 +50,13 @@ public class BrandPublicServiceImpl implements BrandPublicService {
   private static final int LATEST_PRODUCTS_LIMIT = 10;
   private static final int RELATED_BRANDS_LIMIT = 10;
 
+  // Mirrors ArchitectsSectionLoader/DesignersSectionLoader's stat-label matching so the
+  // brand detail page's topArchitects/interiorDesigners cards show the same values as
+  // the Home screen's cards for the same company.
+  private static final String STAT_YEARS_EXPERIENCE = "YEARS EXPERIENCE";
+  private static final String STAT_CITIES_SERVED = "CITIES SERVED";
+  private static final Set<String> AWARD_LABELS = Set.of("AWARDS", "AWARDS WON", "TOTAL AWARDS");
+
   private final BrandRepository brandRepository;
   private final BrandCategoryLinkRepository brandCategoryLinkRepository;
   private final BrandSkuRepository brandSkuRepository;
@@ -52,6 +64,8 @@ public class BrandPublicServiceImpl implements BrandPublicService {
   private final BrandFaqRepository brandFaqRepository;
   private final BrandCollaborationRepository brandCollaborationRepository;
   private final BrandProductCategoryRepository brandProductCategoryRepository;
+  private final CompanyStatRepository companyStatRepository;
+  private final CompanyProjectRepository companyProjectRepository;
 
   @Override
   @Transactional(readOnly = true)
@@ -140,11 +154,24 @@ public class BrandPublicServiceImpl implements BrandPublicService {
 
     List<BrandCollaborationEntity> companyCollaborations = brandCollaborationRepository
         .findPublicCompanyCollaborationsByBrandId(brandId);
+    List<Long> collaborationCompanyIds = companyCollaborations.stream()
+        .map(c -> c.getCompany().getId())
+        .filter(java.util.Objects::nonNull)
+        .distinct()
+        .toList();
+    Map<Long, Map<String, String>> companyStatsByCompanyId = batchCompanyStats(collaborationCompanyIds);
+    Map<Long, CompanyProjectEntity> topCompanyProjectByCompanyId = batchTopCompanyProject(collaborationCompanyIds);
+
     List<PublicCollaborationTargetSummary> topArchitects = new ArrayList<>();
     List<PublicCollaborationTargetSummary> interiorDesigners = new ArrayList<>();
     for (BrandCollaborationEntity c : companyCollaborations) {
       CompanyEntity company = c.getCompany();
-      PublicCollaborationTargetSummary summary = toTargetSummary(company.getId(), company.getName(), company.getLogoUrl(), c);
+      PublicCollaborationTargetSummary summary = toCompanyTargetSummary(
+          company,
+          c,
+          companyStatsByCompanyId.getOrDefault(company.getId(), Map.of()),
+          topCompanyProjectByCompanyId.get(company.getId())
+      );
       String companyType = company.getCompanyType();
       // Independent checks, not mutually exclusive - see BrandCompanyClassifier.
       if (BrandCompanyClassifier.isArchitect(companyType)) topArchitects.add(summary);
@@ -363,6 +390,75 @@ public class BrandPublicServiceImpl implements BrandPublicService {
         .verified(Boolean.TRUE.equals(c.getVerified()))
         .featured(Boolean.TRUE.equals(c.getFeatured()))
         .build();
+  }
+
+  // topArchitects/interiorDesigners variant - enriched with the same fields the Home
+  // screen's ArchitectDesignerCardDto card uses, so the two screens render identically
+  // for the same company.
+  private PublicCollaborationTargetSummary toCompanyTargetSummary(
+      CompanyEntity company,
+      BrandCollaborationEntity c,
+      Map<String, String> stats,
+      CompanyProjectEntity topProject) {
+    return PublicCollaborationTargetSummary.builder()
+        .id(company.getId())
+        .name(company.getName())
+        .logoUrl(company.getLogoUrl())
+        .relationType(c.getRelationType())
+        .verified(Boolean.TRUE.equals(c.getVerified()))
+        .featured(Boolean.TRUE.equals(c.getFeatured()))
+        .coverImageUrl(resolveCompanyCoverImage(company, topProject))
+        .description(company.getInfoLine1())
+        .subtitle(company.getInfoLine2())
+        .specializationText(company.getSpecializationText())
+        .yearsExperience(stats.get(STAT_YEARS_EXPERIENCE))
+        .citiesServed(stats.get(STAT_CITIES_SERVED))
+        .awardsCount(resolveAwardsCount(stats))
+        .build();
+  }
+
+  private String resolveCompanyCoverImage(CompanyEntity company, CompanyProjectEntity topProject) {
+    if (company.getCoverImageUrl() != null && !company.getCoverImageUrl().isBlank()) {
+      return company.getCoverImageUrl();
+    }
+    return topProject != null ? topProject.getCoverMediaUrl() : null;
+  }
+
+  private String resolveAwardsCount(Map<String, String> stats) {
+    for (String label : AWARD_LABELS) {
+      if (stats.containsKey(label)) return stats.get(label);
+    }
+    return null;
+  }
+
+  private Map<Long, Map<String, String>> batchCompanyStats(Collection<Long> companyIds) {
+    if (companyIds.isEmpty()) return Map.of();
+
+    Map<Long, Map<String, String>> statMapByCompanyId = new LinkedHashMap<>();
+    for (CompanyStatEntity stat : companyStatRepository
+        .findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(companyIds)) {
+      if (stat.getCompany() == null || stat.getCompany().getId() == null || stat.getLabel() == null) {
+        continue;
+      }
+      Long companyId = stat.getCompany().getId();
+      String normalizedLabel = stat.getLabel().trim().toUpperCase();
+      statMapByCompanyId
+          .computeIfAbsent(companyId, k -> new LinkedHashMap<>())
+          .putIfAbsent(normalizedLabel, stat.getValue());
+    }
+    return statMapByCompanyId;
+  }
+
+  private Map<Long, CompanyProjectEntity> batchTopCompanyProject(Collection<Long> companyIds) {
+    if (companyIds.isEmpty()) return Map.of();
+
+    Map<Long, CompanyProjectEntity> topProjectByCompanyId = new LinkedHashMap<>();
+    for (CompanyProjectEntity project : companyProjectRepository
+        .findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(companyIds)) {
+      if (project.getCompany() == null || project.getCompany().getId() == null) continue;
+      topProjectByCompanyId.putIfAbsent(project.getCompany().getId(), project);
+    }
+    return topProjectByCompanyId;
   }
 
   private PublicRelatedBrandResponse toRelatedBrandResponse(BrandEntity b) {

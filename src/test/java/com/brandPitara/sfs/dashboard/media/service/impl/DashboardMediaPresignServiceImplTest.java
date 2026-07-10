@@ -2,6 +2,7 @@ package com.brandPitara.sfs.dashboard.media.service.impl;
 
 import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
+import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadRequest;
 import com.brandPitara.sfs.dashboard.media.dto.DashboardPresignUploadResponse;
 import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
@@ -48,6 +49,7 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 7L,
+                null,
                 null
         ));
 
@@ -78,6 +80,7 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 999L,
+                null,
                 null
         )))
                 .isInstanceOf(EntityNotFoundException.class)
@@ -101,6 +104,7 @@ class DashboardMediaPresignServiceImplTest {
                 "image/png",
                 524288L,
                 42L,
+                null,
                 null,
                 null,
                 null
@@ -130,6 +134,7 @@ class DashboardMediaPresignServiceImplTest {
                 42L,
                 null,
                 null,
+                null,
                 null
         )))
                 .isInstanceOf(EntityNotFoundException.class)
@@ -155,6 +160,7 @@ class DashboardMediaPresignServiceImplTest {
                 42L,
                 null,
                 null,
+                null,
                 null
         ));
 
@@ -174,6 +180,7 @@ class DashboardMediaPresignServiceImplTest {
                 DashboardMediaUploadType.INSTAGRAM_REEL_THUMBNAIL,
                 "image/webp",
                 524288L,
+                null,
                 null,
                 null,
                 null,
@@ -201,6 +208,7 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 null
         ));
 
@@ -225,6 +233,7 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 7L,
                 null,
+                null,
                 null
         ));
 
@@ -243,6 +252,7 @@ class DashboardMediaPresignServiceImplTest {
                 DashboardMediaUploadType.BUILDER_ANALYSIS_VIDEO_THUMBNAIL,
                 "image/png",
                 1024L,
+                null,
                 null,
                 null,
                 null,
@@ -269,7 +279,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -294,7 +305,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -317,7 +329,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -340,7 +353,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -363,7 +377,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -386,7 +401,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                5L
+                5L,
+                null
         ));
 
         assertThat(response.storageKey())
@@ -409,7 +425,8 @@ class DashboardMediaPresignServiceImplTest {
                 null,
                 null,
                 null,
-                999L
+                999L,
+                null
         )))
                 .isInstanceOf(EntityNotFoundException.class)
                 .hasMessageContaining("Brand not found: 999");
@@ -425,6 +442,7 @@ class DashboardMediaPresignServiceImplTest {
                 DashboardMediaUploadType.BRAND_LOGO,
                 "image/png",
                 1024L,
+                null,
                 null,
                 null,
                 null,
@@ -498,7 +516,8 @@ class DashboardMediaPresignServiceImplTest {
                 new DashboardMediaUploadValidator(),
                 cityRepository,
                 projectRepository,
-                brandRepository
+                brandRepository,
+                mock(CompanyRepository.class)
         );
     }
 }

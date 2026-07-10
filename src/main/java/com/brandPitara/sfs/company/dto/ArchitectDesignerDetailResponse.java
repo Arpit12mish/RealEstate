@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.company.dto;
 
+import com.brandPitara.sfs.publicreview.dto.PublicReviewSampleResponse;
 import lombok.*;
 
 import java.util.List;
@@ -24,4 +25,10 @@ public class ArchitectDesignerDetailResponse {
   private List<CompanyAwardDto> awardsAndPublications;
   private List<CompanyCertificateDto> certificates;
   private java.util.List<ConnectedBrandDto> connectedBrands;
+
+  // Additive (Phase 4.8B) - existing mobile clients don't read these yet.
+  private List<CompanyHeroImageDto> heroImages;
+  private List<CompanyPricingPlanPublicDto> pricingPlans;
+  private CompanyReviewSummaryDto reviewSummary;
+  private List<PublicReviewSampleResponse> sampleReviews;
 }

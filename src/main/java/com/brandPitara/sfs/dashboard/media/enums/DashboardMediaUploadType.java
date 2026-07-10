@@ -30,7 +30,19 @@ public enum DashboardMediaUploadType {
 
     // Phase 2B.3 follow-up - the brand's own product category (Lamps/Mirrors/Kitchenware)
     // image, added after brand_product_category was introduced.
-    BRAND_PRODUCT_CATEGORY_IMAGE;
+    BRAND_PRODUCT_CATEGORY_IMAGE,
+
+    // Phase 4.8 - architect/interior designer company profile logo/cover image.
+    COMPANY_LOGO,
+    COMPANY_COVER_IMAGE,
+
+    // Phase 4.8B - company hero/gallery/card images (company_media, usage_type
+    // distinguishes HERO/GALLERY/CARD at the CRUD layer, not the upload layer).
+    COMPANY_MEDIA_IMAGE,
+
+    // Phase 4.8B - company certificate image (separate from BRAND_CERTIFICATE_FILE,
+    // which allows PDF; this one is image-only, matching COMPANY_MEDIA_IMAGE).
+    COMPANY_CERTIFICATE_IMAGE;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -88,5 +100,12 @@ public enum DashboardMediaUploadType {
                 || this == BRAND_CERTIFICATE_FILE
                 || this == BRAND_PROMO_MEDIA
                 || this == BRAND_PRODUCT_CATEGORY_IMAGE;
+    }
+
+    public boolean isCompanyScoped() {
+        return this == COMPANY_LOGO
+                || this == COMPANY_COVER_IMAGE
+                || this == COMPANY_MEDIA_IMAGE
+                || this == COMPANY_CERTIFICATE_IMAGE;
     }
 }

@@ -114,7 +114,8 @@ public class DashboardMediaUploadValidator {
             Long projectId,
             Long builderId,
             Long cityId,
-            Long brandId
+            Long brandId,
+            Long companyId
     ) {
         if (uploadType.isProjectScoped() && projectId == null) {
             throw new IllegalArgumentException(uploadType + " requires projectId");
@@ -127,6 +128,9 @@ public class DashboardMediaUploadValidator {
         }
         if (uploadType.isBrandScoped() && brandId == null) {
             throw new IllegalArgumentException(uploadType + " requires brandId");
+        }
+        if (uploadType.isCompanyScoped() && companyId == null) {
+            throw new IllegalArgumentException(uploadType + " requires companyId");
         }
     }
 }

@@ -1,8 +1,11 @@
 package com.brandPitara.sfs.company.dto;
 
+import com.brandPitara.sfs.brand.dto.PublicBrandCategoryResponse;
 import com.brandPitara.sfs.brand.enums.BrandRelationType;
 import com.brandPitara.sfs.brand.enums.BrandSourceType;
 import lombok.*;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,4 +24,10 @@ public class ConnectedBrandDto {
   private boolean verified;
   private boolean featured;
   private int displayOrder;
+
+  // Additive - brings this card up to parity with the Home screen's brand
+  // card (BrandCardMapper/PublicBrandCardResponse) so detail-page connected
+  // brand cards can render the same hero image + category chips.
+  private String heroImageUrl;
+  private List<PublicBrandCategoryResponse> categories;
 }

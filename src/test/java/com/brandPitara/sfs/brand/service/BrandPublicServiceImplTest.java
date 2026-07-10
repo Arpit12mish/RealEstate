@@ -14,6 +14,13 @@ import com.brandPitara.sfs.brand.repository.BrandProductCategoryRepository;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.brand.repository.BrandSkuRepository;
 import com.brandPitara.sfs.brand.service.impl.BrandPublicServiceImpl;
+import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
+import com.brandPitara.sfs.brand.enums.BrandRelationType;
+import com.brandPitara.sfs.company.entity.CompanyEntity;
+import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.entity.CompanyStatEntity;
+import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
+import com.brandPitara.sfs.company.repository.CompanyStatRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,6 +53,8 @@ class BrandPublicServiceImplTest {
   @Mock private BrandFaqRepository brandFaqRepository;
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
   @Mock private BrandProductCategoryRepository brandProductCategoryRepository;
+  @Mock private CompanyStatRepository companyStatRepository;
+  @Mock private CompanyProjectRepository companyProjectRepository;
 
   @InjectMocks private BrandPublicServiceImpl brandPublicService;
 
@@ -394,5 +403,168 @@ class BrandPublicServiceImplTest {
     ArgumentCaptor<Long> excludeIdCaptor = ArgumentCaptor.forClass(Long.class);
     verify(brandRepository).findRelatedBrands(anyCollection(), excludeIdCaptor.capture(), any());
     assertThat(excludeIdCaptor.getValue()).isEqualTo(1L);
+  }
+
+  // ---------- 10: topArchitects/interiorDesigners match the Home screen card fields ----------
+
+  private CompanyEntity company(Long id, String name, String companyType) {
+    return CompanyEntity.builder()
+        .id(id)
+        .name(name)
+        .companyType(companyType)
+        .logoUrl("company-logo-" + id + ".png")
+        .coverImageUrl("company-cover-" + id + ".png")
+        .specializationText("Architecture | Interiors | Landscape")
+        .infoLine1("Offices | New Delhi")
+        .infoLine2("Ranked among the Top 100 Design Firms")
+        .active(true)
+        .published(true)
+        .deleted(false)
+        .build();
+  }
+
+  private void stubBaseBrandDetailDependencies(Long brandId, BrandEntity brand) {
+    when(brandRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse(brand.getSlug()))
+        .thenReturn(Optional.of(brand));
+    when(brandCategoryLinkRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandId))
+        .thenReturn(List.of());
+    when(brandSkuRepository.findByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(eq(brandId), any(Pageable.class)))
+        .thenReturn(Page.empty());
+    when(brandProductCategoryRepository.findByBrand_IdAndActiveTrueAndPublicVisibleTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandId))
+        .thenReturn(List.of());
+    when(brandSkuRepository.countByBrand_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(brandId)).thenReturn(0L);
+    when(brandCertificateRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandId))
+        .thenReturn(List.of());
+    when(brandFaqRepository.findByBrand_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(brandId))
+        .thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicProjectCollaborationsByBrandId(brandId)).thenReturn(List.of());
+    when(brandCollaborationRepository.findPublicBuilderCollaborationsByBrandId(brandId)).thenReturn(List.of());
+  }
+
+  @Test
+  void getPublicBrandBySlug_topArchitects_includeCoverLogoDescriptionAndStats() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    stubBaseBrandDetailDependencies(1L, brand);
+
+    CompanyEntity architectCompany = company(50L, "Morphogenesis", "ARCHITECT");
+    BrandCollaborationEntity collaboration = BrandCollaborationEntity.builder()
+        .company(architectCompany)
+        .relationType(BrandRelationType.CERTIFIED_PARTNER)
+        .verified(true)
+        .featured(false)
+        .sortOrder(0)
+        .build();
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L))
+        .thenReturn(List.of(collaboration));
+
+    CompanyStatEntity yearsStat = CompanyStatEntity.builder()
+        .company(architectCompany).label("Years Experience").value("18+").displayOrder(0).active(true).deleted(false)
+        .build();
+    CompanyStatEntity citiesStat = CompanyStatEntity.builder()
+        .company(architectCompany).label("Cities Served").value("5").displayOrder(1).active(true).deleted(false)
+        .build();
+    CompanyStatEntity awardsStat = CompanyStatEntity.builder()
+        .company(architectCompany).label("Awards").value("12+").displayOrder(2).active(true).deleted(false)
+        .build();
+    when(companyStatRepository.findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(any()))
+        .thenReturn(List.of(yearsStat, citiesStat, awardsStat));
+    when(companyProjectRepository.findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
+        .thenReturn(List.of());
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    assertThat(response.getTopArchitects()).hasSize(1);
+    var card = response.getTopArchitects().get(0);
+    assertThat(card.getId()).isEqualTo(50L);
+    assertThat(card.getName()).isEqualTo("Morphogenesis");
+    assertThat(card.getLogoUrl()).isEqualTo("company-logo-50.png");
+    assertThat(card.getCoverImageUrl()).isEqualTo("company-cover-50.png");
+    assertThat(card.getDescription()).isEqualTo("Offices | New Delhi");
+    assertThat(card.getSubtitle()).isEqualTo("Ranked among the Top 100 Design Firms");
+    assertThat(card.getSpecializationText()).isEqualTo("Architecture | Interiors | Landscape");
+    assertThat(card.getYearsExperience()).isEqualTo("18+");
+    assertThat(card.getCitiesServed()).isEqualTo("5");
+    assertThat(card.getAwardsCount()).isEqualTo("12+");
+    assertThat(response.getInteriorDesigners()).isEmpty();
+  }
+
+  @Test
+  void getPublicBrandBySlug_companyWithArchitectAndDesignerType_appearsInBothLists() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    stubBaseBrandDetailDependencies(1L, brand);
+
+    CompanyEntity dualCompany = company(51L, "Studio Hybrid", "ARCHITECT&DESIGNERS");
+    BrandCollaborationEntity collaboration = BrandCollaborationEntity.builder()
+        .company(dualCompany)
+        .verified(false)
+        .featured(false)
+        .sortOrder(0)
+        .build();
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L))
+        .thenReturn(List.of(collaboration));
+    when(companyStatRepository.findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(any()))
+        .thenReturn(List.of());
+    when(companyProjectRepository.findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
+        .thenReturn(List.of());
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    assertThat(response.getTopArchitects()).extracting("id").containsExactly(51L);
+    assertThat(response.getInteriorDesigners()).extracting("id").containsExactly(51L);
+  }
+
+  @Test
+  void getPublicBrandBySlug_companyCoverImage_fallsBackToTopCompanyProjectCover_whenCompanyCoverMissing() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    stubBaseBrandDetailDependencies(1L, brand);
+
+    CompanyEntity architectCompany = company(52L, "NoCover Studio", "ARCHITECT");
+    architectCompany.setCoverImageUrl(null);
+    BrandCollaborationEntity collaboration = BrandCollaborationEntity.builder()
+        .company(architectCompany)
+        .verified(false)
+        .featured(false)
+        .sortOrder(0)
+        .build();
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L))
+        .thenReturn(List.of(collaboration));
+    when(companyStatRepository.findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(any()))
+        .thenReturn(List.of());
+
+    CompanyProjectEntity topProject = CompanyProjectEntity.builder()
+        .company(architectCompany)
+        .coverMediaUrl("project-cover.png")
+        .build();
+    when(companyProjectRepository.findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
+        .thenReturn(List.of(topProject));
+
+    PublicBrandDetailResponse response = brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    assertThat(response.getTopArchitects()).hasSize(1);
+    assertThat(response.getTopArchitects().get(0).getCoverImageUrl()).isEqualTo("project-cover.png");
+  }
+
+  @Test
+  void getPublicBrandBySlug_companyStatsAndProjects_areBatchedOncePerRequest_notPerCompany() {
+    BrandEntity brand = brand(1L, "Berger", "berger-paints");
+    stubBaseBrandDetailDependencies(1L, brand);
+
+    CompanyEntity companyA = company(60L, "Studio A", "ARCHITECT");
+    CompanyEntity companyB = company(61L, "Studio B", "DESIGNER");
+    BrandCollaborationEntity collabA = BrandCollaborationEntity.builder().company(companyA).sortOrder(0).build();
+    BrandCollaborationEntity collabB = BrandCollaborationEntity.builder().company(companyB).sortOrder(1).build();
+    when(brandCollaborationRepository.findPublicCompanyCollaborationsByBrandId(1L))
+        .thenReturn(List.of(collabA, collabB));
+    when(companyStatRepository.findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(any()))
+        .thenReturn(List.of());
+    when(companyProjectRepository.findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
+        .thenReturn(List.of());
+
+    brandPublicService.getPublicBrandBySlug("berger-paints");
+
+    verify(companyStatRepository, times(1))
+        .findByCompany_IdInAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(any());
+    verify(companyProjectRepository, times(1))
+        .findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any());
   }
 }

@@ -10,4 +10,9 @@ import lombok.*;
 public class CompanyStatDto {
   private String label;
   private String value;
+
+  // Additive (Phase 4.8B) - existing mobile clients only read label/value.
+  private Long id;
+  private String iconKey;
+  private Integer sortOrder;
 }

@@ -2,6 +2,7 @@ package com.brandPitara.sfs.publicreview.service.impl;
 
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -43,6 +44,7 @@ class PublicReviewServiceImplTest {
     private ProjectReviewRepository projectReviewRepository;
     private ProjectRepository projectRepository;
     private BuilderRepository builderRepository;
+    private CompanyRepository companyRepository;
     private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
     private ReviewPlaceProvider reviewPlaceProvider;
     private ContentVersionService contentVersionService;
@@ -55,6 +57,7 @@ class PublicReviewServiceImplTest {
         projectReviewRepository = mock(ProjectReviewRepository.class);
         projectRepository = mock(ProjectRepository.class);
         builderRepository = mock(BuilderRepository.class);
+        companyRepository = mock(CompanyRepository.class);
         projectPublicVisibilityPolicy = mock(ProjectPublicVisibilityPolicy.class);
         reviewPlaceProvider = mock(ReviewPlaceProvider.class);
         contentVersionService = mock(ContentVersionService.class);
@@ -66,6 +69,7 @@ class PublicReviewServiceImplTest {
                 projectReviewRepository,
                 projectRepository,
                 builderRepository,
+                companyRepository,
                 projectPublicVisibilityPolicy,
                 reviewPlaceProvider,
                 contentVersionService
@@ -139,6 +143,40 @@ class PublicReviewServiceImplTest {
                 .hasMessageContaining("Google Places API failed");
 
         verify(placeRepository).save(argThat(p -> p.getFetchStatus() == GoogleReviewFetchStatus.FAILED));
+    }
+
+    @Test
+    void syncGoogleReviewsForCompanyBumpsCompaniesContentVersion() {
+        setUp();
+
+        PublicReviewPlaceEntity place = PublicReviewPlaceEntity.builder()
+                .id(3L)
+                .targetType(PublicReviewTargetType.COMPANY)
+                .targetId(7L)
+                .googlePlaceId("ChIJ-company-place")
+                .fetchStatus(GoogleReviewFetchStatus.NOT_FETCHED)
+                .oneTimeFetched(false)
+                .build();
+
+        when(companyRepository.findByIdAndDeletedFalse(7L))
+                .thenReturn(Optional.of(com.brandPitara.sfs.company.entity.CompanyEntity.builder().id(7L).build()));
+        when(placeRepository.findByIdAndTargetTypeAndTargetIdAndDeletedFalse(3L, PublicReviewTargetType.COMPANY, 7L))
+                .thenReturn(Optional.of(place));
+        when(summaryRepository.findByReviewPlaceId(3L)).thenReturn(Optional.empty());
+
+        GooglePlaceDetailsResponse googleResponse = new GooglePlaceDetailsResponse();
+        googleResponse.setRating(BigDecimal.valueOf(4.8));
+        googleResponse.setUserRatingCount(15);
+        googleResponse.setReviews(List.of());
+        when(reviewPlaceProvider.fetchPlaceDetails("ChIJ-company-place")).thenReturn(googleResponse);
+        when(placeRepository.save(any(PublicReviewPlaceEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SyncGooglePublicReviewsResponse response = service.syncGoogleReviews(PublicReviewTargetType.COMPANY, 7L, 3L);
+
+        assertThat(response.getRating()).isEqualByComparingTo(BigDecimal.valueOf(4.8));
+        verify(contentVersionService).bump("COMPANIES");
+        verify(contentVersionService, never()).bump("PROJECTS");
+        verify(contentVersionService, never()).bump("BUILDERS");
     }
 
     @Test

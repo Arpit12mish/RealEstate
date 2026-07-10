@@ -33,5 +33,9 @@ public record DashboardPresignUploadRequest(
 
         // Required when uploadType is a BRAND_* upload - the brand must already exist
         // (create-first-then-upload flow, no temp/pre-create upload path).
-        Long brandId
+        Long brandId,
+
+        // Required when uploadType is COMPANY_LOGO or COMPANY_COVER_IMAGE - the company must
+        // already exist (same create-first-then-upload convention as BRAND_*).
+        Long companyId
 ) {}
