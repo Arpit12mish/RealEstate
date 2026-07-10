@@ -204,4 +204,54 @@ public interface BrandCollaborationRepository extends JpaRepository<BrandCollabo
       Long companyProjectId,
       BrandCollaborationTargetType targetType
   );
+
+  // Batch brands-used counts for the dashboard company-projects list - one aggregated row
+  // per company project id as [companyProjectId, count], counting non-deleted rows regardless
+  // of active/publicVisible so admins see the true attached count, not just the public one.
+  @Query("""
+      select c.companyProject.id, count(c)
+      from BrandCollaborationEntity c
+      where c.companyProject.id in :companyProjectIds
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY_PROJECT
+        and c.deleted = false
+      group by c.companyProject.id
+      """)
+  List<Object[]> countBrandsUsedByCompanyProjectIds(@Param("companyProjectIds") Collection<Long> companyProjectIds);
+
+  // ---------- dashboard admin read/write paths (Company Connected Brands) ----------
+
+  // Admin view of a company's connected brands - includes rows the admin has deactivated
+  // (active = false), unlike findPublicByCompanyId above which only ever returns active +
+  // public-visible rows.
+  @Query("""
+      select c
+      from BrandCollaborationEntity c
+        join fetch c.brand b
+      where c.company.id = :companyId
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY
+        and c.deleted = false
+      order by c.sortOrder asc, c.id asc
+      """)
+  List<BrandCollaborationEntity> findByCompany_IdAndTargetTypeAndDeletedFalseOrderBySortOrderAscIdAsc(
+      @Param("companyId") Long companyId,
+      BrandCollaborationTargetType targetType
+  );
+
+  Optional<BrandCollaborationEntity> findByIdAndCompany_IdAndTargetTypeAndDeletedFalse(
+      Long id,
+      Long companyId,
+      BrandCollaborationTargetType targetType
+  );
+
+  // Batch connected-brands counts for the dashboard companies list - one aggregated row
+  // per company id as [companyId, count].
+  @Query("""
+      select c.company.id, count(c)
+      from BrandCollaborationEntity c
+      where c.company.id in :companyIds
+        and c.targetType = com.brandPitara.sfs.brand.enums.BrandCollaborationTargetType.COMPANY
+        and c.deleted = false
+      group by c.company.id
+      """)
+  List<Object[]> countConnectedBrandsByCompanyIds(@Param("companyIds") Collection<Long> companyIds);
 }
