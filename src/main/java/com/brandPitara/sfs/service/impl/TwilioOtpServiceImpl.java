@@ -1,37 +1,33 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.config.AppReviewLoginProperties;
-import com.brandPitara.sfs.config.TwilioProperties;
 import com.brandPitara.sfs.entity.OtpRequestTracker;
 import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.repository.OtpRequestTrackerRepository;
 import com.brandPitara.sfs.service.OtpService;
+import com.brandPitara.sfs.service.TwilioVerifyClient;
 import com.brandPitara.sfs.service.model.OtpSendResult;
 import com.brandPitara.sfs.service.model.OtpVerificationResult;
 import com.brandPitara.sfs.util.PhoneNumberNormalizer;
-import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
-import com.twilio.rest.verify.v2.service.Verification;
-import com.twilio.rest.verify.v2.service.VerificationCheck;
-import com.twilio.rest.verify.v2.service.VerificationCreator;
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 @Profile({"dev", "prod", "staging"})
-@Transactional
 public class TwilioOtpServiceImpl implements OtpService {
 
     private static final long RESEND_COOLDOWN_SECONDS = 30;
@@ -41,25 +37,11 @@ public class TwilioOtpServiceImpl implements OtpService {
     private static final long VERIFY_WINDOW_MINUTES = 10;
     private static final long BLOCK_MINUTES = 15;
 
-    private final TwilioProperties props;
     private final AppReviewLoginProperties reviewLoginProperties;
     private final OtpRequestTrackerRepository trackerRepository;
     private final LogSanitizer logSanitizer;
-
-    @PostConstruct
-    public void initTwilio() {
-        log.info(
-                "Initializing Twilio. accountSid={}, verifyServiceSid={}, authTokenPresent={}",
-                mask(props.getAccountSid()),
-                safeTrim(props.getVerifyServiceSid()),
-                props.getAuthToken() != null && !props.getAuthToken().isBlank()
-        );
-
-        Twilio.init(
-                safeTrim(props.getAccountSid()),
-                safeTrim(props.getAuthToken())
-        );
-    }
+    private final TwilioVerifyClient twilioVerifyClient;
+    private final PlatformTransactionManager transactionManager;
 
     @Override
     public OtpSendResult sendOtp(String phoneNumber) {
@@ -76,56 +58,20 @@ public class TwilioOtpServiceImpl implements OtpService {
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        OtpRequestTracker tracker = trackerRepository.findByPhoneNumber(normalizedPhone)
-                .orElseGet(() -> createNewTracker(normalizedPhone));
-
-        enforceBlockIfAny(tracker, now);
-        resetSendWindowIfNeeded(tracker, now);
-
-        if (tracker.getCooldownUntil() != null && now.isBefore(tracker.getCooldownUntil())) {
-            long waitSeconds = Duration.between(now, tracker.getCooldownUntil()).getSeconds();
-            throw new ResponseStatusException(
-                    HttpStatus.TOO_MANY_REQUESTS,
-                    "Please wait " + Math.max(waitSeconds, 1) + " seconds before requesting OTP again"
-            );
-        }
-
-        if (tracker.getSendCountInWindow() >= MAX_SENDS_PER_WINDOW) {
-            tracker.setBlockedUntil(now.plusMinutes(BLOCK_MINUTES));
-            trackerRepository.save(tracker);
-
-            throw new ResponseStatusException(
-                    HttpStatus.TOO_MANY_REQUESTS,
-                    "Too many OTP requests. Please try again later"
-            );
-        }
+        prepareSend(normalizedPhone, now);
 
         try {
             log.info("Sending OTP via Twilio to {}", logSanitizer.maskPhone(normalizedPhone));
 
-            VerificationCreator creator = Verification.creator(
-                    safeTrim(props.getVerifyServiceSid()),
-                    normalizedPhone,
-                    "sms"
-            );
-
-            Verification verification = creator.create();
+            TwilioVerifyClient.VerificationResult verification =
+                    twilioVerifyClient.sendVerification(normalizedPhone);
 
             log.info(
                     "Twilio verification created: sid={}, status={}",
-                    verification.getSid(),
-                    verification.getStatus()
+                    verification.sid(),
+                    verification.status()
             );
-
-            tracker.setLastSentAt(now);
-            tracker.setCooldownUntil(now.plusSeconds(RESEND_COOLDOWN_SECONDS));
-            tracker.setSendCountInWindow(tracker.getSendCountInWindow() + 1);
-
-            if (tracker.getSendWindowStart() == null) {
-                tracker.setSendWindowStart(now);
-            }
-
-            trackerRepository.save(tracker);
+            recordSendSuccess(normalizedPhone, now);
 
             return OtpSendResult.builder()
                     .status("OTP_SENT")
@@ -176,45 +122,31 @@ public class TwilioOtpServiceImpl implements OtpService {
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
-        // Locks the tracker row for the rest of this transaction so concurrent verify
-        // attempts for the same phone serialize instead of racing on failedVerifyCountInWindow.
-        OtpRequestTracker tracker = trackerRepository.findByPhoneNumberForUpdate(normalizedPhone)
-                .orElseGet(() -> createNewTracker(normalizedPhone));
-
-        enforceBlockIfAny(tracker, now);
-        resetVerifyWindowIfNeeded(tracker, now);
+        prepareVerification(normalizedPhone, now);
 
         try {
             log.info("Verifying OTP via Twilio for {}", logSanitizer.maskPhone(normalizedPhone));
 
-            VerificationCheck check = VerificationCheck.creator(
-                            safeTrim(props.getVerifyServiceSid()),
-                            code
-                    )
-                    .setTo(normalizedPhone)
-                    .create();
+            TwilioVerifyClient.VerificationResult check =
+                    twilioVerifyClient.checkVerification(normalizedPhone, code);
 
             log.info(
                     "Twilio verification check: sid={}, status={}",
-                    check.getSid(),
-                    check.getStatus()
+                    check.sid(),
+                    check.status()
             );
 
-            boolean approved = "approved".equalsIgnoreCase(check.getStatus());
+            boolean approved = "approved".equalsIgnoreCase(check.status());
 
             if (approved) {
-                tracker.setFailedVerifyCountInWindow(0);
-                tracker.setVerifyWindowStart(null);
-                tracker.setBlockedUntil(null);
-                tracker.setLastVerifiedAt(now);
-                trackerRepository.save(tracker);
+                recordVerificationSuccess(normalizedPhone, now);
                 return OtpVerificationResult.builder()
                         .approved(true)
                         .normalizedPhoneNumber(normalizedPhone)
                         .build();
             }
 
-            increaseVerifyFailure(tracker, now);
+            recordVerificationFailure(normalizedPhone, now);
             return OtpVerificationResult.builder()
                     .approved(false)
                     .normalizedPhoneNumber(normalizedPhone)
@@ -229,7 +161,7 @@ public class TwilioOtpServiceImpl implements OtpService {
                     e
             );
 
-            increaseVerifyFailure(tracker, now);
+            recordVerificationFailure(normalizedPhone, now);
             return OtpVerificationResult.builder()
                     .approved(false)
                     .normalizedPhoneNumber(normalizedPhone)
@@ -250,6 +182,87 @@ public class TwilioOtpServiceImpl implements OtpService {
         tracker.setSendCountInWindow(0);
         tracker.setFailedVerifyCountInWindow(0);
         return tracker;
+    }
+
+    private void prepareSend(String phoneNumber, OffsetDateTime now) {
+        transactionTemplate().executeWithoutResult(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(phoneNumber);
+            enforceBlockIfAny(tracker, now);
+            resetSendWindowIfNeeded(tracker, now);
+
+            if (tracker.getCooldownUntil() != null && now.isBefore(tracker.getCooldownUntil())) {
+                long waitSeconds = Duration.between(now, tracker.getCooldownUntil()).getSeconds();
+                throw new ResponseStatusException(
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "Please wait " + Math.max(waitSeconds, 1) + " seconds before requesting OTP again"
+                );
+            }
+
+            if (tracker.getSendCountInWindow() >= MAX_SENDS_PER_WINDOW) {
+                tracker.setBlockedUntil(now.plusMinutes(BLOCK_MINUTES));
+                trackerRepository.save(tracker);
+                throw new ResponseStatusException(
+                        HttpStatus.TOO_MANY_REQUESTS,
+                        "Too many OTP requests. Please try again later"
+                );
+            }
+        });
+    }
+
+    private void recordSendSuccess(String phoneNumber, OffsetDateTime now) {
+        transactionTemplate().executeWithoutResult(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(phoneNumber);
+            resetSendWindowIfNeeded(tracker, now);
+            tracker.setLastSentAt(now);
+            tracker.setCooldownUntil(now.plusSeconds(RESEND_COOLDOWN_SECONDS));
+            tracker.setSendCountInWindow(tracker.getSendCountInWindow() + 1);
+            if (tracker.getSendWindowStart() == null) {
+                tracker.setSendWindowStart(now);
+            }
+            trackerRepository.save(tracker);
+        });
+    }
+
+    private void prepareVerification(String phoneNumber, OffsetDateTime now) {
+        transactionTemplate().executeWithoutResult(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(phoneNumber);
+            enforceBlockIfAny(tracker, now);
+            resetVerifyWindowIfNeeded(tracker, now);
+        });
+    }
+
+    private void recordVerificationSuccess(String phoneNumber, OffsetDateTime now) {
+        transactionTemplate().executeWithoutResult(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(phoneNumber);
+            tracker.setFailedVerifyCountInWindow(0);
+            tracker.setVerifyWindowStart(null);
+            tracker.setBlockedUntil(null);
+            tracker.setLastVerifiedAt(now);
+            trackerRepository.save(tracker);
+        });
+    }
+
+    private void recordVerificationFailure(String phoneNumber, OffsetDateTime now) {
+        transactionTemplate().executeWithoutResult(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(phoneNumber);
+            resetVerifyWindowIfNeeded(tracker, now);
+            increaseVerifyFailure(tracker, now);
+        });
+    }
+
+    private OtpRequestTracker findOrCreateLocked(String phoneNumber) {
+        Optional<OtpRequestTracker> existing = trackerRepository.findByPhoneNumberForUpdate(phoneNumber);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        trackerRepository.insertIfAbsent(phoneNumber);
+        return trackerRepository.findByPhoneNumberForUpdate(phoneNumber)
+                .orElseThrow(() -> new IllegalStateException("OTP request tracker was not created"));
+    }
+
+    private TransactionTemplate transactionTemplate() {
+        return new TransactionTemplate(transactionManager);
     }
 
     private void enforceBlockIfAny(OtpRequestTracker tracker, OffsetDateTime now) {
@@ -304,27 +317,16 @@ public class TwilioOtpServiceImpl implements OtpService {
     OtpRequestTracker recordFailedVerifyAttempt(String phoneNumber) {
         String normalizedPhone = normalizePhoneNumber(phoneNumber);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-
-        OtpRequestTracker tracker = trackerRepository.findByPhoneNumberForUpdate(normalizedPhone)
-                .orElseGet(() -> createNewTracker(normalizedPhone));
-
-        resetVerifyWindowIfNeeded(tracker, now);
-        increaseVerifyFailure(tracker, now);
-        return tracker;
+        return transactionTemplate().execute(status -> {
+            OtpRequestTracker tracker = findOrCreateLocked(normalizedPhone);
+            resetVerifyWindowIfNeeded(tracker, now);
+            increaseVerifyFailure(tracker, now);
+            return tracker;
+        });
     }
 
     private String normalizePhoneNumber(String phoneNumber) {
         return PhoneNumberNormalizer.normalize(phoneNumber);
     }
 
-    private String safeTrim(String value) {
-        return value == null ? null : value.trim();
-    }
-
-    private String mask(String value) {
-        if (value == null || value.length() < 8) {
-            return "null-or-short";
-        }
-        return value.substring(0, 4) + "****" + value.substring(value.length() - 4);
-    }
 }

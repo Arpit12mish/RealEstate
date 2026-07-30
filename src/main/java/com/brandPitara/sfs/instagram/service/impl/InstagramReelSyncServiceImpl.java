@@ -40,13 +40,11 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
     private final InstagramReelMapper instagramReelMapper;
 
     @Override
-    @Transactional
     public InstagramReelSyncResult syncLatestReels() {
         return sync(null);
     }
 
     @Override
-    @Transactional
     public InstagramReelSyncResult syncOneMedia(String mediaId) {
         if (!StringUtils.hasText(mediaId)) {
             throw new IllegalArgumentException("mediaId is required");
@@ -57,12 +55,12 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
     @Override
     @Transactional
     public void recalculateTrendingScores() {
-        instagramReelRepository.findByDeletedFalse()
-            .forEach(entity -> entity.setTrendingScore(calculateTrendingScore(entity)));
+        List<InstagramReelEntity> reels = instagramReelRepository.findByDeletedFalse();
+        reels.forEach(entity -> entity.setTrendingScore(calculateTrendingScore(entity)));
+        instagramReelRepository.saveAll(reels);
     }
 
     @Override
-    @Transactional
     public InstagramReelSyncResult recacheMissingThumbnails() {
         OffsetDateTime startedAt = OffsetDateTime.now();
         int cached = 0;

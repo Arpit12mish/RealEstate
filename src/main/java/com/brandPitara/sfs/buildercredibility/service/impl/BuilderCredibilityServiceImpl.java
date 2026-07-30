@@ -20,7 +20,6 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectConstructionStageRepos
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -75,7 +74,7 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(readOnly = true)
     public BuilderCredibilitySummaryResponse publicGetCredibilitySummary(Long builderId) {
         BuilderEntity builder = getPublicBuilder(builderId);
         BuilderCredibilityComputed computed = computeCredibility(builder);

@@ -54,7 +54,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -137,7 +136,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(readOnly = true)
     public ProjectMeterDetailResponse publicGetMeterDetail(Long projectId) {
         ProjectEntity project = getPublicProject(projectId);
 
@@ -147,7 +146,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
 
         ProjectMeterSummaryResponse summary = (snapshot != null)
             ? ProjectMeterMapper.toSummaryResponse(snapshot)
-            : buildFallbackSummary(project);
+            : buildFallbackSummary(project, stages);
 
         int overallProgress = snapshot != null && snapshot.getConstructionProgressPercent() != null
             ? safePercent(snapshot.getConstructionProgressPercent())
@@ -270,7 +269,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(readOnly = true)
     public ProjectMeterDetailResponse dashboardGetMeterDetail(Long projectId) {
         ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
             .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
@@ -281,7 +280,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
 
         ProjectMeterSummaryResponse summary = (snapshot != null)
             ? ProjectMeterMapper.toSummaryResponse(snapshot)
-            : buildFallbackSummary(project);
+            : buildFallbackSummary(project, stages);
 
         int overallProgress = snapshot != null && snapshot.getConstructionProgressPercent() != null
             ? safePercent(snapshot.getConstructionProgressPercent())
@@ -420,6 +419,14 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private ProjectMeterSummaryResponse buildFallbackSummary(ProjectEntity project) {
         List<ProjectConstructionStageEntity> stages =
             projectConstructionStageRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(project.getId());
+
+        return buildFallbackSummary(project, stages);
+    }
+
+    private ProjectMeterSummaryResponse buildFallbackSummary(
+            ProjectEntity project,
+            List<ProjectConstructionStageEntity> stages
+    ) {
 
         int overallProgress = calculateOverallProgress(stages);
         ProjectTimelineResponse timeline = resolveTimeline(project, null);

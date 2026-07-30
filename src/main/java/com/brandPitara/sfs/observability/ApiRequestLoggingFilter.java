@@ -128,6 +128,9 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         fields.put("durationMs", durationMs);
         fields.put("userId",     resolveUserId());
         fields.put("role",       resolveRole());
+        fields.put("principalType", resolvePrincipalType());
+        long responseSize = resolveResponseSize(response);
+        if (responseSize >= 0)      fields.put("responseSizeBytes", responseSize);
         fields.put("clientIp",   clientIp);
         fields.put("userAgent",  userAgent);
         if (exception != null) {
@@ -166,6 +169,13 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         return (mdc != null && !mdc.isBlank()) ? mdc : "NONE";
     }
 
+    private String resolvePrincipalType() {
+        String role = resolveRole();
+        if ("GUEST".equalsIgnoreCase(role)) return "guest";
+        if ("NONE".equalsIgnoreCase(role)) return "anonymous";
+        return "authenticated";
+    }
+
     // ── Misc helpers ─────────────────────────────────────────────────────────
 
     private int resolveStatus(HttpServletResponse response, Throwable exception) {
@@ -182,5 +192,15 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             return xff.split(",")[0].trim();
         }
         return request.getRemoteAddr();
+    }
+
+    private long resolveResponseSize(HttpServletResponse response) {
+        String contentLength = response.getHeader("Content-Length");
+        if (contentLength == null) return -1;
+        try {
+            return Long.parseLong(contentLength);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
     }
 }

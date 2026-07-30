@@ -110,6 +110,28 @@ class SecurityConfigRuntimeTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void actuatorReadinessProbeIsPublicButMetricsRemainProtected() throws Exception {
+        mockMvc.perform(get("/actuator/health/readiness"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/metrics/hikaricp.connections.active"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @RestController
+    static class ActuatorSecurityTestController {
+
+        @GetMapping("/actuator/health/readiness")
+        ResponseEntity<Void> readiness() {
+            return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/actuator/metrics/hikaricp.connections.active")
+        ResponseEntity<Void> hikariMetric() {
+            return ResponseEntity.ok().build();
+        }
+    }
+
     @RestController
     @RequestMapping("/api/auth")
     static class MobileAuthTestController {
@@ -209,6 +231,11 @@ class SecurityConfigRuntimeTest {
         @Bean
         ProjectsTestController projectsTestController() {
             return new ProjectsTestController();
+        }
+
+        @Bean
+        ActuatorSecurityTestController actuatorSecurityTestController() {
+            return new ActuatorSecurityTestController();
         }
 
         @Bean
