@@ -218,6 +218,16 @@ aws:
 sfs:
   search:
     enabled: ${SFS_SEARCH_ENABLED:false}
+  authentication:
+    identity-cache:
+      mobile:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_MAXIMUM_SIZE:50000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_EXPIRE_AFTER_WRITE:30s}
+      dashboard:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_MAXIMUM_SIZE:5000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_EXPIRE_AFTER_WRITE:15s}
   refresh-token:
     cleanup:
       enabled: ${SFS_REFRESH_TOKEN_CLEANUP_ENABLED:true}

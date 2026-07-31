@@ -11,6 +11,7 @@ import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.dto.onboarding.SessionResponse;
 import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class OnboardingServiceImpl implements OnboardingService {
     private final UserRepository userRepository;
     private final ProviderProfileRepository providerProfileRepository;
     private final OnboardingRoleMapper onboardingRoleMapper;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
     
     @Override
     @Transactional
@@ -54,6 +56,7 @@ public class OnboardingServiceImpl implements OnboardingService {
         }
 
         userRepository.save(user);
+        identityCacheInvalidator.invalidateMobileAfterCommit(user.getId());
         return getSession(userId);
     }
 
@@ -102,4 +105,3 @@ public class OnboardingServiceImpl implements OnboardingService {
         );
     }
 }
-

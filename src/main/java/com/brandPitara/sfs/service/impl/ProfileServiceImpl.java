@@ -15,6 +15,7 @@ import com.brandPitara.sfs.repository.LoginHistoryRepository;
 import com.brandPitara.sfs.repository.RefreshTokenRepository;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import com.brandPitara.sfs.service.ProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final LoginHistoryRepository loginHistoryRepository;
     private final GuestSessionRepository guestSessionRepository;
     private final MediaStorageService mediaStorageService;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
 
     @Override
     @Transactional(readOnly = true)
@@ -116,6 +118,7 @@ public class ProfileServiceImpl implements ProfileService {
         loginHistoryRepository.nullifyUserById(userId);
 
         userRepository.delete(user);
+        identityCacheInvalidator.invalidateMobileAfterCommit(userId);
     }
 
     private String extFromContentType(String ct) {

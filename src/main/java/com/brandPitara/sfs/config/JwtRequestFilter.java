@@ -4,6 +4,8 @@ import com.brandPitara.sfs.observability.LogEvents;
 import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.observability.LoggingConstants;
 import com.brandPitara.sfs.util.JwtTokenUtil;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationIdentityCache;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationUserSnapshot;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.UnsupportedJwtException;
@@ -17,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,15 +43,30 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     private final UserDetailsService userDetailsService;
     private final JwtTokenUtil jwtTokenUtil;
     private final LogSanitizer logSanitizer;
+    private final MobileAuthenticationIdentityCache identityCache;
 
+    @Autowired
     public JwtRequestFilter(
             @Qualifier("appUserDetailsService") UserDetailsService userDetailsService,
+            JwtTokenUtil jwtTokenUtil,
+            LogSanitizer logSanitizer,
+            MobileAuthenticationIdentityCache identityCache
+    ) {
+        this.userDetailsService = userDetailsService;
+        this.jwtTokenUtil = jwtTokenUtil;
+        this.logSanitizer = logSanitizer;
+        this.identityCache = identityCache;
+    }
+
+    JwtRequestFilter(
+            UserDetailsService userDetailsService,
             JwtTokenUtil jwtTokenUtil,
             LogSanitizer logSanitizer
     ) {
         this.userDetailsService = userDetailsService;
         this.jwtTokenUtil = jwtTokenUtil;
         this.logSanitizer = logSanitizer;
+        this.identityCache = null;
     }
 
     @Override
@@ -121,9 +139,12 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             String subject
     ) {
         try {
-            UserDetails userDetails = this.userDetailsService.loadUserByUsername(subject);
+            Long userId = jwtTokenUtil.getUserIdFromToken(jwtToken);
+            UserDetails userDetails = userId == null || identityCache == null
+                    ? this.userDetailsService.loadUserByUsername(subject)
+                    : identityCache.get(userId);
 
-            if (jwtTokenUtil.validateToken(jwtToken, userDetails)) {
+            if (userDetails.isEnabled() && jwtTokenUtil.validateToken(jwtToken, userDetails)) {
                 UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
                                 userDetails,
@@ -135,10 +156,17 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
                 // Populate MDC so ApiRequestLoggingFilter can read after SecurityContext is cleared
                 try {
-                    Long userId = jwtTokenUtil.getUserIdFromToken(jwtToken);
-                    String role = jwtTokenUtil.getRoleFromToken(jwtToken);
-                    if (userId != null) MDC.put(LoggingConstants.MDC_USER_ID, userId.toString());
-                    if (role   != null) MDC.put(LoggingConstants.MDC_ROLE, role);
+                    Long authenticatedUserId = userDetails instanceof MobileAuthenticationUserSnapshot snapshot
+                            ? snapshot.userId()
+                            : userId;
+                    String role = userDetails.getAuthorities().stream()
+                            .findFirst()
+                            .map(authority -> authority.getAuthority().replaceFirst("^ROLE_", ""))
+                            .orElse(null);
+                    if (authenticatedUserId != null) {
+                        MDC.put(LoggingConstants.MDC_USER_ID, authenticatedUserId.toString());
+                    }
+                    if (role != null) MDC.put(LoggingConstants.MDC_ROLE, role);
                 } catch (Exception ignored) {}
             }
         } catch (Exception e) {

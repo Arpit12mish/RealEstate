@@ -80,6 +80,7 @@ class AppUserDetailsServiceTest {
         UserDetails userDetails = service.loadUserByUsername("+919876543210");
 
         assertThat(userDetails.getUsername()).isEqualTo("+919876543210");
+        assertThat(userDetails.getPassword()).isEmpty();
     }
 
     @Test

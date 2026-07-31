@@ -16,6 +16,7 @@ import com.brandPitara.sfs.repository.BusinessRepository;
 import com.brandPitara.sfs.repository.CategoryRepository;
 import com.brandPitara.sfs.repository.CityRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
     private final CategoryRepository categoryRepository;
     private final CityRepository cityRepository;
     private final BusinessRepository businessRepository;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
 
     @Override
     @Transactional
@@ -61,6 +63,7 @@ public class ProviderProfileServiceImpl implements ProviderProfileService {
         }
         
         userRepository.save(user);
+        identityCacheInvalidator.invalidateMobileAfterCommit(user.getId());
 
         ProviderProfileEntity profile = providerProfileRepository.findByUserId(currentUserId)
                 .orElseGet(() -> ProviderProfileEntity.builder().user(user).build());

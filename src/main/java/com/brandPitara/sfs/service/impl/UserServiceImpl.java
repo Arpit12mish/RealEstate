@@ -7,6 +7,7 @@ import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.UserService;
 import com.brandPitara.sfs.service.model.UserLoginResult;
 import com.brandPitara.sfs.util.PhoneNumberNormalizer;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -25,6 +26,7 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
 
     @Override
     public UserLoginResult findOrCreateVerifiedUserByPhone(String phoneNumber) {
@@ -47,6 +49,7 @@ public class UserServiceImpl implements UserService {
             existing.setPhoneNumber(normalizedPhone);
             existing.setLastLoginAt(OffsetDateTime.now());
             User saved = userRepository.save(existing);
+            identityCacheInvalidator.invalidateMobileAfterCommit(saved.getId());
             return new UserLoginResult(saved, false);
         }
 
@@ -63,6 +66,7 @@ public class UserServiceImpl implements UserService {
         user.setLastLoginAt(OffsetDateTime.now());
 
         User saved = userRepository.save(user);
+        identityCacheInvalidator.invalidateMobileAfterCommit(saved.getId());
         return new UserLoginResult(saved, true);
     }
 }
