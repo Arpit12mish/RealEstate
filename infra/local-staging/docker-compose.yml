@@ -1,0 +1,115 @@
+name: ${COMPOSE_PROJECT_NAME:-sfs-local-staging}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - local-staging
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.local-staging
+      args:
+        SFS_BUILD_COMMIT: ${SFS_BUILD_COMMIT:-working-tree}
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:?SPRING_PROFILES_ACTIVE is required}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:?SPRING_DATASOURCE_URL is required}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:?SPRING_DATASOURCE_USERNAME is required}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:?SPRING_DATASOURCE_PASSWORD is required}
+      SPRING_DATASOURCE_HIKARI_POOL_NAME: ${SPRING_DATASOURCE_HIKARI_POOL_NAME:-SfsLocalStagingHikariPool}
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:-10}
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:-2}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:-5000}
+      SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:-2000}
+      SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: ${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:-600000}
+      SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:-1800000}
+      SPRING_JPA_QUERY_TIMEOUT_MS: ${SPRING_JPA_QUERY_TIMEOUT_MS:-10000}
+      SERVER_TOMCAT_THREADS_MAX: ${SERVER_TOMCAT_THREADS_MAX:-50}
+      SERVER_TOMCAT_THREADS_MIN_SPARE: ${SERVER_TOMCAT_THREADS_MIN_SPARE:-5}
+      SERVER_TOMCAT_ACCEPT_COUNT: ${SERVER_TOMCAT_ACCEPT_COUNT:-100}
+      SERVER_TOMCAT_MAX_CONNECTIONS: ${SERVER_TOMCAT_MAX_CONNECTIONS:-2048}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRATION_MS: ${JWT_EXPIRATION_MS:-900000}
+      JWT_REFRESH_EXPIRATION_DAYS: ${JWT_REFRESH_EXPIRATION_DAYS:-15}
+      DASHBOARD_JWT_SECRET: ${DASHBOARD_JWT_SECRET:?DASHBOARD_JWT_SECRET is required}
+      DASHBOARD_JWT_ACCESS_EXPIRATION_MS: ${DASHBOARD_JWT_ACCESS_EXPIRATION_MS:-900000}
+      APP_LOGGING_PATH: ${APP_LOGGING_PATH:-/app/logs}
+      RATE_LIMIT_TRUSTED_PROXY_IP: ${NGINX_CONTAINER_IP:?NGINX_CONTAINER_IP is required}
+      SFS_LOCAL_STAGING_FAKE_OTP_ENABLED: ${SFS_LOCAL_STAGING_FAKE_OTP_ENABLED:-false}
+      SFS_SEARCH_ENABLED: "false"
+      GOOGLE_MAPS_PLACES_ENABLED: "false"
+      META_INSTAGRAM_SYNC_ENABLED: "false"
+      SFS_REFRESH_TOKEN_CLEANUP_ENABLED: "false"
+      DASHBOARD_SEED_ENABLED: "false"
+      DASHBOARD_SEED_UPDATE_PASSWORDS: "false"
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xms256m -Xmx512m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 90s
+    volumes:
+      - ./runtime/logs:/app/logs
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    read_only: true
+    mem_limit: 1g
+    networks:
+      - local-staging
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.28.0-alpine
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${NGINX_HOST_PORT:-8088}:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8080/local-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      local-staging:
+        ipv4_address: ${NGINX_CONTAINER_IP:?NGINX_CONTAINER_IP is required}
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=1m
+      - /tmp:size=16m
+    restart: unless-stopped
+
+networks:
+  local-staging:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${LOCAL_STAGING_SUBNET:?LOCAL_STAGING_SUBNET is required}
+
+volumes:
+  postgres-data:
+    name: ${COMPOSE_PROJECT_NAME:-sfs-local-staging}-postgres-data

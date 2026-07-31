@@ -65,6 +65,7 @@ import co.elastic.clients.elasticsearch.indices.ExistsRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -73,6 +74,7 @@ import java.io.StringReader;
 
 @Slf4j
 @Component
+@ConditionalOnProperty(prefix = "sfs.search", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 public class BusinessIndexInitializer {
 

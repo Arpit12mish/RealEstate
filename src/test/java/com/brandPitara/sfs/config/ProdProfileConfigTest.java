@@ -28,10 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  *  1. application-prod.yml's required keys can be satisfied entirely by env
  *     vars (no baked-in secret defaults) - verified per feature area below.
- *  2. Elasticsearch stays functionally disabled (sfs.search.enabled=false)
- *     while its config beans still construct successfully - the inert
- *     localhost placeholder never causes a real network call at
- *     construction time (RestClient/ElasticsearchClient just parse the URL).
+ *  2. Elasticsearch stays fully disabled (sfs.search.enabled=false), so no
+ *     RestClient or ElasticsearchClient is constructed.
  *  3. Meta/Instagram config binds correctly, including when sync is enabled.
  *  4. Dashboard seed defaults to disabled without needing to touch the
  *     seeder bean itself (which requires a real DashboardUserRepository).
@@ -153,7 +151,8 @@ class ProdProfileConfigTest {
                     "META_APP_ID=fake-test-app-id",
                     "META_APP_SECRET=fake-test-app-secret-not-real",
                     "META_FACEBOOK_PAGE_ID=1234567890",
-                    "META_INSTAGRAM_BUSINESS_ACCOUNT_ID=9876543210"
+                    "META_INSTAGRAM_BUSINESS_ACCOUNT_ID=9876543210",
+                    "app.logging.path=target/test-logs"
             }
     )
     class MetaConfigBinding {
@@ -175,33 +174,26 @@ class ProdProfileConfigTest {
         }
     }
 
-    // ── 2: Elasticsearch config beans construct with the safe inert default,
-    //    no real cluster contacted (RestClient/ElasticsearchClient only parse
-    //    the URL and build a client object at construction time). ───────────
+    // ── 2: Disabled search does not construct Elasticsearch clients. ───────
 
     @Nested
     @SpringBootTest(
             classes = ElasticsearchDisabled.TestApplication.class,
             properties = {
-                    "spring.config.import=classpath:application-prod.yml"
+                    "spring.config.import=classpath:application-prod.yml",
+                    "app.logging.path=target/test-logs"
             }
     )
     @ActiveProfiles("prod")
     class ElasticsearchDisabled {
 
         @Autowired
-        private RestClient restClient;
-
-        @Autowired
-        private ElasticsearchClient elasticsearchClient;
+        private org.springframework.context.ApplicationContext context;
 
         @Test
-        void elasticsearchBeansConstructWithoutContactingARealCluster() {
-            // Construction succeeding at all (no exception during context
-            // startup) is the actual assertion - HttpHost.create() only
-            // parses the inert localhost:9200 default, it never connects.
-            assertThat(restClient).isNotNull();
-            assertThat(elasticsearchClient).isNotNull();
+        void elasticsearchBeansAreAbsentWhenSearchIsDisabled() {
+            assertThat(context.getBeansOfType(RestClient.class)).isEmpty();
+            assertThat(context.getBeansOfType(ElasticsearchClient.class)).isEmpty();
         }
 
         @SpringBootConfiguration
@@ -222,7 +214,8 @@ class ProdProfileConfigTest {
                     "JWT_SECRET=fake-test-jwt-secret-not-real-0123456789",
                     "JWT_EXPIRATION_MS=900000",
                     "DASHBOARD_JWT_SECRET=fake-test-dashboard-secret-not-real-0123456789",
-                    "DASHBOARD_JWT_ACCESS_EXPIRATION_MS=900000"
+                    "DASHBOARD_JWT_ACCESS_EXPIRATION_MS=900000",
+                    "app.logging.path=target/test-logs"
             }
     )
     class JwtConfigBinding {

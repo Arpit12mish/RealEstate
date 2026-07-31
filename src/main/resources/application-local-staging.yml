@@ -1,0 +1,194 @@
+spring:
+  application:
+    name: sfs
+  config:
+    import: "optional:classpath:application-rate-limit.yml"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      pool-name: ${SPRING_DATASOURCE_HIKARI_POOL_NAME:SfsLocalStagingHikariPool}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:2}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:5000}
+      validation-timeout: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:2000}
+      idle-timeout: ${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}
+      keepalive-time: ${SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME:0}
+      leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
+        jdbc:
+          batch_size: 25
+        generate_statistics: false
+      jakarta:
+        persistence:
+          query:
+            timeout: ${SPRING_JPA_QUERY_TIMEOUT_MS:10000}
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    clean-disabled: true
+    locations: classpath:db/migration,classpath:db/local-staging
+  mail:
+    host: localhost
+    port: 2525
+    username: ""
+    password: ""
+
+server:
+  address: 0.0.0.0
+  port: ${SERVER_PORT:8080}
+  # Release 4B2's ClientIpResolver owns trusted-proxy processing.
+  forward-headers-strategy: none
+  tomcat:
+    mbeanregistry:
+      enabled: true
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:50}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:5}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:2048}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    mail:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+app:
+  logging:
+    path: ${APP_LOGGING_PATH:/app/logs}
+  review:
+    enabled: false
+    phone-number: ""
+    fixed-otp: ""
+  media:
+    s3:
+      bucket: ${AWS_S3_BUCKET:sfs-local-staging-disabled}
+      region: ${AWS_S3_REGION:ap-south-1}
+      publicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL:http://invalid.local/media}
+      presignExpirySeconds: ${AWS_S3_PRESIGN_EXPIRY_SECONDS:300}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration:
+    ms: ${JWT_EXPIRATION_MS:900000}
+  refresh:
+    expiration:
+      days: ${JWT_REFRESH_EXPIRATION_DAYS:15}
+
+dashboard:
+  jwt:
+    secret: ${DASHBOARD_JWT_SECRET}
+    access-expiration-ms: ${DASHBOARD_JWT_ACCESS_EXPIRATION_MS:900000}
+  refresh:
+    expiration-days: ${DASHBOARD_REFRESH_EXPIRATION_DAYS:15}
+  seed:
+    enabled: false
+    update-passwords: false
+
+elasticsearch:
+  url: http://invalid.local:9200
+  api-key: ""
+
+google:
+  places:
+    api-key: ""
+    base-url: http://invalid.local/google
+    search-text-url: http://invalid.local/google/search
+    connect-timeout-ms: 1000
+    read-timeout-ms: 1000
+    request-timeout-ms: 1000
+  maps:
+    places:
+      enabled: false
+      api-key: ""
+      text-search-url: http://invalid.local/google/search
+      connect-timeout-ms: 1000
+      read-timeout-ms: 1000
+      request-timeout-ms: 1000
+
+aws:
+  credentials:
+    access-key: ""
+    secret-key: ""
+
+sfs:
+  search:
+    enabled: false
+  local-staging:
+    fake-otp:
+      enabled: ${SFS_LOCAL_STAGING_FAKE_OTP_ENABLED:false}
+  rate-limit:
+    trusted-proxies:
+      - ${RATE_LIMIT_TRUSTED_PROXY_IP}
+  logging:
+    slow-api-threshold-ms: ${SFS_LOGGING_SLOW_API_THRESHOLD_MS:1500}
+    request:
+      async:
+        queue-size: ${SFS_REQUEST_LOG_ASYNC_QUEUE_SIZE:2048}
+        discarding-threshold: ${SFS_REQUEST_LOG_ASYNC_DISCARDING_THRESHOLD:0}
+        never-block: ${SFS_REQUEST_LOG_ASYNC_NEVER_BLOCK:true}
+        include-caller-data: ${SFS_REQUEST_LOG_ASYNC_INCLUDE_CALLER_DATA:false}
+        max-flush-time-ms: ${SFS_REQUEST_LOG_ASYNC_MAX_FLUSH_TIME_MS:5000}
+  authentication:
+    identity-cache:
+      mobile:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_MAXIMUM_SIZE:50000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_EXPIRE_AFTER_WRITE:30s}
+      dashboard:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_MAXIMUM_SIZE:5000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_EXPIRE_AFTER_WRITE:15s}
+  refresh-token:
+    cleanup:
+      enabled: false
+  instagram:
+    meta:
+      sync-enabled: false
+      app-id: ""
+      app-secret: ""
+      access-token: ""
+      facebook-page-id: ""
+      instagram-business-account-id: ""
+
+logging:
+  level:
+    root: INFO
+    "[com.brandPitara.sfs]": INFO
+    "[org.springframework]": WARN
+    "[org.springframework.security]": WARN
+    "[org.hibernate]": WARN
+    "[org.hibernate.SQL]": WARN
+    "[org.hibernate.orm.jdbc.bind]": "OFF"
+    "[com.zaxxer.hikari]": INFO

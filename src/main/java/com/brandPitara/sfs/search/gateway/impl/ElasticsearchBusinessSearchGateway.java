@@ -12,6 +12,7 @@ import com.brandPitara.sfs.search.model.BusinessSearchDocument;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.Map;
  * it did before this gateway existed.
  */
 @Service
+@ConditionalOnProperty(prefix = "sfs.search", name = "enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class ElasticsearchBusinessSearchGateway implements BusinessSearchGateway {

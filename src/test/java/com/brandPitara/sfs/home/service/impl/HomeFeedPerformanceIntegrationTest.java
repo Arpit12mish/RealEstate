@@ -73,6 +73,7 @@ import static org.mockito.Mockito.doAnswer;
         "spring.jpa.open-in-view=false",
         "spring.jpa.properties.hibernate.generate_statistics=true",
         "spring.flyway.enabled=false",
+        "sfs.local-staging.fake-otp.enabled=true",
         "spring.datasource.hikari.maximum-pool-size=3",
         "spring.datasource.hikari.minimum-idle=3",
         "spring.datasource.hikari.connection-timeout=1000",

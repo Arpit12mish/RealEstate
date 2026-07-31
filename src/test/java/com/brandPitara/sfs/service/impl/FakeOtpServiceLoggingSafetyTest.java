@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FakeOtpServiceLoggingSafetyTest {
 
     @Test
-    void localFakeOtpLogsNeitherOtpNorFullPhoneNumber() {
+    void localFakeOtpLogsNeitherOtpNorAnyPhoneIdentifier() {
         Logger logger = (Logger) LoggerFactory.getLogger(FakeOtpService.class);
         Level previousLevel = logger.getLevel();
         ListAppender<ILoggingEvent> events = new ListAppender<>();
@@ -28,8 +28,7 @@ class FakeOtpServiceLoggingSafetyTest {
             assertThat(events.list).hasSize(2);
             assertThat(events.list).extracting(ILoggingEvent::getFormattedMessage)
                     .allSatisfy(message -> assertThat(message)
-                            .doesNotContain("9876543210", "123456")
-                            .contains("98******10"));
+                            .doesNotContain("9876543210", "123456", "98******10", "phone"));
         } finally {
             logger.detachAppender(events);
             logger.setLevel(previousLevel);
