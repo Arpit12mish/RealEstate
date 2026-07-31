@@ -2,18 +2,22 @@ package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
 import com.brandPitara.sfs.project.dto.FloorPlanInsightResponse;
 import com.brandPitara.sfs.project.dto.FloorPlanInsightUpsertRequest;
 import com.brandPitara.sfs.project.dto.FloorPlanRoomDimensionResponse;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanInsightDetailResponse;
+import com.brandPitara.sfs.project.dto.ProjectFloorPlanVisualAnalysisResponse;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanInsightEntity;
 import com.brandPitara.sfs.project.mapper.ProjectFloorPlanInsightMapper;
 import com.brandPitara.sfs.project.mapper.ProjectFloorPlanRoomDimensionMapper;
+import com.brandPitara.sfs.project.mapper.ProjectFloorPlanVisualAnalysisMapper;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanInsightRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRoomDimensionRepository;
+import com.brandPitara.sfs.project.repository.ProjectFloorPlanVisualAnalysisRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFloorPlanInsightService;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +35,10 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
   private final ProjectFloorPlanRepository floorPlanRepository;
   private final ProjectFloorPlanInsightRepository insightRepository;
   private final ProjectFloorPlanRoomDimensionRepository roomRepository;
+  private final ProjectFloorPlanVisualAnalysisRepository visualAnalysisRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  private final TrustedMediaUrlValidator trustedMediaUrlValidator;
 
   @Override
   @Transactional
@@ -157,6 +163,14 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .map(ProjectFloorPlanInsightMapper::toResponse)
         .toList();
 
+    ProjectFloorPlanVisualAnalysisResponse visualAnalysis = visualAnalysisRepository
+        .findByFloorPlanIdAndActiveTrueAndDeletedFalse(floorPlanId)
+        .map(ProjectFloorPlanVisualAnalysisMapper::toResponse)
+        .map(this::withVerifiedMediaUrl)
+        .orElse(null);
+
+    boolean demo = visualAnalysis == null;
+
     return ProjectFloorPlanInsightDetailResponse.builder()
         .floorPlanId(fp.getId())
         .projectId(project.getId())
@@ -180,7 +194,27 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .keyPlanImageUrl(fp.getKeyPlanImageUrl())
         .rooms(rooms)
         .insights(insights)
+        .visualAnalysis(visualAnalysis)
+        .demo(demo)
+        .sourceLabel(demo ? "Sample content" : "Verified floor-plan intelligence")
         .build();
+  }
+
+  /**
+   * Read-side defence for GAP-028: a mediaUrl authored before
+   * TrustedMediaUrlValidator existed (or written directly against the DB)
+   * could be malformed/untrusted. Rather than letting a bad URL leak
+   * publicly - or failing this entire endpoint over one bad field - only
+   * mediaUrl is nulled out; title/description/tags remain visible. Never
+   * throws, never affects rooms[]/insights[] or any other part of this
+   * response.
+   */
+  private ProjectFloorPlanVisualAnalysisResponse withVerifiedMediaUrl(ProjectFloorPlanVisualAnalysisResponse response) {
+    if (response.getMediaUrl() == null || trustedMediaUrlValidator.isValid(response.getMediaUrl())) {
+      return response;
+    }
+    response.setMediaUrl(null);
+    return response;
   }
 
   private ProjectFloorPlanEntity resolveFloorPlan(Long projectId, Long floorPlanId) {

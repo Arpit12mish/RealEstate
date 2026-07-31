@@ -414,7 +414,46 @@ Filters:
 
 Shape:
 
-- `ProjectFloorPlanInsightDetailResponse` includes floor-plan summary fields, rooms, and insights.
+- `ProjectFloorPlanInsightDetailResponse` includes floor-plan summary fields, rooms, insights, and (added by the Visual Floor-Plan Analysis contract stabilization) `visualAnalysis`, `demo`, `sourceLabel`.
+
+### Visual Floor-Plan Analysis (stabilized — closes GAP-027/GAP-028)
+
+Table: `project_floor_plan_visual_analysis` (one row per floor plan, unique on `floor_plan_id`) + `project_floor_plan_visual_analysis_tag` (child rows). Migration: `V135__create_project_floor_plan_visual_analysis.sql`.
+
+Entity/DTO: `ProjectFloorPlanVisualAnalysisEntity`/`ProjectFloorPlanVisualAnalysisResponse`. Full public shape (nested on `ProjectFloorPlanInsightDetailResponse.visualAnalysis`, `null` when none authored):
+
+```json
+{
+  "title": "Visual analysis of every important factor",
+  "description": "Natural light reaches the living room for most of the day.",
+  "mediaType": "IMAGE",
+  "mediaUrl": "https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/dashboard/projects/501/floor-plans/visual-analysis/photo.jpg",
+  "tags": [{ "label": "Sun Lighting", "color": "#3B7DDD", "sortOrder": 1 }]
+}
+```
+
+`mediaType` — enum, exactly `IMAGE` / `VIDEO` / `LOTTIE_JSON`. There is no findings list, confidence score, region/coordinate/bounding-box field, processing-status field, analysis-version field, or approval-workflow field beyond a plain `active` boolean (same soft-visibility-toggle pattern as `insights[]`/`rooms[]`) — confirmed via exhaustive source search; do not add any of these without a real, source-verified reason.
+
+Dashboard write endpoint:
+
+- `GET /PUT /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/visual-analysis`
+- `GET`: `ADMIN`, `REVIEWER`, `DATA_ENTRY`. `PUT`: `ADMIN`, `DATA_ENTRY` (+ `DashboardProjectOwnershipService.assertCurrentUserCanEditProject`).
+- Get-or-create singleton semantics — the first `PUT` creates the row; `tags` is fully replaced (not merged) whenever provided.
+
+**Media URL validation (GAP-028, `TrustedMediaUrlValidator`, `com.brandPitara.sfs.media.validator`)** — called from `ProjectFloorPlanVisualAnalysisServiceImpl.upsert()` before every save:
+
+- Must be a syntactically valid, absolute URL with a non-null scheme and host.
+- Scheme must be `https` — no local-development exception exists for this field (confirmed: no `application-local.yml`, no HTTP override anywhere in config).
+- No embedded userinfo/credentials (`user:pass@host`).
+- Host must not be `localhost`, a loopback/private IPv4 range (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `127.0.0.0/8`), or an IPv6 loopback/unique-local/link-local address.
+- Host must be on the approved allowlist, derived entirely from `S3Properties` (`app.media.s3.bucket`/`region`/`publicBaseUrl`) — never hardcoded — mirroring `S3MediaStorageServiceImpl#buildPublicUrl`'s own canonical host construction.
+- A soft, non-authoritative media-type/extension compatibility check rejects only unambiguous mismatches (e.g. a `.mp4` URL declared `IMAGE`) — never trusts an extension as proof of real content type, and never downloads the URL to sniff `Content-Type`.
+
+**Read-side defence** — `ProjectFloorPlanInsightServiceImpl.publicGetDetail()` re-validates any already-persisted `mediaUrl` via `TrustedMediaUrlValidator.isValid()` (non-throwing) before returning it publicly. An invalid/legacy URL has only `mediaUrl` nulled out — `title`/`description`/`tags` remain visible, and the request never fails.
+
+### `demo`/`sourceLabel` semantics (stabilized)
+
+`ProjectFloorPlanInsightDetailResponse.demo = (visualAnalysis == null)` in this composer — scoped only to visual analysis (the Space Comparison / room-comparison contract remains a separate, still-uncommitted concern — see §10 below). `demo` is **purely computed metadata about absence**, never a signal that any other field on the response might be synthetic: this backend has no "demo builder" or content-injection class anywhere (confirmed via exhaustive source search) — `visualAnalysis` is always either the real, dashboard-authored object or a literal `null`, never a merged/substituted placeholder. Do not add one.
 
 ## 5. Upload Flow
 
@@ -650,3 +689,5 @@ Production recommendation:
 
 - Do not show static demo insights as if they are real project-specific data.
 - If business wants demo content for every project, expose it as clearly labeled sample/demo content and keep it out of rating/verification/comparison logic.
+
+**Status update — Visual Floor-Plan Analysis (`visualAnalysis`, `demo`, `sourceLabel` on the same response) implemented following exactly this recommendation.** `demo`/`sourceLabel` are real, computed fields (§4 above), not a speculative "could add" note anymore — but they remain pure metadata about absence, never injected sample content. Room-comparison ("Space Comparison" columns on `project_floor_plan_room_dimension`) is a **separate, still-uncommitted** concern, discovered during this stabilization's own reconnaissance and deliberately out of its scope — do not assume it shares this section's "stabilized" status.
