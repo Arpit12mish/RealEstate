@@ -4,6 +4,7 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
 import com.brandPitara.sfs.project.service.PublicProjectNearbyListingService;
@@ -14,6 +15,7 @@ import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class NearbyListingsSectionLoader implements HomeSectionLoader {
 
   private static final String DEFAULT_TITLE = "Nearby Listings";

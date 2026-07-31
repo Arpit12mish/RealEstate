@@ -21,6 +21,7 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepositor
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -78,6 +79,68 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     public BuilderCredibilitySummaryResponse publicGetCredibilitySummary(Long builderId) {
         BuilderEntity builder = getPublicBuilder(builderId);
         BuilderCredibilityComputed computed = computeCredibility(builder);
+        return toSummary(builder, computed);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, BuilderCredibilitySummaryResponse> publicGetCredibilitySummaries(Collection<Long> builderIds) {
+        if (builderIds == null || builderIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> uniqueIds = builderIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (uniqueIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<BuilderEntity> builders = builderRepository
+            .findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(uniqueIds);
+        if (builders.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> publicBuilderIds = builders.stream().map(BuilderEntity::getId).toList();
+        List<ProjectEntity> projects = projectRepository
+            .findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(publicBuilderIds);
+        Map<Long, List<ProjectEntity>> projectsByBuilder = projects.stream()
+            .filter(project -> project.getBuilder() != null)
+            .collect(Collectors.groupingBy(
+                project -> project.getBuilder().getId(), LinkedHashMap::new, Collectors.toList()));
+
+        List<Long> projectIds = projects.stream().map(ProjectEntity::getId).toList();
+        Map<Long, ProjectMeterSnapshotEntity> snapshots = projectIds.isEmpty() ? Map.of()
+            : projectMeterSnapshotRepository.findByProjectIdIn(projectIds).stream()
+                .collect(Collectors.toMap(s -> s.getProject().getId(), s -> s));
+        Map<Long, List<ProjectComplianceItemEntity>> compliance = projectIds.isEmpty() ? Map.of()
+            : projectComplianceItemRepository
+                .findByProjectIdInOrderByProjectIdAscItemGroupAscDisplayOrderAscIdAsc(projectIds).stream()
+                .collect(Collectors.groupingBy(
+                    item -> item.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
+        Map<Long, List<ProjectConstructionStageEntity>> stages = projectIds.isEmpty() ? Map.of()
+            : projectConstructionStageRepository
+                .findByProjectIdInOrderByProjectIdAscDisplayOrderAscIdAsc(projectIds).stream()
+                .collect(Collectors.groupingBy(
+                    stage -> stage.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
+
+        Map<Long, BuilderCredibilitySummaryResponse> summaries = new LinkedHashMap<>();
+        for (BuilderEntity builder : builders) {
+            BuilderCredibilityComputed computed = computeCredibility(
+                builder,
+                projectsByBuilder.getOrDefault(builder.getId(), List.of()),
+                snapshots,
+                compliance,
+                stages
+            );
+            summaries.put(builder.getId(), toSummary(builder, computed));
+        }
+        return summaries;
+    }
+
+    private BuilderCredibilitySummaryResponse toSummary(
+        BuilderEntity builder,
+        BuilderCredibilityComputed computed
+    ) {
         Aggregation agg = computed.aggregation;
 
         double onTrackRecord = agg.trackedProjectsCount == 0
@@ -114,12 +177,10 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
         int safeLimit = Math.min(Math.max(limit, 1), HOME_CARD_MAX);
 
         List<BuilderEntity> builders = (cityId == null)
-            ? builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc()
-            : builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(cityId);
-
-        builders = builders.stream()
-            .limit(safeLimit)
-            .toList();
+            ? builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
+                PageRequest.of(0, safeLimit))
+            : builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(
+                cityId, PageRequest.of(0, safeLimit));
 
         if (builders.isEmpty()) {
             return List.of();
@@ -128,6 +189,8 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
         List<Long> builderIds = builders.stream()
             .map(BuilderEntity::getId)
             .toList();
+        Set<Long> builderIdsWithHighlights = builderHighlightItemRepository
+            .findBuilderIdsWithPublicHighlights(builderIds, BuilderHighlightStatus.PUBLISHED);
 
         List<ProjectEntity> projects = projectRepository
             .findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(builderIds);
@@ -207,19 +270,11 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                     .complianceStrengthPercent(complianceStrength)
                     .summary(computed.summary)
                     .confidenceLabel(computed.confidenceLabel)
-                    .highlightsAvailable(hasPublicHighlights(builder.getId()))
+                    .highlightsAvailable(builderIdsWithHighlights.contains(builder.getId()))
                     .highlightCtaLabel("Highlights")
                     .build();
             })
             .toList();
-    }
-
-    private boolean hasPublicHighlights(Long builderId) {
-        return builderHighlightItemRepository
-            .existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-                builderId,
-                BuilderHighlightStatus.PUBLISHED
-            );
     }
 
     private BuilderEntity getPublicBuilder(Long builderId) {

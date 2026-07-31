@@ -7,6 +7,7 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -22,6 +23,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class ConnectedBrandsSectionLoader implements HomeSectionLoader {
 
   // Delegates to BrandPublicService (Phase 1C) so the home carousel reuses the same

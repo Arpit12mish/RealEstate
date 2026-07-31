@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.repository;
 
 import com.brandPitara.sfs.entity.PromoBannerEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.OffsetDateTime;
@@ -20,5 +21,11 @@ public interface PromoBannerRepository extends JpaRepository<PromoBannerEntity, 
     List<PromoBannerEntity> findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(
             Long categoryId,
             String slotKey
+    );
+
+    List<PromoBannerEntity> findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+            Long categoryId,
+            String slotKey,
+            Pageable pageable
     );
 }

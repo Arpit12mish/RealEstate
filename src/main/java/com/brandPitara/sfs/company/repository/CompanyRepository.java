@@ -29,6 +29,20 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
       Pageable pageable
   );
 
+  @Query("""
+      select c
+      from CompanyEntity c
+      where c.active = true
+        and c.published = true
+        and c.deleted = false
+        and upper(trim(c.companyType)) in :companyTypes
+      order by c.priority asc, c.id desc
+      """)
+  List<CompanyEntity> findPublicByNormalizedCompanyTypes(
+      @Param("companyTypes") Collection<String> companyTypes,
+      Pageable pageable
+  );
+
 
   @Query("""
       select c
@@ -156,7 +170,6 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
       Pageable pageable
   );
 }
-
 
 
 

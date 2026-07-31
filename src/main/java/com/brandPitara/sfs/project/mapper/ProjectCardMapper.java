@@ -5,6 +5,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 
 import java.util.List;
+import java.util.Set;
 
 public class ProjectCardMapper {
 
@@ -26,7 +27,7 @@ public class ProjectCardMapper {
         .coverMediaType(picked.coverMediaType())
         .projectStartDate(e.getStartDate())
         .startedOn(e.getStartDate())
-        .propertyTypes(e.getPropertyTypes())
+        .propertyTypes(e.getPropertyTypes() == null ? Set.of() : Set.copyOf(e.getPropertyTypes()))
         .build();
   }
 }

@@ -11,9 +11,11 @@ import com.brandPitara.sfs.home.enums.HomeSectionItemType;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.repository.HomeSectionItemRepository;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.*;
 import java.util.function.Function;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class CompaniesSectionLoader implements HomeSectionLoader {
 
   private final HomeSectionItemRepository homeSectionItemRepository;
@@ -50,7 +53,7 @@ public class CompaniesSectionLoader implements HomeSectionLoader {
     List<com.brandPitara.sfs.home.entity.HomeSectionItemEntity> items =
         homeSectionItemRepository
             .findByHomeCategory_IdAndSectionTypeAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
-                categoryId, HomeSectionType.COMPANIES
+                categoryId, HomeSectionType.COMPANIES, PageRequest.of(0, limit)
             );
 
     if (items.isEmpty()) {
@@ -60,8 +63,6 @@ public class CompaniesSectionLoader implements HomeSectionLoader {
           .items(List.of())
           .build();
     }
-
-    if (items.size() > limit) items = items.subList(0, limit);
 
     // 2) Split ids by type
     List<Long> brandIds = items.stream()

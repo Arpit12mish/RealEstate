@@ -4,6 +4,7 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class ProjectAnalyticsSectionLoader implements HomeSectionLoader {
 
   private final ProjectMeterService projectMeterService;

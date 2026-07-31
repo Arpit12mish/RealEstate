@@ -11,6 +11,7 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepositor
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -18,7 +19,7 @@ import static org.mockito.Mockito.*;
 class BuilderCredibilityServiceImplTest {
 
     @Test
-    void credibilityCardsExposeHighlightsAvailabilityFromExistsQuery() {
+    void credibilityCardsExposeHighlightsAvailabilityFromOneBatchQuery() {
         BuilderRepository builderRepository = mock(BuilderRepository.class);
         ProjectRepository projectRepository = mock(ProjectRepository.class);
         ProjectMeterSnapshotRepository snapshotRepository = mock(ProjectMeterSnapshotRepository.class);
@@ -35,18 +36,12 @@ class BuilderCredibilityServiceImplTest {
             highlightRepository
         );
 
-        when(builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc())
+        when(builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
             .thenReturn(List.of(builder(1L), builder(2L)));
         when(projectRepository.findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(List.of(1L, 2L)))
             .thenReturn(List.of());
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            1L,
-            BuilderHighlightStatus.PUBLISHED
-        )).thenReturn(true);
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            2L,
-            BuilderHighlightStatus.PUBLISHED
-        )).thenReturn(false);
+        when(highlightRepository.findBuilderIdsWithPublicHighlights(
+            List.of(1L, 2L), BuilderHighlightStatus.PUBLISHED)).thenReturn(Set.of(1L));
 
         var cards = service.publicListCredibilityCards(null, 10);
 
@@ -54,14 +49,10 @@ class BuilderCredibilityServiceImplTest {
         assertThat(cards.get(0).getHighlightsAvailable()).isTrue();
         assertThat(cards.get(0).getHighlightCtaLabel()).isEqualTo("Highlights");
         assertThat(cards.get(1).getHighlightsAvailable()).isFalse();
-        verify(highlightRepository).existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            1L,
-            BuilderHighlightStatus.PUBLISHED
-        );
-        verify(highlightRepository).existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            2L,
-            BuilderHighlightStatus.PUBLISHED
-        );
+        verify(highlightRepository, times(1)).findBuilderIdsWithPublicHighlights(
+            List.of(1L, 2L), BuilderHighlightStatus.PUBLISHED);
+        verify(highlightRepository, never())
+            .existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(anyLong(), any());
     }
 
     private BuilderEntity builder(Long id) {

@@ -15,6 +15,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
@@ -71,7 +72,8 @@ class GenericCardSectionLoaderTest {
         .builder(builder)
         .build();
 
-    when(itemRepository.findByConfig_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(9L))
+    when(itemRepository.findByConfig_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
+        9L, PageRequest.of(0, 5)))
         .thenReturn(List.of(row));
     when(projectRepository.findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(List.of(101L)))
         .thenReturn(List.of(project));

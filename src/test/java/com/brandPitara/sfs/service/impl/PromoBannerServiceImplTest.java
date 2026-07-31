@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.springframework.data.domain.PageRequest;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -72,7 +73,8 @@ class PromoBannerServiceImplTest {
     @Test
     void heroBannersIncludeImageBanners() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
         List<PromoBannerResponse> result = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10);
@@ -86,7 +88,8 @@ class PromoBannerServiceImplTest {
     @Test
     void heroBannersIncludeLottieItem() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner(), lottieBanner()));
 
         List<PromoBannerResponse> result = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10);
@@ -102,7 +105,8 @@ class PromoBannerServiceImplTest {
     @Test
     void imageBanner_mediaTypeIsImage() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
         PromoBannerResponse r = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
@@ -114,7 +118,8 @@ class PromoBannerServiceImplTest {
     @Test
     void imageBanner_mediaUrlEqualsImageUrl() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
         PromoBannerResponse r = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
@@ -126,7 +131,8 @@ class PromoBannerServiceImplTest {
     @Test
     void lottieBanner_mediaUrlMatchesCdnUrl() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(lottieBanner()));
 
         PromoBannerResponse r = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
@@ -139,7 +145,8 @@ class PromoBannerServiceImplTest {
     @Test
     void lottieBanner_targetUrlIsCompareSelection() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(lottieBanner()));
 
         PromoBannerResponse r = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
@@ -161,7 +168,8 @@ class PromoBannerServiceImplTest {
                 .build();
 
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(b));
 
         PromoBannerResponse r = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
@@ -174,7 +182,8 @@ class PromoBannerServiceImplTest {
     @Test
     void mixedBanners_eachHasCorrectMediaType() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(CAT_ID, "HERO"))
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner(), lottieBanner()));
 
         List<PromoBannerResponse> result = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10);

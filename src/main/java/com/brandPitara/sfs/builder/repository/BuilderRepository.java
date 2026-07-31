@@ -37,6 +37,17 @@ public interface BuilderRepository extends JpaRepository<BuilderEntity, Long> {
 
   @EntityGraph(attributePaths = {"city"})
   List<BuilderEntity> findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(Long cityId);
+
+  @EntityGraph(attributePaths = {"city"})
+  List<BuilderEntity> findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(Pageable pageable);
+
+  @EntityGraph(attributePaths = {"city"})
+  List<BuilderEntity> findByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(
+      Long cityId,
+      Pageable pageable
+  );
+
+  @EntityGraph(attributePaths = {"city"})
   List<BuilderEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(Collection<Long> ids);
   List<BuilderEntity> findByIdInAndActiveTrueAndDeletedFalse(Collection<Long> ids);
 
