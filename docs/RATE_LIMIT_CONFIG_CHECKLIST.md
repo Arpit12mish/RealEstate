@@ -34,12 +34,16 @@ like.
 
 ## Runtime tuning
 
-- [x] **Bucket cache max size and TTL are configured.**
-  `sfs.rate-limit.bucket-cache.maximum-size` (200,000) and
-  `.expire-after-access-minutes` (120) - bounds the Caffeine cache so a flood
-  of distinct keys (random IPs, phone numbers, search queries) can't grow the
-  process's memory without limit. Both are environment-overridable via
-  `RATE_LIMIT_BUCKET_CACHE_MAX_SIZE` / `RATE_LIMIT_BUCKET_CACHE_EXPIRE_MINUTES`.
+- [x] **Both bucket caches have independent max sizes and TTLs.**
+  The primary cache is capped at 10,000 entries/30 minutes and the IP-abuse
+  cache at 10,000 entries/60 minutes. They are environment-overridable via
+  `RATE_LIMIT_PRIMARY_BUCKET_CACHE_MAX_SIZE`, `RATE_LIMIT_ABUSE_BUCKET_CACHE_MAX_SIZE`,
+  `RATE_LIMIT_PRIMARY_BUCKET_CACHE_EXPIRE_MINUTES`, and
+  `RATE_LIMIT_ABUSE_BUCKET_CACHE_EXPIRE_MINUTES`. The split prevents primary-key
+  churn from evicting IP abuse protection. The combined 20,000-entry cap was
+  selected from a 16 MiB heap budget: mature 100,000-entry measurements retained
+  about 524 bytes per entry; the final split retained about 9.8 MiB, or roughly
+  12.7 MiB after a 30% safety margin.
 
 - [x] **Max cached body bytes is configured.**
   `sfs.rate-limit.max-cached-body-bytes` (32 KB default,
@@ -85,7 +89,8 @@ like.
 
 - [x] **429 response contract is consistent across all policy categories.**
   Status `429`, `Retry-After` header, and a JSON body with
-  `status`/`error`/`message`/`retryAfterSeconds`/`policy` - proven for mobile
+  `timestamp`/`status`/`error`/`message`/`retryAfterSeconds`/`policy`/`path`/
+  `requestId` - proven for mobile
   auth, public GET, public POST/body-aware, and authenticated mobile policies
   by `RateLimitResponseContractTest`.
 
@@ -93,29 +98,13 @@ like.
   No raw phone number, OTP code, refresh token, JWT, request body, calculator
   body, or email - proven by `RateLimitLoggingSafetyTest` and the
   logging-safety tests embedded in `RateLimitingFilterIntegrationTest`. Log
-  lines contain only `policy`, `method`, `path`, `keyType`, a masked/hashed
-  `keyHash`, and `retryAfterSeconds`.
+  lines contain only `policy`, `method`, `path`, `keyType`, `identityType`,
+  and `retryAfterSeconds`.
 
-## Future work (deferred, not implemented this task)
+## Metrics
 
-- **Micrometer counters (`sfs.rate_limit.allowed` / `sfs.rate_limit.blocked`,
-  tagged `policy`/`method`) were evaluated and deferred.** Reasoning:
-  - `spring-boot-starter-actuator` is on the classpath (so a `MeterRegistry`
-    bean is auto-configured), but `management.endpoints.web.exposure.include`
-    is not set anywhere in `application.yml`/`application-prod.yml`/
-    `application-test.yml` - only the default `health` endpoint is web-exposed
-    today. Adding counters nobody can read yet (no `/actuator/metrics` or
-    `/actuator/prometheus` exposure, no scraper configured) would add code
-    with no realizable value right now.
-  - `RateLimitingFilter` is constructed manually in 8+ places across the test
-    suite (`RateLimitingFilterIntegrationTest`'s `setUp()` and several
-    body-size-limit helper methods); adding a `MeterRegistry` constructor
-    parameter would require updating every one of those call sites for a
-    feature that currently has nowhere to surface.
-  - To pick this up later: (1) inject `MeterRegistry` into `RateLimitingFilter`
-    via the existing `@RequiredArgsConstructor`, (2) increment a counter next
-    to the existing `allow`/`block` branches in `doFilterInternal`, tagged
-    only with `policy` and `method` (never userId/phone/IP/token/body/path
-    variables), (3) expose `metrics` (and `prometheus` if a scraper is added)
-    via `management.endpoints.web.exposure.include` in `application-prod.yml`,
-    (4) update the manual constructor call sites in the test suite.
+The limiter publishes cache size/hits/misses/evictions, bucket creation,
+allowed/rejected decisions, identity fallbacks, invalid-auth rejections and
+enforcement failures. Tags are restricted to bounded cache, policy, identity
+type and failure-mode enums. IPs, user/session IDs, phone numbers and token
+material are never metric tags.

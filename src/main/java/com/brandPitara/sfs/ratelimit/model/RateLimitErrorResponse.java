@@ -10,9 +10,12 @@ import lombok.Getter;
 @Getter
 @Builder
 public class RateLimitErrorResponse {
+    private final String timestamp;
     private final int status;
     private final String error;
     private final String message;
     private final long retryAfterSeconds;
     private final String policy;
+    private final String path;
+    private final String requestId;
 }

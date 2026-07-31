@@ -76,7 +76,7 @@ class ApiRequestLoggingFilterTest {
     }
 
     @Test
-    void warningAndErrorRequestsBypassInfoQueueAndUseReliableLogger() throws Exception {
+    void routineClientErrorsUseInfoQueueWhileServerErrorsRemainReliable() throws Exception {
         MockHttpServletRequest warningRequest = request("/api/missing");
         MockHttpServletResponse warningResponse = new MockHttpServletResponse();
         warningResponse.setStatus(404);
@@ -87,10 +87,10 @@ class ApiRequestLoggingFilterTest {
         errorResponse.setStatus(500);
         invoke(errorRequest, errorResponse, (req, res) -> { });
 
-        assertThat(info.list).isEmpty();
-        assertThat(reliable.list).hasSize(2);
+        assertThat(info.list).hasSize(1);
+        assertThat(reliable.list).hasSize(1);
         assertThat(reliable.list).extracting(ILoggingEvent::getLevel)
-                .containsExactly(ch.qos.logback.classic.Level.WARN, ch.qos.logback.classic.Level.ERROR);
+                .containsExactly(ch.qos.logback.classic.Level.ERROR);
     }
 
     @Test
@@ -111,6 +111,40 @@ class ApiRequestLoggingFilterTest {
                 .contains("exceptionClass=ServletException")
                 .contains("failure_without sensitive body")
                 .doesNotContain("\n");
+    }
+
+    @Test
+    void successfulSlowRequestUsesBoundedInfoPathAndPreservesSlowContract() throws Exception {
+        ReflectionTestUtils.setField(requestFilter, "slowApiThresholdMs", -1L);
+        MockHttpServletRequest request = request("/api/projects/42");
+        request.setAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE, "/api/projects/{id}");
+        request.addHeader(LoggingConstants.HEADER_REQUEST_ID, "slow-request-correlation");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        invoke(request, response, (req, res) -> { });
+
+        assertThat(reliable.list).isEmpty();
+        assertThat(info.list).hasSize(2);
+        ILoggingEvent slowEvent = info.list.get(1);
+        assertThat(slowEvent.getFormattedMessage())
+                .contains("event=slow_api", "slow=true", "durationMs=", "route=/api/projects/{id}", "status=200");
+        assertThat(slowEvent.getMDCPropertyMap())
+                .containsEntry(LoggingConstants.MDC_REQUEST_ID, "slow-request-correlation");
+    }
+
+    @Test
+    void failedSlowRequestKeepsActualFailureAndSlowMarkerOnReliablePath() throws Exception {
+        ReflectionTestUtils.setField(requestFilter, "slowApiThresholdMs", -1L);
+        MockHttpServletRequest request = request("/api/failure");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(500);
+
+        invoke(request, response, (req, res) -> { });
+
+        assertThat(info.list).isEmpty();
+        assertThat(reliable.list).hasSize(2);
+        assertThat(reliable.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
+        assertThat(reliable.list.get(1).getFormattedMessage()).contains("event=slow_api", "slow=true", "status=500");
     }
 
     private MockHttpServletRequest request(String uri) {

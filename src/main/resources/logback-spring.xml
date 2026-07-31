@@ -59,7 +59,7 @@
         </encoder>
     </appender>
 
-    <!-- WARN/ERROR/slow request events never enter the lossy INFO queue. -->
+    <!-- Exceptions and HTTP 5xx use this reliable path; routine 4xx and slow successes stay async. -->
     <appender name="API_RELIABLE_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
         <metricCategory>request_reliable</metricCategory>
         <file>${LOG_DIR}/sfs-api-reliable.log</file>
@@ -163,14 +163,14 @@
          ============================================================ -->
     <springProfile name="!local">
 
-        <!-- Successful API INFO → bounded async sfs-api.log ONLY. -->
+        <!-- Routine request completions (success and 4xx) → bounded async file only. -->
         <logger name="com.brandPitara.sfs.observability.api"
                 level="INFO"
                 additivity="false">
             <appender-ref ref="API_ASYNC"/>
         </logger>
 
-        <!-- Request WARN/ERROR/slow events bypass the lossy queue. -->
+        <!-- Exceptions and HTTP 5xx bypass the lossy queue. -->
         <logger name="com.brandPitara.sfs.observability.api.reliable"
                 level="WARN"
                 additivity="false">

@@ -17,11 +17,14 @@ Retry-After: 42
 Content-Type: application/json
 
 {
+  "timestamp": "2026-07-31T14:00:00+05:30",
   "status": 429,
   "error": "TOO_MANY_REQUESTS",
   "message": "Too many requests. Please try again later.",
   "retryAfterSeconds": 42,
-  "policy": "MOBILE_OTP_REQUEST"
+  "policy": "MOBILE_OTP_REQUEST",
+  "path": "/api/auth/request-otp",
+  "requestId": "8e0f4b0d-..."
 }
 ```
 
@@ -121,8 +124,10 @@ anything session-related.
 
 ## 9. Do not refresh the token repeatedly on 429 - unless it's the refresh endpoint itself
 
-`MOBILE_TOKEN_REFRESH` (`POST /api/auth/refresh`) is itself rate-limited
-(`IP_AND_TOKEN` keyed). If *that specific* call returns `429`:
+`MOBILE_TOKEN_REFRESH` (`POST /api/auth/refresh`) is protected by a validated
+principal/invalid-auth classification plus an independent trusted-IP abuse
+bucket. Raw refresh-token values are never cache identities. If *that specific*
+call returns `429`:
 
 - Back off using `retryAfterSeconds` before calling `/api/auth/refresh` again.
 - Do not spin up a second, parallel refresh attempt while one is already

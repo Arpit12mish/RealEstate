@@ -120,7 +120,12 @@ public class RateLimitPolicyResolver {
     );
 
     public Optional<RateLimitPolicy> resolve(HttpServletRequest request) {
-        HttpMethod method = HttpMethod.valueOf(request.getMethod());
+        HttpMethod method;
+        try {
+            method = HttpMethod.valueOf(request.getMethod());
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
         String path = request.getRequestURI();
         String contextPath = request.getContextPath();
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {

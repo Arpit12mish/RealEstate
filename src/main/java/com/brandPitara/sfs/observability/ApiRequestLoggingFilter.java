@@ -75,10 +75,15 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (request.getDispatcherType() == DispatcherType.ERROR)            return true;
+        if (request.getDispatcherType() == DispatcherType.ERROR
+                || request.getDispatcherType() == DispatcherType.ASYNC)     return true;
         if ("OPTIONS".equalsIgnoreCase(request.getMethod()))                return true;
         if (LoggingConstants.PATH_FAVICON.equals(request.getRequestURI())) return true;
-        return false;
+        String path = request.getRequestURI();
+        return "/api/health".equals(path)
+                || (path != null && path.startsWith("/api/health/"))
+                || LoggingConstants.PATH_ACTUATOR_HEALTH.equals(path)
+                || (path != null && path.startsWith(LoggingConstants.PATH_ACTUATOR_HEALTH + "/"));
     }
 
     @Override
@@ -112,8 +117,6 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         String method = request.getMethod();
         int    status = resolveStatus(response, exception);
 
-        if (LoggingConstants.PATH_ACTUATOR_HEALTH.equals(path) && status < 400) return;
-
         String clientIp  = sanitizer.maskIp(resolveClientIp(request));
         String userAgent = sanitizer.simplifyUserAgent(request.getHeader("User-Agent"));
         String query     = sanitizer.sanitizeQueryString(request.getQueryString());
@@ -144,8 +147,6 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
         if (status >= 500 || exception != null) {
             API_RELIABLE_LOG.error("{}", StructuredArguments.entries(fields));
-        } else if (status >= 400) {
-            API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(fields));
         } else {
             API_INFO_LOG.info("{}", StructuredArguments.entries(fields));
         }
@@ -153,12 +154,17 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         if (durationMs >= slowApiThresholdMs) {
             Map<String, Object> slowFields = new LinkedHashMap<>();
             slowFields.put("event",      LogEvents.SLOW_API);
+            slowFields.put("slow",       true);
             slowFields.put("method",     method);
             slowFields.put("path",       path);
             slowFields.put("status",     status);
             slowFields.put("durationMs", durationMs);
             slowFields.put("route", resolveRoute(request, path));
-            API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(slowFields));
+            if (exception == null && status < 500) {
+                API_INFO_LOG.info("{}", StructuredArguments.entries(slowFields));
+            } else {
+                API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(slowFields));
+            }
         }
     }
 

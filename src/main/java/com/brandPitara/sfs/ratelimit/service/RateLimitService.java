@@ -22,4 +22,7 @@ public interface RateLimitService {
      *                     limit for this policy is ignored
      */
     RateLimitDecision checkAndConsume(RateLimitPolicy policy, Map<RateLimitKeyType, String> resolvedKeys);
+
+    /** Enforces only the canonical client-IP abuse dimension before JWT parsing. */
+    RateLimitDecision checkAndConsumeAbuse(RateLimitPolicy policy, String canonicalClientIp);
 }
