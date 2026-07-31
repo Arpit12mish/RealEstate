@@ -15,6 +15,7 @@ public final class LoggingConstants {
 
     // Logger names — must match logback-spring.xml logger declarations
     public static final String LOGGER_API      = "com.brandPitara.sfs.observability.api";
+    public static final String LOGGER_API_RELIABLE = "com.brandPitara.sfs.observability.api.reliable";
     public static final String LOGGER_SECURITY = "com.brandPitara.sfs.observability.security";
     public static final String LOGGER_AUDIT    = "com.brandPitara.sfs.observability.audit";
 

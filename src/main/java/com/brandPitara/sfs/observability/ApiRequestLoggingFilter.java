@@ -13,6 +13,7 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -63,7 +64,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
-    private static final Logger API_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_API);
+    private static final Logger API_INFO_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_API);
+    private static final Logger API_RELIABLE_LOG =
+            LoggerFactory.getLogger(LoggingConstants.LOGGER_API_RELIABLE);
 
     private final LogSanitizer sanitizer;
 
@@ -123,6 +126,7 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         fields.put("event",      event);
         fields.put("method",     method);
         fields.put("path",       path);
+        fields.put("route",      resolveRoute(request, path));
         if (query != null)         fields.put("query",      query);
         fields.put("status",     status);
         fields.put("durationMs", durationMs);
@@ -139,11 +143,11 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         }
 
         if (status >= 500 || exception != null) {
-            API_LOG.error("{}", StructuredArguments.entries(fields));
+            API_RELIABLE_LOG.error("{}", StructuredArguments.entries(fields));
         } else if (status >= 400) {
-            API_LOG.warn("{}", StructuredArguments.entries(fields));
+            API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(fields));
         } else {
-            API_LOG.info("{}", StructuredArguments.entries(fields));
+            API_INFO_LOG.info("{}", StructuredArguments.entries(fields));
         }
 
         if (durationMs >= slowApiThresholdMs) {
@@ -153,7 +157,8 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             slowFields.put("path",       path);
             slowFields.put("status",     status);
             slowFields.put("durationMs", durationMs);
-            API_LOG.warn("{}", StructuredArguments.entries(slowFields));
+            slowFields.put("route", resolveRoute(request, path));
+            API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(slowFields));
         }
     }
 
@@ -202,5 +207,12 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         } catch (NumberFormatException ignored) {
             return -1;
         }
+    }
+
+    private String resolveRoute(HttpServletRequest request, String fallbackPath) {
+        Object route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        if (route == null) return fallbackPath;
+        String sanitized = sanitizer.sanitizePath(route.toString());
+        return sanitized.isBlank() ? fallbackPath : sanitized;
     }
 }

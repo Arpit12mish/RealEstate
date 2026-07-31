@@ -79,6 +79,7 @@ class ProductionLoggingConfigTest {
         PropertySource<?> config = loadProdConfig();
 
         assertThat(level(config, "[com.brandPitara.sfs.observability.api]")).isEqualTo("INFO");
+        assertThat(level(config, "[com.brandPitara.sfs.observability.api.reliable]")).isEqualTo("WARN");
         assertThat(level(config, "[com.brandPitara.sfs.observability.security]")).isEqualTo("INFO");
         assertThat(level(config, "[com.brandPitara.sfs.observability.audit]")).isEqualTo("INFO");
         assertThat(level(config, "[com.brandPitara.sfs.ratelimit]")).isEqualTo("INFO");

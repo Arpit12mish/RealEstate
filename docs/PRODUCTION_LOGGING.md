@@ -3,11 +3,12 @@
 ## 1. What this system does
 
 Every HTTP request gets a unique `X-Request-Id` correlation ID that appears in all log lines for that request.  
-Five separate daily-rolling log files capture different concerns so you can grep for exactly what you need.
+Six separate size-and-daily-rolling log files capture different concerns so you can grep for exactly what you need.
 
 | File | What goes in it |
 |---|---|
-| `sfs-api.log` | Every completed API request: method, path, status, duration, userId, role |
+| `sfs-api.log` | Successful API request INFO events, written through a bounded asynchronous queue |
+| `sfs-api-reliable.log` | API WARN/ERROR and slow-request events, written synchronously outside the lossy queue |
 | `sfs-error.log` | ERROR level only: unhandled exceptions, 500s, DB errors with stack traces |
 | `sfs-security.log` | JWT/auth failures, role access denied, dashboard login failures |
 | `sfs-audit.log` | High-value dashboard write actions |
@@ -23,11 +24,12 @@ All log entries are JSON (via logstash-logback-encoder) and include `requestId`,
 /var/log/sfs/
   app/
     sfs-api.log
+    sfs-api-reliable.log
     sfs-error.log
     sfs-security.log
     sfs-audit.log
     sfs-app.log
-  archive/
+  app/archived/
     sfs-api.2026-05-20.0.log.gz
     sfs-error.2026-05-20.0.log.gz
     ...
@@ -46,7 +48,8 @@ Environment="SFS_LOG_DIR=/custom/path"
 
 | Log | Retention |
 |---|---|
-| API | 14 days |
+| API INFO | 14 days |
+| API reliable | 30 days |
 | Error | 30 days |
 | Security | 60 days |
 | Audit | 180 days |
@@ -62,8 +65,8 @@ Archives are gzip-compressed (`.log.gz`).
 | Event | Log file | Meaning |
 |---|---|---|
 | `api_request_completed` | api | Normal completed request |
-| `api_request_failed` | api | Request ended with 5xx or exception |
-| `slow_api` | api | Request exceeded `sfs.logging.slow-api-threshold-ms` (default 1500ms) |
+| `api_request_failed` | api-reliable | Request ended with 5xx or exception |
+| `slow_api` | api-reliable | Request exceeded `sfs.logging.slow-api-threshold-ms` (default 1500ms) |
 | `jwt_expired` | security | Mobile access token expired |
 | `jwt_malformed` | security | Token is not a valid JWT |
 | `jwt_signature_invalid` | security | Token signature check failed |
@@ -103,10 +106,10 @@ The following data is **never written to log files**:
 sfs-logs status 500 today
 
 # or directly:
-grep '"status":500' /var/log/sfs/app/sfs-api.log | tail -50
+grep '"status":500' /var/log/sfs/app/sfs-api-reliable.log | tail -50
 
 # with pretty-print (requires jq):
-grep '"status":500' /var/log/sfs/app/sfs-api.log | jq '.'
+grep '"status":500' /var/log/sfs/app/sfs-api-reliable.log | jq '.'
 ```
 
 ---
@@ -136,6 +139,7 @@ sfs-logs request req-abc1234567890123
 
 # or directly:
 grep 'req-abc1234567890123' /var/log/sfs/app/sfs-api.log
+grep 'req-abc1234567890123' /var/log/sfs/app/sfs-api-reliable.log
 grep 'req-abc1234567890123' /var/log/sfs/app/sfs-error.log
 grep 'req-abc1234567890123' /var/log/sfs/app/sfs-security.log
 ```
@@ -148,7 +152,7 @@ grep 'req-abc1234567890123' /var/log/sfs/app/sfs-security.log
 sfs-logs slow today
 
 # or:
-grep '"event":"slow_api"' /var/log/sfs/app/sfs-api.log
+grep '"event":"slow_api"' /var/log/sfs/app/sfs-api-reliable.log
 
 # change the threshold (default 1500ms) in application.yml or environment:
 SFS_SLOW_API_THRESHOLD_MS=2000
@@ -189,7 +193,7 @@ Run once on EC2 after first deploy:
 # Replace "ec2-user" or "ubuntu" with your actual app service user
 APP_USER="sfs"
 
-sudo mkdir -p /var/log/sfs/app /var/log/sfs/archive
+sudo mkdir -p /var/log/sfs/app/archived
 sudo chown -R ${APP_USER}:${APP_USER} /var/log/sfs
 sudo chmod -R 750 /var/log/sfs
 ```
@@ -210,10 +214,10 @@ To force a rotation test manually:
 ls -lh /var/log/sfs/app/
 
 # 2. Trigger app traffic, then check archive:
-ls -lh /var/log/sfs/archive/
+ls -lh /var/log/sfs/app/archived/
 
 # 3. Verify gzip integrity on an archive:
-gzip -t /var/log/sfs/archive/sfs-api.2026-05-20.0.log.gz && echo "OK"
+gzip -t /var/log/sfs/app/archived/sfs-api.2026-05-20.0.log.gz && echo "OK"
 ```
 
 ---
@@ -255,7 +259,7 @@ sudo chown -R $(whoami) /var/log/sfs
 
 ```bash
 # Last 20 API errors today:
-grep '"status":5' /var/log/sfs/app/sfs-api.log | tail -20 | jq '.'
+grep '"status":5' /var/log/sfs/app/sfs-api-reliable.log | tail -20 | jq '.'
 
 # Count requests per status code:
 grep '"status"' /var/log/sfs/app/sfs-api.log | grep -oP '"status":\K[0-9]+' | sort | uniq -c | sort -rn
@@ -286,11 +290,29 @@ Added to `application.yml`:
 | Property | Default | Description |
 |---|---|---|
 | `sfs.logging.slow-api-threshold-ms` | `1500` | Requests slower than this are logged as `slow_api` |
+| `sfs.logging.request.async.queue-size` | `2048` | Maximum queued successful request INFO events |
+| `sfs.logging.request.async.discarding-threshold` | `0` | Remaining-capacity threshold for proactive INFO discard; zero waits until full |
+| `sfs.logging.request.async.never-block` | `true` | Required non-blocking request-thread policy; startup validation rejects false |
+| `sfs.logging.request.async.include-caller-data` | `false` | Avoids caller stack inspection on request threads |
+| `sfs.logging.request.async.max-flush-time-ms` | `5000` | Maximum shutdown queue-drain wait |
 
 Override via environment variable:
 ```bash
 SFS_SLOW_API_THRESHOLD_MS=2000
+SFS_REQUEST_LOG_ASYNC_QUEUE_SIZE=2048
+SFS_REQUEST_LOG_ASYNC_DISCARDING_THRESHOLD=0
+SFS_REQUEST_LOG_ASYNC_NEVER_BLOCK=true
+SFS_REQUEST_LOG_ASYNC_INCLUDE_CALLER_DATA=false
+SFS_REQUEST_LOG_ASYNC_MAX_FLUSH_TIME_MS=5000
 ```
+
+Queue-full policy: successful request INFO events are discarded rather than
+blocking request threads. Discards are aggregated in
+`sfs.logging.events.discarded`; no per-discard log is emitted. WARN/ERROR,
+slow-request, security, and audit events never use this queue. Queue size,
+capacity, utilization, peak, accepted/discarded events, file bytes, and
+appender failures are available through the `sfs.logging.*` metrics with only
+the fixed `category` tag.
 
 ---
 
@@ -298,7 +320,7 @@ SFS_SLOW_API_THRESHOLD_MS=2000
 
 ### API logging
 - [ ] Public API returns 200 → `api_request_completed` in sfs-api.log
-- [ ] Protected API without token → 401 in sfs-api.log + `auth_required` in sfs-security.log
+- [ ] Protected API without token → 401 in sfs-api-reliable.log + `auth_required` in sfs-security.log
 - [ ] Expired JWT → 401 + `jwt_expired` in sfs-security.log
 - [ ] Wrong role → 403 + `access_denied_role` in sfs-security.log
 - [ ] Bad request body → 400 + `validation_failed` in error log
@@ -323,5 +345,5 @@ SFS_SLOW_API_THRESHOLD_MS=2000
 
 ### File rotation
 - [ ] `/var/log/sfs/app/sfs-api.log` exists after first request
-- [ ] After 1 day, archive appears in `/var/log/sfs/archive/` as `.log.gz`
+- [ ] After 1 day, archive appears in `/var/log/sfs/app/archived/` as `.log.gz`
 - [ ] `sfs-logs disk` shows log directory size
