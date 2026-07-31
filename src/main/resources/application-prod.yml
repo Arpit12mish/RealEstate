@@ -218,6 +218,13 @@ aws:
 sfs:
   search:
     enabled: ${SFS_SEARCH_ENABLED:false}
+  refresh-token:
+    cleanup:
+      enabled: ${SFS_REFRESH_TOKEN_CLEANUP_ENABLED:true}
+      schedule: ${SFS_REFRESH_TOKEN_CLEANUP_SCHEDULE:0 0 2 * * *}
+      batch-size: ${SFS_REFRESH_TOKEN_CLEANUP_BATCH_SIZE:1000}
+      maximum-batches-per-run: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_BATCHES_PER_RUN:20}
+      maximum-execution-duration: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_EXECUTION_DURATION:30s}
   instagram:
     meta:
       graph-api-version: ${META_GRAPH_API_VERSION:v25.0}
