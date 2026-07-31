@@ -72,6 +72,25 @@ Created by `V84__floor_plan_intelligence_v1.sql`; patched by `V85__floor_plan_in
 | `created_at` | `TIMESTAMPTZ` | Yes | Audit timestamp |
 | `updated_at` | `TIMESTAMPTZ` | Yes | Audit timestamp |
 
+**Space Comparison columns** — added by `V135__add_room_dimension_space_comparison.sql` (extracted from the dirty worktree's own `V138`, which bundled this ALTER TABLE together with the unrelated visual-analysis tables, stabilized separately):
+
+| Column | Type | Required | Notes |
+|---|---:|---:|---|
+| `average_area_sqft` | `DECIMAL(10,2)` | No | Dashboard-authored average for comparable rooms — same unit/precision as `area_sqft` |
+| `comparison_context_label` | `VARCHAR(120)` | No | Free-text, e.g. "Compared to similar 2 BHK units nearby" — population is dashboard-author's own choice, never enforced |
+| `difference_percent` | `DECIMAL(6,2)` | No | Dashboard-authored percentage difference, NOT backend-computed from `area_sqft`/`average_area_sqft` |
+| `comparison_summary` | `TEXT` | No | Free-text summary sentence; exposed as `summary` on the public DTO |
+| `comparison_verified` | `BOOLEAN` | Yes | Default `false` |
+
+Two more public-response fields exist but are **not persisted columns** — both computed in `ProjectFloorPlanRoomDimensionMapper.toResponse()`:
+
+- `hasComparisonData` = `average_area_sqft IS NOT NULL`.
+- `comparisonLabel` = `${sign}${strippedDifferencePercent}% from avg` (e.g. `"+13% from avg"`, `"-8% from avg"`) — derived from `difference_percent` only, formatted server-side, never re-derived client-side.
+
+There is **no discrete comparison-result enum** for rooms (unlike `project_floor_plan_insight.comparison_result`, which has `InsightComparisonResult` — `BETTER`/`AVERAGE`/`BELOW_AVERAGE`) — confirmed via exhaustive source search. Room comparison is purely numeric (`average_area_sqft`, `difference_percent`) plus the one computed text label; do not add a verdict enum without a real, source-verified reason.
+
+`summary` and `comparisonLabel` are both nulled out by the mapper whenever `hasComparisonData` is false, even if `comparison_summary` itself happens to be populated — a room's comparison content is all-or-nothing from the public read side, gated entirely on `average_area_sqft` being present.
+
 Indexes:
 
 - `idx_pfp_room_dim_floor_plan_id(floor_plan_id)`
@@ -415,6 +434,7 @@ Filters:
 Shape:
 
 - `ProjectFloorPlanInsightDetailResponse` includes floor-plan summary fields, rooms, insights, and (added by the Visual Floor-Plan Analysis contract stabilization) `visualAnalysis`, `demo`, `sourceLabel`.
+- Each room in `rooms[]` now also carries its Space Comparison fields (stabilized — see §1's `project_floor_plan_room_dimension` entry above) alongside its base dimension facts, on the exact same `FloorPlanRoomDimensionResponse` object — no separate `spaceComparison` wrapper/endpoint exists or is needed. **No public/service/controller code change was required to wire this through publicGetDetail()** — patching `ProjectFloorPlanRoomDimensionMapper` alone was sufficient, since `publicGetDetail()` already calls `roomRepository.findByFloorPlanIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc()` → `ProjectFloorPlanRoomDimensionMapper::toResponse` unchanged. Ownership (`fp.getProject().getId().equals(projectId)`), visibility (`ProjectPublicVisibilityPolicy`/`fp.getActive()`), and active/deleted room filtering are all identical to the pre-existing room-dimension behavior — none of it is Space-Comparison-specific, and none of it was touched by this stabilization.
 
 ### Visual Floor-Plan Analysis (stabilized — closes GAP-027/GAP-028)
 
@@ -451,9 +471,9 @@ Dashboard write endpoint:
 
 **Read-side defence** — `ProjectFloorPlanInsightServiceImpl.publicGetDetail()` re-validates any already-persisted `mediaUrl` via `TrustedMediaUrlValidator.isValid()` (non-throwing) before returning it publicly. An invalid/legacy URL has only `mediaUrl` nulled out — `title`/`description`/`tags` remain visible, and the request never fails.
 
-### `demo`/`sourceLabel` semantics (stabilized)
+### `demo`/`sourceLabel` semantics (stabilized, updated to account for room comparisons)
 
-`ProjectFloorPlanInsightDetailResponse.demo = (visualAnalysis == null)` in this composer — scoped only to visual analysis (the Space Comparison / room-comparison contract remains a separate, still-uncommitted concern — see §10 below). `demo` is **purely computed metadata about absence**, never a signal that any other field on the response might be synthetic: this backend has no "demo builder" or content-injection class anywhere (confirmed via exhaustive source search) — `visualAnalysis` is always either the real, dashboard-authored object or a literal `null`, never a merged/substituted placeholder. Do not add one.
+`ProjectFloorPlanInsightDetailResponse.demo` is computed as `(visualAnalysis == null && no room in rooms[] has hasComparisonData == true)` — see `ProjectFloorPlanInsightServiceImpl` for the exact expression. It now accounts for both stabilized contracts (Visual Analysis and Space Comparison), not visual analysis alone, since prior to this integration the two contracts were developed on separate branches and never combined. `demo` is **purely computed metadata about absence**, never a signal that any other field on the response might be synthetic: this backend has no "demo builder" or content-injection class anywhere (confirmed via exhaustive source search) — `visualAnalysis` and the room comparison fields are always either the real, dashboard-authored values or literal absence (`null`/`hasComparisonData=false`), never a merged/substituted placeholder. Do not add one.
 
 ## 5. Upload Flow
 

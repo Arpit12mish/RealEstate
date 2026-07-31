@@ -50,6 +50,25 @@ public class ProjectFloorPlanRoomDimensionEntity extends BaseEntity {
   @Column(name = "notes", length = 255)
   private String notes;
 
+  // Space Comparison fields — authored directly on the room row rather than
+  // joined through project_floor_plan_insight, since insight_type coverage
+  // does not span every FloorPlanRoomType and there is no FK between the two.
+  @Column(name = "average_area_sqft", precision = 10, scale = 2)
+  private BigDecimal averageAreaSqft;
+
+  @Column(name = "comparison_context_label", length = 120)
+  private String comparisonContextLabel;
+
+  @Column(name = "difference_percent", precision = 6, scale = 2)
+  private BigDecimal differencePercent;
+
+  @Column(name = "comparison_summary")
+  private String comparisonSummary;
+
+  @Column(name = "comparison_verified", nullable = false)
+  @Builder.Default
+  private Boolean comparisonVerified = false;
+
   @Column(name = "sort_order", nullable = false)
   @Builder.Default
   private Integer sortOrder = 0;

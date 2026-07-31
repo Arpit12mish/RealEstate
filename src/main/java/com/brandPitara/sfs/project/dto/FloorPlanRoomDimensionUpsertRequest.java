@@ -41,6 +41,21 @@ public class FloorPlanRoomDimensionUpsertRequest {
   @Size(max = 255)
   private String notes;
 
+  @DecimalMin("0.0")
+  @Digits(integer = 8, fraction = 2)
+  private BigDecimal averageAreaSqft;
+
+  @Size(max = 120)
+  private String comparisonContextLabel;
+
+  @Digits(integer = 4, fraction = 2)
+  private BigDecimal differencePercent;
+
+  @Size(max = 2000)
+  private String comparisonSummary;
+
+  private Boolean comparisonVerified;
+
   @Min(0) @Max(9999)
   private Integer sortOrder;
 
