@@ -180,6 +180,10 @@ google:
     api-key: ${GOOGLE_PLACES_API_KEY:}
     base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com/v1}
     field-mask: id,displayName,formattedAddress,googleMapsUri,rating,userRatingCount,reviews
+    search-text-url: ${GOOGLE_PLACES_TEXT_SEARCH_URL:https://places.googleapis.com/v1/places:searchText}
+    connect-timeout-ms: ${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}
+    read-timeout-ms: ${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}
+    request-timeout-ms: ${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}
   maps:
     places:
       enabled: ${GOOGLE_MAPS_PLACES_ENABLED:true}
@@ -187,7 +191,9 @@ google:
       text-search-url: ${GOOGLE_PLACES_TEXT_SEARCH_URL:https://places.googleapis.com/v1/places:searchText}
       default-language-code: en
       default-region-code: IN
-      timeout-ms: ${GOOGLE_PLACES_TIMEOUT_MS:8000}
+      connect-timeout-ms: ${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}
+      read-timeout-ms: ${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}
+      request-timeout-ms: ${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}
       max-results: ${GOOGLE_PLACES_MAX_RESULTS:10}
       max-radius-meters: ${GOOGLE_PLACES_MAX_RADIUS_METERS:5000}
 

@@ -3,6 +3,7 @@ package com.brandPitara.sfs.publicreview.service.impl;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +50,7 @@ class PublicReviewServiceImplTest {
     private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
     private ReviewPlaceProvider reviewPlaceProvider;
     private ContentVersionService contentVersionService;
+    private ExternalProviderTransactions externalProviderTransactions;
     private PublicReviewServiceImpl service;
 
     private void setUp() {
@@ -61,6 +64,15 @@ class PublicReviewServiceImplTest {
         projectPublicVisibilityPolicy = mock(ProjectPublicVisibilityPolicy.class);
         reviewPlaceProvider = mock(ReviewPlaceProvider.class);
         contentVersionService = mock(ContentVersionService.class);
+        externalProviderTransactions = mock(ExternalProviderTransactions.class);
+        when(externalProviderTransactions.read(any())).thenAnswer(invocation ->
+            ((Supplier<?>) invocation.getArgument(0)).get());
+        when(externalProviderTransactions.write(any(Supplier.class))).thenAnswer(invocation ->
+            ((Supplier<?>) invocation.getArgument(0)).get());
+        doAnswer(invocation -> {
+            ((Runnable) invocation.getArgument(0)).run();
+            return null;
+        }).when(externalProviderTransactions).write(any(Runnable.class));
 
         service = new PublicReviewServiceImpl(
                 placeRepository,
@@ -72,7 +84,8 @@ class PublicReviewServiceImplTest {
                 companyRepository,
                 projectPublicVisibilityPolicy,
                 reviewPlaceProvider,
-                contentVersionService
+                contentVersionService,
+                externalProviderTransactions
         );
     }
 

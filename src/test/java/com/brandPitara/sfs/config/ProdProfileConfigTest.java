@@ -121,6 +121,24 @@ class ProdProfileConfigTest {
         void prodProfileDeclaresTheRateLimitConfigImport() throws IOException {
             assertThat(readClasspathResource("application-prod.yml")).contains("application-rate-limit.yml");
         }
+
+        @Test
+        void googleProvidersDeclareIndependentTimeoutConfiguration() throws IOException {
+            var config = loadProdConfig();
+
+            assertThat(config.getProperty("google.places.connect-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}");
+            assertThat(config.getProperty("google.places.read-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}");
+            assertThat(config.getProperty("google.places.request-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}");
+            assertThat(config.getProperty("google.maps.places.connect-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}");
+            assertThat(config.getProperty("google.maps.places.read-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}");
+            assertThat(config.getProperty("google.maps.places.request-timeout-ms").toString())
+                    .isEqualTo("${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}");
+        }
     }
 
     // ── 3: InstagramMetaProperties binds correctly, including sync-enabled ──

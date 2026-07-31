@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.project.connectivity.provider.impl;
 
 import com.brandPitara.sfs.project.connectivity.provider.GooglePlacesProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -31,10 +32,12 @@ class GoogleNearbyPlaceProviderTest {
     props.setTextSearchUrl("https://places.googleapis.com/v1/places:searchText");
     props.setDefaultLanguageCode("en");
     props.setDefaultRegionCode("IN");
-    props.setTimeoutMs(5000);
+    props.setConnectTimeoutMs(3000);
+    props.setReadTimeoutMs(5000);
+    props.setRequestTimeoutMs(8000);
     props.setMaxResults(20);
     props.setMaxRadiusMeters(10000);
-    provider = new GoogleNearbyPlaceProvider(props);
+    provider = new GoogleNearbyPlaceProvider(props, new ObjectMapper());
   }
 
   @Test

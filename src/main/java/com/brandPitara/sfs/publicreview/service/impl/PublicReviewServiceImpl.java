@@ -7,6 +7,7 @@ import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -30,6 +31,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -64,6 +66,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
     private final ReviewPlaceProvider reviewPlaceProvider;
     private final ContentVersionService contentVersionService;
+    private final ExternalProviderTransactions externalProviderTransactions;
 
     // =========================================================================
     // Existing methods (unchanged public contract)
@@ -130,122 +133,34 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SyncGooglePublicReviewsResponse syncGoogleReviews(
         PublicReviewTargetType targetType,
         Long targetId,
         Long reviewPlaceId
     ) {
-        validateTargetExistsForAdmin(targetType, targetId);
-
-        PublicReviewPlaceEntity place = placeRepository
-            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
-            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
-
-        PublicReviewSummaryEntity existingSummary = summaryRepository.findByReviewPlaceId(place.getId()).orElse(null);
-        if (isGoogleFetchCompleted(place, existingSummary)) {
-            return returnExistingGoogleFetch(place, existingSummary, targetType);
+        GoogleSyncPreparation preparation = externalProviderTransactions.read(
+            () -> prepareGoogleSync(targetType, targetId, reviewPlaceId)
+        );
+        if (preparation.existingResponse() != null) {
+            return preparation.existingResponse();
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
+        GooglePlaceDetailsResponse googleResponse;
+        try {
+            googleResponse = reviewPlaceProvider.fetchPlaceDetails(preparation.googlePlaceId());
+        } catch (RuntimeException ex) {
+            markGoogleSyncFailed(reviewPlaceId, targetType, targetId, ex);
+            throw ex;
+        }
 
         try {
-            GooglePlaceDetailsResponse googleResponse = reviewPlaceProvider.fetchPlaceDetails(place.getGooglePlaceId());
-
-            place.setPlaceName(extractText(googleResponse.getDisplayName()));
-            place.setFormattedAddress(clean(googleResponse.getFormattedAddress()));
-            place.setGoogleMapsUri(clean(googleResponse.getGoogleMapsUri()));
-            place.setLastSyncedAt(now);
-
-            List<GooglePlaceDetailsResponse.GoogleReview> googleReviews =
-                googleResponse.getReviews() != null ? googleResponse.getReviews() : List.of();
-
-            List<PublicReviewSampleEntity> samples = new ArrayList<>();
-
-            int positive = 0;
-            int negative = 0;
-            int neutral = 0;
-            int mixed = 0;
-
-            sampleRepository.deleteByReviewPlaceId(place.getId());
-
-            for (GooglePlaceDetailsResponse.GoogleReview googleReview : googleReviews) {
-                PublicReviewSentiment sentiment = classifySentiment(googleReview.getRating());
-
-                if (sentiment == PublicReviewSentiment.POSITIVE) positive++;
-                else if (sentiment == PublicReviewSentiment.NEGATIVE) negative++;
-                else if (sentiment == PublicReviewSentiment.NEUTRAL) neutral++;
-                else mixed++;
-
-                PublicReviewSampleEntity sample = PublicReviewSampleEntity.builder()
-                    .reviewPlace(place)
-                    .targetType(targetType)
-                    .targetId(targetId)
-                    .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
-                    .reviewerName(extractReviewerName(googleReview))
-                    .reviewerProfileUrl(extractReviewerProfileUrl(googleReview))
-                    .reviewerPhotoUrl(extractReviewerPhotoUrl(googleReview))
-                    .rating(googleReview.getRating())
-                    .reviewText(extractText(googleReview.getText()))
-                    .originalReviewText(extractText(googleReview.getOriginalText()))
-                    .languageCode(extractLanguageCode(googleReview))
-                    .relativePublishTime(clean(googleReview.getRelativePublishTimeDescription()))
-                    .publishTime(googleReview.getPublishTime())
-                    .sentiment(sentiment)
-                    .category(classifyCategory(extractText(googleReview.getText()), googleReview.getRating()))
-                    .displayStatus(PublicReviewDisplayStatus.INTERNAL_ONLY)
-                    .fetchedAt(now)
-                    .build();
-
-                samples.add(sample);
-            }
-
-            sampleRepository.saveAll(samples);
-
-            PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId())
-                .orElseGet(() -> PublicReviewSummaryEntity.builder()
-                    .reviewPlace(place)
-                    .targetType(targetType)
-                    .targetId(targetId)
-                    .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
-                    .build());
-
-            summary.setRating(googleResponse.getRating());
-            summary.setUserRatingCount(googleResponse.getUserRatingCount());
-            summary.setPositiveSampleCount(positive);
-            summary.setNegativeSampleCount(negative);
-            summary.setNeutralSampleCount(neutral);
-            summary.setMixedSampleCount(mixed);
-            summary.setSourceLabel(GOOGLE_SOURCE_LABEL);
-            summary.setDisclaimer(PUBLIC_DISCLAIMER);
-            summary.setLastSyncedAt(now);
-            summaryRepository.save(summary);
-
-            // Mark as successfully fetched
-            place.setOneTimeFetched(true);
-            place.setFetchStatus(GoogleReviewFetchStatus.FETCHED);
-            place.setDisplayMode(GoogleReviewDisplayMode.RATING_AND_REVIEWS);
-            place.setDisplayGoogleReviews(true);
-            placeRepository.save(place);
-
-            bumpContentVersion(targetType);
-
-            return SyncGooglePublicReviewsResponse.builder()
-                .reviewPlaceId(place.getId())
-                .googlePlaceId(place.getGooglePlaceId())
-                .placeName(place.getPlaceName())
-                .rating(googleResponse.getRating())
-                .userRatingCount(googleResponse.getUserRatingCount())
-                .fetchedReviewSampleCount(samples.size())
-                .syncedAt(now)
-                .build();
-
-        } catch (ResponseStatusException e) {
-            throw e;
-        } catch (Exception e) {
-            place.setFetchStatus(GoogleReviewFetchStatus.FAILED);
-            placeRepository.save(place);
-            throw e;
+            return externalProviderTransactions.write(
+                () -> persistGoogleSync(targetType, targetId, reviewPlaceId, googleResponse)
+            );
+        } catch (RuntimeException ex) {
+            markGoogleSyncFailed(reviewPlaceId, targetType, targetId, ex);
+            throw ex;
         }
     }
 
@@ -285,22 +200,25 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     // =========================================================================
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GooglePlaceSearchResponse searchGooglePlaces(Long projectId, String query) {
-        ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
-            .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
-
-        String resolvedQuery = StringUtils.hasText(query) ? query.trim() : project.getName();
+        GoogleSearchPreparation preparation = externalProviderTransactions.read(() -> {
+            ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+            String resolvedQuery = StringUtils.hasText(query) ? query.trim() : project.getName();
+            return new GoogleSearchPreparation(
+                project.getId(), resolvedQuery, project.getLatitude(), project.getLongitude());
+        });
 
         List<GooglePlaceSearchResultItem> results = reviewPlaceProvider.searchPlaces(
-            resolvedQuery,
-            project.getLatitude(),
-            project.getLongitude()
+            preparation.query(),
+            preparation.latitude(),
+            preparation.longitude()
         );
 
         return GooglePlaceSearchResponse.builder()
-            .projectId(projectId)
-            .query(resolvedQuery)
+            .projectId(preparation.projectId())
+            .query(preparation.query())
             .results(results)
             .build();
     }
@@ -467,6 +385,142 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    private GoogleSyncPreparation prepareGoogleSync(
+        PublicReviewTargetType targetType,
+        Long targetId,
+        Long reviewPlaceId
+    ) {
+        validateTargetExistsForAdmin(targetType, targetId);
+        PublicReviewPlaceEntity place = placeRepository
+            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
+        PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId()).orElse(null);
+        SyncGooglePublicReviewsResponse existing = isGoogleFetchCompleted(place, summary)
+            ? returnExistingGoogleFetch(place, summary, targetType)
+            : null;
+        return new GoogleSyncPreparation(place.getGooglePlaceId(), existing);
+    }
+
+    private SyncGooglePublicReviewsResponse persistGoogleSync(
+        PublicReviewTargetType targetType,
+        Long targetId,
+        Long reviewPlaceId,
+        GooglePlaceDetailsResponse googleResponse
+    ) {
+        PublicReviewPlaceEntity place = placeRepository
+            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
+        OffsetDateTime now = OffsetDateTime.now();
+
+        place.setPlaceName(extractText(googleResponse.getDisplayName()));
+        place.setFormattedAddress(clean(googleResponse.getFormattedAddress()));
+        place.setGoogleMapsUri(clean(googleResponse.getGoogleMapsUri()));
+        place.setLastSyncedAt(now);
+
+        List<GooglePlaceDetailsResponse.GoogleReview> googleReviews =
+            googleResponse.getReviews() != null ? googleResponse.getReviews() : List.of();
+        List<PublicReviewSampleEntity> samples = new ArrayList<>();
+        int positive = 0;
+        int negative = 0;
+        int neutral = 0;
+        int mixed = 0;
+
+        sampleRepository.deleteByReviewPlaceId(place.getId());
+        for (GooglePlaceDetailsResponse.GoogleReview googleReview : googleReviews) {
+            PublicReviewSentiment sentiment = classifySentiment(googleReview.getRating());
+            if (sentiment == PublicReviewSentiment.POSITIVE) positive++;
+            else if (sentiment == PublicReviewSentiment.NEGATIVE) negative++;
+            else if (sentiment == PublicReviewSentiment.NEUTRAL) neutral++;
+            else mixed++;
+
+            samples.add(PublicReviewSampleEntity.builder()
+                .reviewPlace(place)
+                .targetType(targetType)
+                .targetId(targetId)
+                .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
+                .reviewerName(extractReviewerName(googleReview))
+                .reviewerProfileUrl(extractReviewerProfileUrl(googleReview))
+                .reviewerPhotoUrl(extractReviewerPhotoUrl(googleReview))
+                .rating(googleReview.getRating())
+                .reviewText(extractText(googleReview.getText()))
+                .originalReviewText(extractText(googleReview.getOriginalText()))
+                .languageCode(extractLanguageCode(googleReview))
+                .relativePublishTime(clean(googleReview.getRelativePublishTimeDescription()))
+                .publishTime(googleReview.getPublishTime())
+                .sentiment(sentiment)
+                .category(classifyCategory(extractText(googleReview.getText()), googleReview.getRating()))
+                .displayStatus(PublicReviewDisplayStatus.INTERNAL_ONLY)
+                .fetchedAt(now)
+                .build());
+        }
+        sampleRepository.saveAll(samples);
+
+        PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId())
+            .orElseGet(() -> PublicReviewSummaryEntity.builder()
+                .reviewPlace(place)
+                .targetType(targetType)
+                .targetId(targetId)
+                .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
+                .build());
+        summary.setRating(googleResponse.getRating());
+        summary.setUserRatingCount(googleResponse.getUserRatingCount());
+        summary.setPositiveSampleCount(positive);
+        summary.setNegativeSampleCount(negative);
+        summary.setNeutralSampleCount(neutral);
+        summary.setMixedSampleCount(mixed);
+        summary.setSourceLabel(GOOGLE_SOURCE_LABEL);
+        summary.setDisclaimer(PUBLIC_DISCLAIMER);
+        summary.setLastSyncedAt(now);
+        summaryRepository.save(summary);
+
+        place.setOneTimeFetched(true);
+        place.setFetchStatus(GoogleReviewFetchStatus.FETCHED);
+        place.setDisplayMode(GoogleReviewDisplayMode.RATING_AND_REVIEWS);
+        place.setDisplayGoogleReviews(true);
+        placeRepository.save(place);
+        bumpContentVersion(targetType);
+
+        return SyncGooglePublicReviewsResponse.builder()
+            .reviewPlaceId(place.getId())
+            .googlePlaceId(place.getGooglePlaceId())
+            .placeName(place.getPlaceName())
+            .rating(googleResponse.getRating())
+            .userRatingCount(googleResponse.getUserRatingCount())
+            .fetchedReviewSampleCount(samples.size())
+            .syncedAt(now)
+            .build();
+    }
+
+    private void markGoogleSyncFailed(
+        Long reviewPlaceId,
+        PublicReviewTargetType targetType,
+        Long targetId,
+        RuntimeException originalFailure
+    ) {
+        try {
+            externalProviderTransactions.write(() -> placeRepository
+                .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+                .ifPresent(place -> {
+                    place.setFetchStatus(GoogleReviewFetchStatus.FAILED);
+                    placeRepository.save(place);
+                }));
+        } catch (RuntimeException statusFailure) {
+            originalFailure.addSuppressed(statusFailure);
+        }
+    }
+
+    private record GoogleSyncPreparation(
+        String googlePlaceId,
+        SyncGooglePublicReviewsResponse existingResponse
+    ) {}
+
+    private record GoogleSearchPreparation(
+        Long projectId,
+        String query,
+        Double latitude,
+        Double longitude
+    ) {}
 
     private PublicReviewSignalResponse buildSignal(
         PublicReviewTargetType targetType,
