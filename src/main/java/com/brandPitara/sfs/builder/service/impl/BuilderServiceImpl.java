@@ -37,8 +37,10 @@ public class BuilderServiceImpl implements BuilderService {
   @Override
   @Transactional
   public BuilderResponse create(BuilderUpsertRequest request) {
+    String name = clean(request.getName());
     BuilderEntity entity = BuilderEntity.builder()
-        .name(clean(request.getName()))
+        .name(name)
+        .slug(generateUniqueSlug(name))
         .logoUrl(clean(request.getLogoUrl()))
         .description(clean(request.getDescription()))
         .phone(clean(request.getPhone()))
@@ -180,7 +182,32 @@ public class BuilderServiceImpl implements BuilderService {
     return BuilderMapper.toPublicResponse(entity);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public BuilderPublicResponse publicGetBySlug(String slug) {
+    BuilderEntity entity = builderRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse(slug)
+        .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + slug));
+    return BuilderMapper.toPublicResponse(entity);
+  }
+
   // -------- helpers --------
+
+  private String generateUniqueSlug(String name) {
+    String base = slugify(name);
+    String candidate = base;
+    int suffix = 2;
+    while (builderRepository.findBySlug(candidate).isPresent()) {
+      candidate = base + "-" + suffix++;
+    }
+    return candidate;
+  }
+
+  private String slugify(String input) {
+    String base = input == null ? "" : input.toLowerCase(java.util.Locale.ROOT).trim()
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("(^-+|-+$)", "");
+    return base.isEmpty() ? "builder" : base;
+  }
 
   private CityEntity resolveCity(Long cityId) {
     if (cityId == null) return null;

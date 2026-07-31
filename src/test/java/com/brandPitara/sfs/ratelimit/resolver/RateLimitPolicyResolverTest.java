@@ -148,6 +148,15 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void getBuilderSlugDetailMapsToPublicBuilderRead() {
+        // Phase 6B-G: the new canonical slug-based detail lookup falls under the same
+        // existing GET /api/builders/** -> PUBLIC_BUILDER_READ wildcard rule already
+        // covering the numeric-id route above - no new Route entry was needed.
+        assertThat(resolver.resolve(request("GET", "/api/builders/slug/meridian-constructions")))
+                .contains(RateLimitPolicy.PUBLIC_BUILDER_READ);
+    }
+
+    @Test
     void postBuildersDoesNotMapToPublicBuilderRead() {
         assertThat(resolver.resolve(request("POST", "/api/builders"))).isEmpty();
     }

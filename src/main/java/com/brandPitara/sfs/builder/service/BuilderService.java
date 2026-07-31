@@ -33,6 +33,8 @@ public interface BuilderService {
 
   BuilderPublicResponse publicGetById(Long id);
 
+  BuilderPublicResponse publicGetBySlug(String slug);
+
   List<BuilderCardResponse> publicHomeBuilders(Long cityId, int limit);
 
 }
