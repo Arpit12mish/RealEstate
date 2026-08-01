@@ -28,6 +28,12 @@ import static org.mockito.Mockito.*;
  * search, Phase 7A-R/7A. Every asserted value here is derived from the
  * existing, unmodified implementation, not invented; no endpoint or DTO
  * redesign happens in this phase.
+ *
+ * Also covers publicGetBySlug() (Phase 7B-G), the canonical Company slug
+ * lookup added to this same service — merged into this file during Phase
+ * 7B-GI's integration (the two contributing branches each independently
+ * created a file at this exact path; both sets of tests are preserved
+ * here rather than one replacing the other).
  */
 class CompanyPublicServiceImplTest {
 
@@ -53,6 +59,16 @@ class CompanyPublicServiceImplTest {
             .active(true)
             .published(true)
             .deleted(false)
+            .build();
+    }
+
+    private CompanyEntity eligibleCompanyBySlug() {
+        return CompanyEntity.builder()
+            .id(701L).name("Meridian Architects").slug("meridian-architects").companyType("ARCHITECT")
+            .logoUrl("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/companies/meridian/logo.png")
+            .description("Award-winning architecture studio.")
+            .phone("+919876543210").whatsapp("+919876543210")
+            .active(true).published(true).everPublished(true).deleted(false)
             .build();
     }
 
@@ -365,5 +381,125 @@ class CompanyPublicServiceImplTest {
         CompanyEntity withoutLogo = entity(2, "B", "ARCHITECT");
         when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(2L)).thenReturn(Optional.of(withoutLogo));
         assertThat(service.publicGet(2L).getLogoUrl()).isNull();
+    }
+
+    // ── Slug lookup (Phase 7B-G): eligible lookup ───────────────────────────
+
+    @Test
+    void publicGetBySlug_returnsTheMappedResponseForAnEligibleCompany() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("meridian-architects"))
+            .thenReturn(Optional.of(eligibleCompanyBySlug()));
+
+        CompanyResponse response = service.publicGetBySlug("meridian-architects");
+
+        assertThat(response.getId()).isEqualTo(701L);
+        assertThat(response.getSlug()).isEqualTo("meridian-architects");
+        assertThat(response.getName()).isEqualTo("Meridian Architects");
+    }
+
+    @Test
+    void publicGetBySlug_onlyEverQueriesTheActivePublishedNonDeletedRepositoryMethod() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("meridian-architects"))
+            .thenReturn(Optional.of(eligibleCompanyBySlug()));
+
+        service.publicGetBySlug("meridian-architects");
+
+        verify(companyRepository, times(1)).findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("meridian-architects");
+        verifyNoMoreInteractions(companyRepository);
+    }
+
+    @Test
+    void publicGetBySlug_returnsTheSameNineFieldDtoShapeAsTheNumericLookup() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("meridian-architects"))
+            .thenReturn(Optional.of(eligibleCompanyBySlug()));
+
+        CompanyResponse response = service.publicGetBySlug("meridian-architects");
+
+        java.util.Set<String> fieldNames = java.util.Arrays.stream(response.getClass().getDeclaredFields())
+            .map(java.lang.reflect.Field::getName)
+            .collect(java.util.stream.Collectors.toSet());
+        assertThat(fieldNames).containsExactlyInAnyOrder(
+            "id", "name", "slug", "companyType", "logoUrl", "coverImageUrl", "description", "phone", "whatsapp"
+        );
+    }
+
+    // ── Slug lookup: 404 cases ───────────────────────────────────────────────
+
+    @Test
+    void publicGetBySlug_throws404ForAnUnknownSlug() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("unknown-slug"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("unknown-slug"))
+            .isInstanceOf(ResponseStatusException.class)
+            .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void publicGetBySlug_throws404ForAWrongCaseSlug_repositoryLookupIsCaseSensitiveExactMatch() {
+        // findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse is a plain derived-query exact
+        // match (no lower()/ilike) - a differently-cased variant of a real slug simply does not
+        // match any row, exactly like an unknown slug. Simulated here the same way a real
+        // case-sensitive column comparison would behave: no matching row for "Meridian-Architects".
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("Meridian-Architects"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("Meridian-Architects"))
+            .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void publicGetBySlug_throws404ForAnInactiveCompany() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("inactive-co"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("inactive-co")).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void publicGetBySlug_throws404ForAnUnpublishedCompany() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("unpublished-co"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("unpublished-co")).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void publicGetBySlug_throws404ForADeletedCompany() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("deleted-co"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("deleted-co")).isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void publicGetBySlug_errorMessageIsSafeAndGeneric() {
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("unknown-slug"))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.publicGetBySlug("unknown-slug"))
+            .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.type(ResponseStatusException.class))
+            .satisfies(ex -> assertThat(ex.getReason()).isEqualTo("Company not found"));
+    }
+
+    // ── Slug lookup: safe field mapping / no cross-entity queries ───────────
+
+    @Test
+    void publicGetBySlug_handlesNullOptionalFieldsSafely() {
+        CompanyEntity minimal = CompanyEntity.builder()
+            .id(1L).name("Bare Minimum Co").slug("bare-minimum-co").companyType("ARCHITECT")
+            .logoUrl(null).coverImageUrl(null).description(null).phone(null).whatsapp(null)
+            .active(true).published(true).everPublished(true).deleted(false)
+            .build();
+        when(companyRepository.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse("bare-minimum-co"))
+            .thenReturn(Optional.of(minimal));
+
+        CompanyResponse response = service.publicGetBySlug("bare-minimum-co");
+
+        assertThat(response.getLogoUrl()).isNull();
+        assertThat(response.getCoverImageUrl()).isNull();
+        assertThat(response.getDescription()).isNull();
+        assertThat(response.getPhone()).isNull();
+        assertThat(response.getWhatsapp()).isNull();
     }
 }

@@ -472,6 +472,16 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void getCompanySlugDetailMapsToPublicCompanyRead() {
+        // Phase 7B-G: the new canonical slug-based detail lookup falls under the same
+        // existing GET /api/public/companies/** -> PUBLIC_COMPANY_READ wildcard rule already
+        // covering the numeric-id and paginated-list routes above - no new Route entry was
+        // needed (same reasoning as Builder's own slug route, Phase 6B-G).
+        assertThat(resolver.resolve(request("GET", "/api/public/companies/slug/meridian-architects")))
+                .contains(RateLimitPolicy.PUBLIC_COMPANY_READ);
+    }
+
+    @Test
     void publicArchitectDesignerGetRouteMapsToPublicArchitectDesignerRead() {
         assertThat(resolver.resolve(request("GET", "/api/public/architect-designers/42")))
                 .contains(RateLimitPolicy.PUBLIC_ARCHITECT_DESIGNER_READ);

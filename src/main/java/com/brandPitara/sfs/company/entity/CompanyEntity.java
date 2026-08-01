@@ -75,6 +75,16 @@ public class CompanyEntity extends BaseEntity {
   @Builder.Default
   private Boolean published = true;
 
+  // Set once, permanently, the first time `published` becomes true - never reset by a
+  // later unpublish. Distinct from `published` on purpose: `published` alone can't answer
+  // "has this company EVER been public", since it can be flipped back to false and forward
+  // again. DashboardCompanyServiceImpl uses this (not `published`) to decide whether a slug
+  // edit is still allowed, so an unpublish -> edit -> republish cycle can't bypass
+  // published-slug immutability (see Phase 7B-G / RISK-025).
+  @Column(name = "ever_published", nullable = false)
+  @Builder.Default
+  private Boolean everPublished = false;
+
   @Column(nullable = false)
   @Builder.Default
   private Integer priority = 0;

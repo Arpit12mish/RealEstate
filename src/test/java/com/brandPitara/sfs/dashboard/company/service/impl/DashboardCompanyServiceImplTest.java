@@ -236,6 +236,261 @@ class DashboardCompanyServiceImplTest {
     verify(companyRepository, never()).save(any());
   }
 
+  // ---------- Phase 7B-G: canonical slug format validation ----------
+
+  @Test
+  void create_withCanonicalCustomSlug_isAccepted() {
+    when(companyRepository.findBySlug("my-custom-slug")).thenReturn(Optional.empty());
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").slug("my-custom-slug").build();
+
+    CompanyDetailResponse response = service().create(request);
+
+    assertThat(response.getSlug()).isEqualTo("my-custom-slug");
+  }
+
+  @Test
+  void create_withNonCanonicalCustomSlug_isRejectedWith400() {
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").slug("Not A Slug!!").build();
+
+    assertThatThrownBy(() -> service().create(request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("kebab-case");
+    verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void create_withUppercaseCustomSlug_isRejected() {
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").slug("Morphogenesis-INC").build();
+
+    assertThatThrownBy(() -> service().create(request)).isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  void create_withCustomSlugContainingLeadingHyphen_isRejected() {
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").slug("-morphogenesis").build();
+
+    assertThatThrownBy(() -> service().create(request)).isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  void create_withCustomSlugContainingDoubleHyphen_isRejected() {
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").slug("morpho--genesis").build();
+
+    assertThatThrownBy(() -> service().create(request)).isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  void update_withNonCanonicalCustomSlug_isRejectedOnADraftCompany() {
+    CompanyEntity draft = company(1L);
+    draft.setEverPublished(false);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(draft));
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("Not Canonical").build();
+
+    assertThatThrownBy(() -> service().update(1L, request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("kebab-case");
+    verify(companyRepository, never()).save(any());
+  }
+
+  // ---------- Phase 7B-G: published-slug immutability (RISK-025) ----------
+
+  @Test
+  void create_publishedImmediately_marksEverPublishedTrue() {
+    when(companyRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").published(true).build();
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    service().create(request);
+    verify(companyRepository).save(captor.capture());
+
+    assertThat(captor.getValue().getPublished()).isTrue();
+    assertThat(captor.getValue().getEverPublished()).isTrue();
+  }
+
+  @Test
+  void create_asDraft_leavesEverPublishedFalse() {
+    when(companyRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyCreateRequest request = CompanyCreateRequest.builder()
+        .name("Morphogenesis").companyType("ARCHITECT").build();
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    service().create(request);
+    verify(companyRepository).save(captor.capture());
+
+    assertThat(captor.getValue().getPublished()).isFalse();
+    assertThat(captor.getValue().getEverPublished()).isFalse();
+  }
+
+  @Test
+  void update_allowsSlugChangeOnADraftCompanyThatHasNeverBeenPublished() {
+    CompanyEntity draft = company(1L);
+    draft.setPublished(false);
+    draft.setEverPublished(false);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(draft));
+    when(companyRepository.findBySlugAndIdNot("new-draft-slug", 1L)).thenReturn(Optional.empty());
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("new-draft-slug").build();
+
+    CompanyDetailResponse response = service().update(1L, request);
+
+    assertThat(response.getSlug()).isEqualTo("new-draft-slug");
+  }
+
+  @Test
+  void update_rejectsSlugChangeOnACompanyThatHasEverBeenPublished_evenIfCurrentlyUnpublished() {
+    // The "unpublish -> edit -> republish" bypass this test protects against: everPublished
+    // stays true even after the company is unpublished, so the slug edit below must still be
+    // rejected - not because it's currently published (it isn't), but because it once was.
+    CompanyEntity previouslyPublished = company(1L);
+    previouslyPublished.setPublished(false);
+    previouslyPublished.setEverPublished(true);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(previouslyPublished));
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("sneaky-new-slug").build();
+
+    assertThatThrownBy(() -> service().update(1L, request))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("published");
+    verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void update_rejectsSlugChangeOnACurrentlyPublishedCompany() {
+    CompanyEntity published = company(1L);
+    published.setPublished(true);
+    published.setEverPublished(true);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(published));
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("another-new-slug").build();
+
+    assertThatThrownBy(() -> service().update(1L, request)).isInstanceOf(ResponseStatusException.class);
+    verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void update_firstPublicationInTheSameRequestThatSetsACustomSlug_allowsBoth() {
+    // "Before first publication, a validated slug may be changed" explicitly includes the
+    // moment of first publication itself - a single request may set the final slug and
+    // publish=true together.
+    CompanyEntity draft = company(1L);
+    draft.setPublished(false);
+    draft.setEverPublished(false);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(draft));
+    when(companyRepository.findBySlugAndIdNot("final-slug", 1L)).thenReturn(Optional.empty());
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("final-slug").published(true).build();
+
+    CompanyDetailResponse response = service().update(1L, request);
+
+    assertThat(response.getSlug()).isEqualTo("final-slug");
+    assertThat(response.isPublished()).isTrue();
+  }
+
+  @Test
+  void update_publishingForTheFirstTime_marksEverPublishedTrue() {
+    CompanyEntity draft = company(1L);
+    draft.setPublished(false);
+    draft.setEverPublished(false);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(draft));
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    service().update(1L, CompanyUpdateRequest.builder().published(true).build());
+    verify(companyRepository).save(captor.capture());
+
+    assertThat(captor.getValue().getEverPublished()).isTrue();
+  }
+
+  @Test
+  void update_unpublishingAnAlreadyPublishedCompany_doesNotResetEverPublished() {
+    CompanyEntity published = company(1L);
+    published.setPublished(true);
+    published.setEverPublished(true);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(published));
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    service().update(1L, CompanyUpdateRequest.builder().published(false).build());
+    verify(companyRepository).save(captor.capture());
+
+    assertThat(captor.getValue().getPublished()).isFalse();
+    assertThat(captor.getValue().getEverPublished()).isTrue();
+  }
+
+  @Test
+  void update_nameChangeAloneNeverTouchesTheSlug() {
+    CompanyEntity published = company(1L);
+    published.setPublished(true);
+    published.setEverPublished(true);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(published));
+    when(companyRepository.save(any(CompanyEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    CompanyDetailResponse response = service().update(1L,
+        CompanyUpdateRequest.builder().name("Morphogenesis Studio Renamed").build());
+
+    assertThat(response.getSlug()).isEqualTo("morphogenesis");
+    assertThat(response.getName()).isEqualTo("Morphogenesis Studio Renamed");
+  }
+
+  @Test
+  void softDelete_preservesTheExistingSlug() {
+    CompanyEntity existing = company(1L);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(existing));
+
+    service().softDelete(1L);
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    verify(companyRepository).save(captor.capture());
+    assertThat(captor.getValue().getSlug()).isEqualTo("morphogenesis");
+  }
+
+  @Test
+  void softDelete_neverTouchesEverPublished() {
+    CompanyEntity existing = company(1L);
+    existing.setEverPublished(true);
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(existing));
+
+    service().softDelete(1L);
+
+    ArgumentCaptor<CompanyEntity> captor = ArgumentCaptor.forClass(CompanyEntity.class);
+    verify(companyRepository).save(captor.capture());
+    assertThat(captor.getValue().getEverPublished()).isTrue();
+  }
+
+  @Test
+  void attemptingASlugEditAfterSoftDelete_isRejectedAsNotFound_notAsAnImmutabilityConflict() {
+    // update() looks the company up via findByIdAndDeletedFalse - a soft-deleted company is
+    // therefore already unreachable for ANY update, slug edits included, via a 404
+    // (EntityNotFoundException), before the ever_published immutability check ever runs.
+    // This codebase has no "restore" operation for Company at all (confirmed: no such method
+    // exists on DashboardCompanyService) - so "delete/restore then attempted slug edit" from
+    // Phase 7B-GA's own required test list reduces to exactly this: delete alone already
+    // blocks every future slug edit attempt permanently, via 404, not via the 409 immutability
+    // path (both are safe outcomes - the slug can never be changed either way - but they are
+    // different exception types, and asserting the wrong one would be a false confirmation).
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.empty());
+
+    CompanyUpdateRequest request = CompanyUpdateRequest.builder().slug("sneaky-post-delete-slug").build();
+
+    assertThatThrownBy(() -> service().update(1L, request)).isInstanceOf(EntityNotFoundException.class);
+    verify(companyRepository, never()).save(any());
+  }
+
   @Test
   void getDetail_throwsNotFound_forMissingOrDeletedCompany() {
     when(companyRepository.findByIdAndDeletedFalse(999L)).thenReturn(Optional.empty());

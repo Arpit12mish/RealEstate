@@ -18,6 +18,8 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
 
   Optional<CompanyEntity> findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(Long id);
 
+  Optional<CompanyEntity> findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse(String slug);
+
   Page<CompanyEntity> findByActiveTrueAndPublishedTrueAndDeletedFalse(Pageable pageable);
 
   Page<CompanyEntity> findByCompanyTypeAndActiveTrueAndPublishedTrueAndDeletedFalse(String companyType, Pageable pageable);
