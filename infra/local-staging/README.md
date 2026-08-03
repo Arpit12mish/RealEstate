@@ -60,7 +60,7 @@ docker compose --env-file infra/local-staging/.env \
 
 ## Flyway and database checks
 
-The fresh-schema migration chain has a historical prerequisite: V6 references `city.id=1`, but no earlier migration inserts it. `db/local-staging/beforeEachMigrate.sql` creates only that synthetic prerequisite after V1 and only because this profile adds the callback location. Existing migrations are unchanged and production never loads the callback.
+Fresh databases use the normal `classpath:db/migration` location. Flyway selects the schema-only `B134__sfs_schema_baseline.sql` for an empty schema and then applies forward migrations, while databases with existing version history apply only the new forward migrations. No local schema-repair callback or synthetic fixed-ID row is used. Hibernate continues to validate rather than create or update the schema.
 
 Verify migration history and PostgreSQL version:
 

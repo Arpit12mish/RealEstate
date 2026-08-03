@@ -26,10 +26,21 @@ metrics_status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
 [[ "$metrics_status" == "401" || "$metrics_status" == "403" ]] \
   || fail "Actuator metrics unexpectedly returned HTTP $metrics_status without authentication"
 
-if compose port backend 8080 2>/dev/null | rg -q '.'; then
+has_published_port() {
+  local service="$1"
+  local container_id
+  local bindings
+
+  container_id=$(compose ps -q "$service")
+  [[ -n "$container_id" ]] || fail "Service $service is not running"
+  bindings=$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$container_id")
+  [[ "$bindings" != "{}" && "$bindings" != "null" ]]
+}
+
+if has_published_port backend; then
   fail "Backend port is unexpectedly published"
 fi
-if compose port postgres 5432 2>/dev/null | rg -q '.'; then
+if has_published_port postgres; then
   fail "PostgreSQL port is unexpectedly published"
 fi
 

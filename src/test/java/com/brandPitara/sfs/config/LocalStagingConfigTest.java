@@ -30,6 +30,7 @@ class LocalStagingConfigTest {
         assertThat(config.getProperty("spring.jpa.open-in-view")).isEqualTo(false);
         assertThat(config.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
         assertThat(config.getProperty("spring.flyway.clean-disabled")).isEqualTo(true);
+        assertThat(config.getProperty("spring.flyway.locations")).isEqualTo("classpath:db/migration");
         assertThat(config.getProperty("server.tomcat.threads.max"))
                 .isEqualTo("${SERVER_TOMCAT_THREADS_MAX:50}");
         assertThat(config.getProperty("server.tomcat.mbeanregistry.enabled")).isEqualTo(true);
