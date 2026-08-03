@@ -15,7 +15,20 @@ class FlywayRepairStructureTest {
     void baselineAndForwardRepairExistWithoutSchemaRepairCallback() throws Exception {
         assertThat(new ClassPathResource("db/migration/B134__sfs_schema_baseline.sql").exists()).isTrue();
         assertThat(new ClassPathResource("db/migration/V140__repair_historical_schema_drift.sql").exists()).isTrue();
+        assertThat(new ClassPathResource("db/migration/V141__restore_canonical_baseline_reference_data.sql").exists()).isTrue();
         assertThat(new ClassPathResource("db/local-staging/beforeEachMigrate.sql").exists()).isFalse();
+    }
+
+    @Test
+    void committedForwardRepairHasNoLateLowerVersionCollision() throws Exception {
+        Path migrations = new ClassPathResource("db/migration").getFile().toPath();
+        try (var files = Files.list(migrations)) {
+            assertThat(files.map(path -> path.getFileName().toString())
+                    .filter(name -> name.matches("V13[5-9]__.*\\.sql"))
+                    .toList())
+                    .as("unreleased migrations must be sequenced after immutable V140")
+                    .isEmpty();
+        }
     }
 
     @Test

@@ -130,8 +130,8 @@ Flyway/schema rollback is forward-only. The application deployment may be rolled
 
 ## Remaining schema risks
 
-- B134 is a schema baseline, not a replay of historical demo/reference seed data. A new environment starts structurally valid but intentionally empty of application content.
+- Release 5A-M2 audits all skipped historical data and adds V141 for canonical categories, cities, content versions, home sections, and the HOME/HERO slot. Placeholder, demo, branded, and unapproved calculator data remain intentionally excluded.
 - Numeric type conversion can take an access-exclusive lock proportional to affected table size; production row counts and a maintenance window remain necessary.
-- `CREATE EXTENSION pg_trgm` requires sufficient database privilege on a new database.
+- `CREATE EXTENSION pg_trgm` and B134's extension comment require an extension-owning migration role on a new database; Release 5A-M2 includes a PostgreSQL 16 permission-contract test.
 - V12's invalid historical filename and V44's unusual double extension remain immutable technical debt.
-- Untracked V135–V139 must be independently reviewed, versioned, and deployed before or after this release according to their owning workstream; they were not included here.
+- The unreleased V135-V139 files were reviewed and resequenced to V142-V146 after immutable V140/V141. They remain unstaged feature work owned by their original workstream.

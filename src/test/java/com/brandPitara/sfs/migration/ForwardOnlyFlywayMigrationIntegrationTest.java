@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Testcontainers(disabledWithoutDocker = true)
 class ForwardOnlyFlywayMigrationIntegrationTest {
@@ -42,13 +43,34 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
 
         assertThat(text("SELECT version FROM flyway_schema_history WHERE type = 'SQL_BASELINE'"))
                 .isEqualTo("134");
-        assertThat(text("SELECT max(version::integer)::text FROM flyway_schema_history WHERE success"))
-                .isEqualTo("140");
+        assertThat(number("SELECT count(*) FROM flyway_schema_history WHERE version = '141' AND success"))
+                .isOne();
+        assertThat(number("SELECT count(*) FROM flyway_schema_history "
+                + "WHERE version::integer BETWEEN 135 AND 139"))
+                .isZero();
         assertThat(number("SELECT count(*) FROM flyway_schema_history WHERE NOT success")).isZero();
         assertThat(number("SELECT count(*) FROM flyway_schema_history WHERE lower(script) LIKE '%callback%'"))
                 .isZero();
         assertThat(number("SELECT count(*) FROM flyway_schema_history WHERE version = '140'"))
                 .isOne();
+        assertThat(number("SELECT count(*) FROM category")).isEqualTo(68);
+        assertThat(number("SELECT count(*) FROM city")).isEqualTo(11);
+        assertThat(number("SELECT count(*) FROM content_version")).isEqualTo(5);
+        assertThat(number("SELECT count(*) FROM home_section_config WHERE home_category_id = 0"))
+                .isEqualTo(7);
+        assertThat(number("SELECT count(*) FROM promo_banner_slot_config "
+                + "WHERE screen='HOME' AND home_category_id=0 AND slot_key='HERO'"))
+                .isOne();
+        assertThat(number("SELECT count(*) FROM business")).isZero();
+        assertThat(number("SELECT count(*) FROM brand")).isZero();
+        assertThat(number("SELECT count(*) FROM company")).isZero();
+        assertThat(number("SELECT count(*) FROM promo_banner")).isZero();
+        assertThat(text("SELECT parent.slug FROM category child JOIN category parent "
+                + "ON parent.id=child.parent_id WHERE child.slug='plumbers'"))
+                .isEqualTo("home-repair-maintenance");
+        assertThat(text("SELECT parent.slug FROM category child JOIN category parent "
+                + "ON parent.id=child.parent_id WHERE child.slug='tiles-flooring'"))
+                .isEqualTo("flooring-tiles");
     }
 
     @Test
@@ -144,6 +166,35 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
         assertIndex("idx_builder_public");
         assertIndex("idx_project_city_id");
         assertIndex("idx_feed_section_item_config");
+    }
+
+    @Test
+    void baselinePgTrgmRequiresAnExtensionOwningMigrationRole() throws Exception {
+        execute("DROP ROLE IF EXISTS sfs_restricted_migration");
+        execute("CREATE ROLE sfs_restricted_migration LOGIN PASSWORD 'sfs_restricted_migration'");
+        execute("GRANT USAGE, CREATE ON SCHEMA public TO sfs_restricted_migration");
+        execute("GRANT CONNECT ON DATABASE " + postgres.getDatabaseName()
+                + " TO sfs_restricted_migration");
+
+        try (Connection restricted = DriverManager.getConnection(
+                postgres.getJdbcUrl(), "sfs_restricted_migration", "sfs_restricted_migration");
+             Statement statement = restricted.createStatement()) {
+            assertThatThrownBy(() -> statement.execute("CREATE EXTENSION pg_trgm WITH SCHEMA public"))
+                    .isInstanceOf(SQLException.class)
+                    .extracting(exception -> ((SQLException) exception).getSQLState())
+                    .isEqualTo("42501");
+        }
+
+        execute("CREATE EXTENSION pg_trgm WITH SCHEMA public");
+        try (Connection restricted = DriverManager.getConnection(
+                postgres.getJdbcUrl(), "sfs_restricted_migration", "sfs_restricted_migration");
+             Statement statement = restricted.createStatement()) {
+            assertThatThrownBy(() -> statement.execute(
+                    "COMMENT ON EXTENSION pg_trgm IS 'restricted migration test'"))
+                    .isInstanceOf(SQLException.class)
+                    .extracting(exception -> ((SQLException) exception).getSQLState())
+                    .isEqualTo("42501");
+        }
     }
 
     private Flyway flyway(MigrationVersion target) {

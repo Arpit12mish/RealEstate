@@ -62,6 +62,8 @@ docker compose --env-file infra/local-staging/.env \
 
 Fresh databases use the normal `classpath:db/migration` location. Flyway selects the schema-only `B134__sfs_schema_baseline.sql` for an empty schema and then applies forward migrations, while databases with existing version history apply only the new forward migrations. No local schema-repair callback or synthetic fixed-ID row is used. Hibernate continues to validate rather than create or update the schema.
 
+V141 restores only canonical public baseline references: categories, NCR cities, content-version keys, global home sections, and the HOME/HERO promo slot. It intentionally does not recreate historical demo businesses/brands/companies, placeholder legal/contact copy, or unapproved sample calculator matrices. A fresh migration role must own or be permitted to create `pg_trgm`; a separately owned preinstalled extension is insufficient because immutable B134 also comments on the extension.
+
 Verify migration history and PostgreSQL version:
 
 ```bash
