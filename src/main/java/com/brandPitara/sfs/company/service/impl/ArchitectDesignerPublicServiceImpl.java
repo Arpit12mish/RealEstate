@@ -2,6 +2,7 @@ package com.brandPitara.sfs.company.service.impl;
 
 import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.company.entity.*;
+import com.brandPitara.sfs.company.enums.ArchitectDesignerType;
 import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
 import com.brandPitara.sfs.company.repository.*;
 import com.brandPitara.sfs.company.service.ArchitectDesignerPublicService;
@@ -12,6 +13,8 @@ import com.brandPitara.sfs.publicreview.enums.PublicReviewTargetType;
 import com.brandPitara.sfs.publicreview.service.PublicReviewService;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,6 +44,45 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
   public ArchitectDesignerDetailResponse getDetail(Long companyId) {
     CompanyEntity company = companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(companyId)
         .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Architect/Designer not found"));
+    return toDetail(company);
+  }
+
+  @Override
+  public ArchitectDesignerDetailResponse getDetailBySlug(String slug, ArchitectDesignerType type) {
+    // Phase 8A-G (GAP-003B): companyType is enforced in the same query as the
+    // slug lookup (see CompanyRepository), not filtered afterward - a real
+    // Interior Designer slug requested with type=ARCHITECT must 404 exactly
+    // like an unknown slug, never silently resolve as the wrong type.
+    CompanyEntity company = companyRepository
+        .findBySlugAndCompanyTypeInAndActiveTrueAndPublishedTrueAndDeletedFalse(slug, type.storageValues())
+        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Architect/Designer not found"));
+    return toDetail(company);
+  }
+
+  @Override
+  public Page<ArchitectDesignerListItemResponse> list(ArchitectDesignerType type, Pageable pageable) {
+    // Phase 8A-G (GAP-037): query-level multi-value type filtering, real
+    // pagination, no per-row child query - deliberately not the Home-feed
+    // loaders' limit*3-then-in-memory-filter pattern.
+    return companyRepository
+        .findByCompanyTypeInAndActiveTrueAndPublishedTrueAndDeletedFalse(type.storageValues(), pageable)
+        .map(company -> toListItem(company, type));
+  }
+
+  private ArchitectDesignerListItemResponse toListItem(CompanyEntity company, ArchitectDesignerType type) {
+    return ArchitectDesignerListItemResponse.builder()
+        .companyId(company.getId())
+        .slug(company.getSlug())
+        .name(company.getName())
+        .type(type.name())
+        .logoUrl(company.getLogoUrl())
+        .coverImageUrl(company.getCoverImageUrl())
+        .description(company.getDescription())
+        .build();
+  }
+
+  private ArchitectDesignerDetailResponse toDetail(CompanyEntity company) {
+    Long companyId = company.getId();
 
     List<CompanyProjectCardDto> topProjects = companyProjectRepository
         .findTop10ByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(companyId)

@@ -488,6 +488,20 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void newArchitectDesignerListAndSlugDetailRoutesMapToPublicArchitectDesignerReadNotPublicCompanyRead() {
+        // Phase 8A-G (GAP-037/GAP-003B): both new routes fall under the same
+        // existing GET /api/public/architect-designers/** -> PUBLIC_ARCHITECT_DESIGNER_READ
+        // wildcard rule already covering the numeric-id route above - no new
+        // Route entry was needed (same reasoning as Company's own slug route,
+        // Phase 7B-G). Storage uses CompanyEntity, but that must not resolve
+        // these routes to PUBLIC_COMPANY_READ - they are a distinct policy.
+        assertThat(resolver.resolve(request("GET", "/api/public/architect-designers")))
+                .contains(RateLimitPolicy.PUBLIC_ARCHITECT_DESIGNER_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/architect-designers/slug/meridian-architects")))
+                .contains(RateLimitPolicy.PUBLIC_ARCHITECT_DESIGNER_READ);
+    }
+
+    @Test
     void publicInstagramReelsGetRouteMapsToPublicInstagramReelsRead() {
         assertThat(resolver.resolve(request("GET", "/api/public/instagram-reels")))
                 .contains(RateLimitPolicy.PUBLIC_INSTAGRAM_REELS_READ);

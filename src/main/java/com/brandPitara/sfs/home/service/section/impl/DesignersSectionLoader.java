@@ -4,6 +4,7 @@ import com.brandPitara.sfs.company.dto.ArchitectDesignerCardDto;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
 import com.brandPitara.sfs.company.entity.CompanyStatEntity;
+import com.brandPitara.sfs.company.enums.ArchitectDesignerType;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.company.repository.CompanyStatRepository;
@@ -25,8 +26,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DesignersSectionLoader implements HomeSectionLoader {
 
-  private static final Set<String> ALLOWED_TYPES =
-      Set.of("DESIGNER", "DESIGNERS", "INTERIOR_DESIGNER");
+  // Phase 8A-G: sourced from ArchitectDesignerType - see ArchitectsSectionLoader's
+  // matching comment. Same accepted string set as before, no behavior change.
+  private static final Set<String> ALLOWED_TYPES = ArchitectDesignerType.INTERIOR_DESIGNER.storageValues();
 
   private static final String STAT_PROJECTS_COMPLETED = "PROJECTS COMPLETED";
   private static final String STAT_YEARS_EXPERIENCE = "YEARS EXPERIENCE";

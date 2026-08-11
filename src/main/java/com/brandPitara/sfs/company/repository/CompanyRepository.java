@@ -20,6 +20,17 @@ public interface CompanyRepository extends JpaRepository<CompanyEntity, Long> {
 
   Optional<CompanyEntity> findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse(String slug);
 
+  // Phase 8A-G (GAP-003B): canonical slug + normalized-type lookup for the
+  // rich Architect/Interior-Designer detail contract. companyTypes is always
+  // ArchitectDesignerType.storageValues() for the requested normalized type -
+  // a slug that resolves under the wrong type (e.g. an Interior Designer's
+  // slug requested with type=ARCHITECT) must not match, so companyType is
+  // enforced in this same query, not filtered afterward.
+  Optional<CompanyEntity> findBySlugAndCompanyTypeInAndActiveTrueAndPublishedTrueAndDeletedFalse(
+      String slug,
+      Collection<String> companyTypes
+  );
+
   Page<CompanyEntity> findByActiveTrueAndPublishedTrueAndDeletedFalse(Pageable pageable);
 
   Page<CompanyEntity> findByCompanyTypeAndActiveTrueAndPublishedTrueAndDeletedFalse(String companyType, Pageable pageable);
