@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * {@link com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator}'s
  * own established convention (a plain {@code @Service}, thrown
  * {@link IllegalArgumentException} mapped to {@code 400} by the existing
- * {@code DashboardExceptionHandler} — no new exception type introduced).
+ * {@code DashboardExceptionHandler}/{@code GlobalExceptionHandler} — no new
+ * exception type introduced).
  *
  * <p>The allowlist is configuration-driven, reusing {@link S3Properties}
  * exactly the way {@code S3MediaStorageServiceImpl#buildPublicUrl} already
@@ -35,6 +36,23 @@ import java.util.regex.Pattern;
  * trust is a general media concern, not a dashboard-only one — a future
  * write path for a different media-bearing field could reuse this same
  * class without an odd cross-package dependency on the dashboard package.
+ *
+ * <p><b>Phase MEDIA-H1 (2026-08-12):</b> also wired into
+ * {@code BuilderServiceImpl.create()}/{@code update()}/{@code updateLogo()}
+ * for {@code BuilderEntity.logoUrl} — a legacy, unvalidated Builder logo
+ * URL pointing at a third-party host (confirmed live: `architectureideas.info`)
+ * took down the public website's Home page (a `next/image` host-allowlist
+ * rejection surfaced as an unhandled `500`, entirely a website-side
+ * enforcement gap this validator doesn't cause or fix by itself — see the
+ * website's own `resolveTrustedImageUrl()` fix). This backend validation
+ * is defense-in-depth for the write side: the current dashboard UI already
+ * only submits real S3-uploaded URLs for this field (confirmed via source
+ * read of `BuilderForm.tsx` — presigned-upload only, no free-text URL
+ * entry), so this closes the gap for any direct API write (Admin
+ * controller, scripts, future UI regressions) that bypasses that specific
+ * form. Does not retroactively touch any already-persisted legacy value —
+ * see {@code backend-gaps.md}'s MEDIA-H1 entry for the read-side/legacy-data
+ * handling decision.
  */
 @Service
 @RequiredArgsConstructor

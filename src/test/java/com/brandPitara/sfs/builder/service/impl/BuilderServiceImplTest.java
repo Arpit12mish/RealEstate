@@ -5,6 +5,7 @@ import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +29,7 @@ class BuilderServiceImplTest {
 
   @Mock private BuilderRepository builderRepository;
   @Mock private ContentVersionService contentVersionService;
+  @Mock private TrustedMediaUrlValidator trustedMediaUrlValidator;
 
   @InjectMocks private BuilderServiceImpl builderService;
 
@@ -129,6 +131,88 @@ class BuilderServiceImplTest {
     builderService.update(1L, request);
 
     assertThat(entity.getSlug()).isEqualTo("meridian-constructions");
+  }
+
+  // ---------- MEDIA-H1: logoUrl write-path validation ----------
+
+  @Test
+  void create_validatesLogoUrlThroughTrustedMediaUrlValidator_beforeSaving() {
+    when(builderRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder()
+        .name("Meridian Constructions")
+        .logoUrl("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/builders/1/logo.png")
+        .build();
+    builderService.create(request);
+
+    verify(trustedMediaUrlValidator).validate("https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/builders/1/logo.png");
+  }
+
+  @Test
+  void create_propagatesRejectionFromTrustedMediaUrlValidator_andNeverSaves() {
+    org.mockito.Mockito.doThrow(new IllegalArgumentException("mediaUrl host is not on the approved media host allowlist"))
+        .when(trustedMediaUrlValidator).validate("https://architectureideas.info/logo.jpg");
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder()
+        .name("Untrusted Co")
+        .logoUrl("https://architectureideas.info/logo.jpg")
+        .build();
+
+    assertThatThrownBy(() -> builderService.create(request)).isInstanceOf(IllegalArgumentException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
+  }
+
+  @Test
+  void create_invokesValidatorWithNull_whenLogoUrlIsAbsent_validatorAcceptsNullAsOptional() {
+    when(builderRepository.findBySlug(anyString())).thenReturn(Optional.empty());
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().name("No Logo Co").build();
+    builderService.create(request);
+
+    verify(trustedMediaUrlValidator).validate(null);
+  }
+
+  @Test
+  void update_validatesLogoUrl_onlyWhenTheRequestActuallyChangesIt() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().description("Updated description").build();
+    builderService.update(1L, request);
+
+    verify(trustedMediaUrlValidator, never()).validate(anyString());
+  }
+
+  @Test
+  void update_propagatesRejectionFromTrustedMediaUrlValidator_andNeverPersistsTheBadUrl() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    org.mockito.Mockito.doThrow(new IllegalArgumentException("mediaUrl host is not on the approved media host allowlist"))
+        .when(trustedMediaUrlValidator).validate("https://architectureideas.info/logo.jpg");
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().logoUrl("https://architectureideas.info/logo.jpg").build();
+
+    assertThatThrownBy(() -> builderService.update(1L, request)).isInstanceOf(IllegalArgumentException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
+  }
+
+  @Test
+  void updateLogo_validatesThroughTrustedMediaUrlValidator_beforePersisting() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    org.mockito.Mockito.doThrow(new IllegalArgumentException("mediaUrl host is not on the approved media host allowlist"))
+        .when(trustedMediaUrlValidator).validate("https://architectureideas.info/logo.jpg");
+
+    com.brandPitara.sfs.builder.dto.UpdateBuilderLogoRequest request =
+        com.brandPitara.sfs.builder.dto.UpdateBuilderLogoRequest.builder()
+            .logoUrl("https://architectureideas.info/logo.jpg")
+            .build();
+
+    assertThatThrownBy(() -> builderService.updateLogo(1L, request)).isInstanceOf(IllegalArgumentException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
   }
 
   // ---------- publicGetBySlug(): visibility enforcement ----------
