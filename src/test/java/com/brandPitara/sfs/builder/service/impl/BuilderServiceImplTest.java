@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.builder.service.impl;
 
 import com.brandPitara.sfs.builder.dto.BuilderPublicResponse;
+import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
@@ -184,6 +185,30 @@ class BuilderServiceImplTest {
     builderService.update(1L, request);
 
     verify(trustedMediaUrlValidator, never()).validate(anyString());
+  }
+
+  @Test
+  void update_ofAnUnrelatedField_neverRevalidatesOrTouchesAnAlreadyPersistedLegacyExternalLogoUrl() {
+    // A pre-existing row already carries a legacy, unvalidated external logo
+    // URL (the exact real-world MEDIA-H1 shape: written before this
+    // validator existed). An editor changing something unrelated (e.g.
+    // description) must still succeed — the legacy value must not be
+    // revalidated or rejected retroactively, and must survive untouched.
+    BuilderEntity entity = BuilderEntity.builder()
+        .id(1L).name("Tata Housing").slug("tata-housing")
+        .logoUrl("https://architectureideas.info/wp-content/uploads/2014/09/Tata-Housing1.jpg")
+        .active(true).published(true).deleted(false).priority(0)
+        .build();
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().description("Corrected description").build();
+    BuilderResponse response = builderService.update(1L, request);
+
+    verify(trustedMediaUrlValidator, never()).validate(anyString());
+    verify(builderRepository).save(any(BuilderEntity.class));
+    assertThat(entity.getLogoUrl()).isEqualTo("https://architectureideas.info/wp-content/uploads/2014/09/Tata-Housing1.jpg");
+    assertThat(response).isNotNull();
   }
 
   @Test
