@@ -3,6 +3,7 @@ package com.brandPitara.sfs.project.service.impl;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
 import com.brandPitara.sfs.project.dto.FloorPlanRoomDimensionResponse;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanInsightDetailResponse;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -13,6 +14,7 @@ import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanInsightRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRoomDimensionRepository;
+import com.brandPitara.sfs.project.repository.ProjectFloorPlanVisualAnalysisRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,14 +54,18 @@ class ProjectFloorPlanInsightServiceImplRoomComparisonTest {
     ProjectFloorPlanInsightRepository insightRepository = mock(ProjectFloorPlanInsightRepository.class);
     roomRepository = mock(ProjectFloorPlanRoomDimensionRepository.class);
     ContentVersionService contentVersionService = mock(ContentVersionService.class);
+    ProjectFloorPlanVisualAnalysisRepository visualAnalysisRepository = mock(ProjectFloorPlanVisualAnalysisRepository.class);
+    TrustedMediaUrlValidator trustedMediaUrlValidator = mock(TrustedMediaUrlValidator.class);
 
     service = new ProjectFloorPlanInsightServiceImpl(
         projectRepository,
         floorPlanRepository,
         insightRepository,
         roomRepository,
+        visualAnalysisRepository,
         contentVersionService,
-        new ProjectPublicVisibilityPolicy());
+        new ProjectPublicVisibilityPolicy(),
+        trustedMediaUrlValidator);
 
     when(insightRepository.findByFloorPlanIdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(FLOOR_PLAN_ID))
         .thenReturn(List.of());

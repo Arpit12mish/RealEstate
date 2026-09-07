@@ -3142,6 +3142,7 @@ POST /api/dashboard/media/presign-upload
 | `BUILDER_HIGHLIGHT_THUMBNAIL` | Builder Highlight card thumbnail | `builderId` |
 | `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | Thumbnail for SFS Builder Analysis video/YouTube item | `builderId` |
 | `CITY_COVER_IMAGE` | City/location cover image for homepage/trending city cards | `cityId` |
+| `FLOOR_PLAN_INSIGHT_VISUAL_MEDIA` | Floor Plan Insights "Visual Analysis" media (image/video/Lottie JSON) | `projectId` |
 
 `MASTER_PLAN_IMAGE` accepts only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, rejects PDFs, uses the current 2 MB image limit, and stores objects under `dashboard/projects/{projectId}/master-plan/{uuid}.{ext}`.
 
@@ -3153,9 +3154,11 @@ Builder Highlight upload types accept only `image/jpeg`, `image/jpg`, `image/png
 | `BUILDER_HIGHLIGHT_THUMBNAIL` | `dashboard/builders/{builderId}/highlights/thumbnails/{uuid}.{ext}` |
 | `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | `dashboard/builders/{builderId}/highlights/analysis-thumbnails/{uuid}.{ext}` |
 
+`FLOOR_PLAN_INSIGHT_VISUAL_MEDIA` accepts `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, `video/mp4`, or `application/json` (Lottie) — the only upload type that accepts all three media families, since the Visual Analysis media slot supports image, video, or Lottie JSON. Size limits: 2 MB image/JSON, 5 MB video. Storage key: `dashboard/projects/{projectId}/floor-plans/visual-analysis/{uuid}.{ext}`.
+
 **Project upload permission rule:**
 - `MASTER_PLAN_IMAGE` follows the relaxed Master Plan permission rule: A and DE can presign for any non-deleted project.
-- Other project upload types (`PROJECT_IMAGE`, `FLOOR_PLAN_IMAGE`, `CONNECTIVITY_MAP`, `BROCHURE_PDF`) still use the original DATA_ENTRY ownership/status checks.
+- Other project upload types (`PROJECT_IMAGE`, `FLOOR_PLAN_IMAGE`, `CONNECTIVITY_MAP`, `BROCHURE_PDF`, `FLOOR_PLAN_INSIGHT_VISUAL_MEDIA`) still use the original DATA_ENTRY ownership/status checks.
 
 **Example:**
 ```json
@@ -4721,6 +4724,32 @@ Result: snapshot fields set, appreciationPercent = 26.15.
 
 ---
 
+### 17.7 Dashboard Floor Plan Visual Analysis (DATA_ENTRY / REVIEWER Access)
+
+Singular resource — at most one Visual Analysis block per floor plan (title/description/media/tags), a sibling of §17.3 Insights and §17.4 Room Dimensions on the same public floor-plan detail response.
+
+```
+GET /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/visual-analysis
+PUT /api/dashboard/projects/{projectId}/floor-plans/{floorPlanId}/visual-analysis
+```
+
+| Method | Access |
+|--------|--------|
+| GET | ADMIN, REVIEWER, DATA_ENTRY |
+| PUT | ADMIN, DATA_ENTRY |
+
+PUT ownership check applies (DATA_ENTRY can only edit their own projects). No DELETE — PUT uses get-or-create semantics; `tags` is fully replaced (not merged) on every PUT that includes it.
+
+**Request / Response:** `ProjectFloorPlanVisualAnalysisUpsertRequest` / `ProjectFloorPlanVisualAnalysisResponse` — `title`, `description`, `mediaType` (`IMAGE` | `VIDEO` | `LOTTIE_JSON`), `mediaUrl`, `tags[]` (`label`, `color`, `sortOrder`).
+
+**Media URL validation:** `mediaUrl` must be an absolute `https` URL on the approved S3/CDN host allowlist (no `localhost`/private-IP hosts, no embedded credentials) — rejected at write time. A media URL that later fails re-validation on read is omitted from the public response (`mediaUrl` nulled), never fails the whole request.
+
+**Media upload:** presign via `POST /api/dashboard/media/presign-upload` with `uploadType: "FLOOR_PLAN_INSIGHT_VISUAL_MEDIA"` (project-scoped, requires `projectId`) — see §7's upload-type table. Accepts `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, `video/mp4`, or `application/json` (Lottie); size limits 2 MB image/JSON, 5 MB video. Storage key: `dashboard/projects/{projectId}/floor-plans/visual-analysis/{uuid}.{ext}`.
+
+**`demo`/`sourceLabel` on the public response:** `ProjectFloorPlanInsightDetailResponse.demo` is `true` only when neither this Visual Analysis block nor any room's Space Comparison data (§17.4) has been authored yet.
+
+---
+
 ## Quick Reference: Who Can Do What
 
 | Section | ADMIN | REVIEWER | DATA_ENTRY |
@@ -4754,6 +4783,8 @@ Result: snapshot fields set, appreciationPercent = 26.15.
 | Floor Plan Rooms (read) | ✅ | ✅ | ✅ |
 | Floor Plan Rooms (create/update) | ✅ | ❌ | ✅ |
 | Floor Plan Rooms (delete) | ✅ | ❌ | ❌ |
+| Floor Plan Visual Analysis (read) | ✅ | ✅ | ✅ |
+| Floor Plan Visual Analysis (create/update) | ✅ | ❌ | ✅ |
 | Submit Project for Review | ✅ | ❌ | ✅ |
 | Approve / Reject Project | ✅ | ✅ | ❌ |
 | Flag Field Issues | ✅ | ✅ | ❌ |

@@ -141,6 +141,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case COMPANY_COVER_IMAGE  -> "dashboard/companies/" + companyId + "/cover/" + filename;
             case COMPANY_MEDIA_IMAGE  -> "dashboard/companies/" + companyId + "/media/" + filename;
             case COMPANY_CERTIFICATE_IMAGE -> "dashboard/companies/" + companyId + "/certificates/" + filename;
+            case FLOOR_PLAN_INSIGHT_VISUAL_MEDIA -> "dashboard/projects/" + projectId + "/floor-plans/visual-analysis/" + filename;
         };
     }
 

@@ -337,6 +337,55 @@ class DashboardMediaUploadValidatorTest {
                 .hasMessageContaining("exceeds maximum allowed size of 2 MB");
     }
 
+    // --- Floor Plan Insights: Visual Analysis media (image/video/Lottie JSON) ---
+
+    @Test
+    void floorPlanInsightVisualMediaAcceptsImageVideoAndLottieButRejectsPdf() {
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/jpeg");
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4");
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json");
+
+        assertThatThrownBy(() -> validator.validateContentType(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+                "application/pdf"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4, application/json");
+    }
+
+    @Test
+    void floorPlanInsightVisualMediaRequiresProjectId() {
+        assertThatThrownBy(() -> validator.validateContextIds(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+                null,
+                null,
+                null,
+                null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("FLOOR_PLAN_INSIGHT_VISUAL_MEDIA requires projectId");
+    }
+
+    @Test
+    void floorPlanInsightVisualMediaAppliesPerContentTypeSizeLimits() {
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/jpeg", 2L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/jpeg", 2L * 1024 * 1024 + 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exceeds maximum allowed size of 2 MB");
+
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4", 5L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4", 5L * 1024 * 1024 + 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exceeds maximum allowed size of 5 MB");
+
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json", 2L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json", 2L * 1024 * 1024 + 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exceeds maximum allowed size of 2 MB");
+    }
+
     @Test
     void masterPlanRequestRejectsNegativeAreaAndCounts() {
         Validator beanValidator = Validation.buildDefaultValidatorFactory().getValidator();

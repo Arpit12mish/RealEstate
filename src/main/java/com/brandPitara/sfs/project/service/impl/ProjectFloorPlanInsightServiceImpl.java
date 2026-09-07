@@ -169,7 +169,8 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .map(this::withVerifiedMediaUrl)
         .orElse(null);
 
-    boolean demo = visualAnalysis == null;
+    boolean hasRoomComparisonData = rooms.stream().anyMatch(FloorPlanRoomDimensionResponse::isHasComparisonData);
+    boolean demo = visualAnalysis == null && !hasRoomComparisonData;
 
     return ProjectFloorPlanInsightDetailResponse.builder()
         .floorPlanId(fp.getId())

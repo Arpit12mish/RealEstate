@@ -172,6 +172,32 @@ class DashboardMediaPresignServiceImplTest {
     }
 
     @Test
+    void floorPlanInsightVisualMediaPresignBuildsProjectScopedStorageKeyAndUsesOwnershipPolicy() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        CityRepository cityRepository = mock(CityRepository.class);
+        ProjectRepository projectRepository = mock(ProjectRepository.class);
+        DashboardProjectOwnershipService ownershipService = mock(DashboardProjectOwnershipService.class);
+        DashboardMediaPresignServiceImpl service = service(mediaStorageService, cityRepository, ownershipService, projectRepository);
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+                "video/mp4",
+                1048576L,
+                42L,
+                null,
+                null,
+                null,
+                null
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("dashboard/projects/42/floor-plans/visual-analysis/")
+                .endsWith(".mp4");
+        verify(ownershipService).assertCurrentUserCanEditProject(42L);
+        verifyNoInteractions(projectRepository);
+    }
+
+    @Test
     void instagramReelThumbnailPresignBuildsGenericStorageKey() {
         MediaStorageService mediaStorageService = fakeMediaStorageService();
         DashboardMediaPresignServiceImpl service = service(mediaStorageService, mock(CityRepository.class));
