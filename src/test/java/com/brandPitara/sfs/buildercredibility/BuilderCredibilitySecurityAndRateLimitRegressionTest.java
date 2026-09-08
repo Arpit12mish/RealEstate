@@ -78,7 +78,7 @@ class BuilderCredibilitySecurityAndRateLimitRegressionTest {
 
         assertThat(source)
             .as("GET /api/builders/** must remain permitAll for both credibility endpoints to stay public")
-            .contains(".requestMatchers(HttpMethod.GET, \"/api/builders/**\").permitAll()");
+            .contains(".requestMatchers(\n                                HttpMethod.GET,\n                                \"/api/builders/**\"\n                        ).permitAll()");
     }
 
     @Test

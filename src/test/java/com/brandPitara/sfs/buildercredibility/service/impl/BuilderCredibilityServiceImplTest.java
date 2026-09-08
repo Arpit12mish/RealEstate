@@ -22,10 +22,12 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectConstructionStageRepos
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -438,9 +440,9 @@ class BuilderCredibilityServiceImplTest {
     @Test
     void unpublishedBuilderIsNeverIncludedInCredibilityCardsBecauseRepositoryQueryExcludesIt() {
         // publicListCredibilityCards trusts
-        // findTop20ByPublishedTrueAndActiveTrueAndDeletedFalse... - simulate the
-        // repository correctly excluding a builder by simply never returning it.
-        when(builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc())
+        // findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(Pageable) -
+        // simulate the repository correctly excluding a builder by simply never returning it.
+        when(builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any(Pageable.class)))
             .thenReturn(List.of());
 
         List<BuilderCredibilityCardResponse> cards = service.publicListCredibilityCards(null, 10);
@@ -488,7 +490,7 @@ class BuilderCredibilityServiceImplTest {
         ProjectEntity projectForOne = project(100L, builderOne, 0);
         ProjectEntity projectForTwo = project(101L, builderTwo, 0);
 
-        when(builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc())
+        when(builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any(Pageable.class)))
             .thenReturn(List.of(builderOne, builderTwo));
         when(projectRepository.findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(List.of(1L, 2L)))
             .thenReturn(List.of(projectForOne, projectForTwo));
@@ -497,8 +499,6 @@ class BuilderCredibilityServiceImplTest {
             .thenReturn(List.of());
         when(stageRepository.findByProjectIdInOrderByProjectIdAscDisplayOrderAscIdAsc(List.of(100L, 101L)))
             .thenReturn(List.of());
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(anyLong(), any()))
-            .thenReturn(false);
 
         List<BuilderCredibilityCardResponse> cards = service.publicListCredibilityCards(null, 10);
 
@@ -517,12 +517,10 @@ class BuilderCredibilityServiceImplTest {
     @Test
     void credibilityCardsLimitIsClampedBetweenOneAndTheHomeCardMaximum() {
         BuilderEntity b = builder(1L);
-        when(builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc())
+        when(builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any(Pageable.class)))
             .thenReturn(List.of(b));
         when(projectRepository.findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any()))
             .thenReturn(List.of());
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(anyLong(), any()))
-            .thenReturn(false);
 
         // A caller requesting far more than the home-card maximum (10) must be
         // clamped, not allowed to force an unbounded response.
@@ -534,19 +532,13 @@ class BuilderCredibilityServiceImplTest {
     // ── Existing test (unmodified) ──────────────────────────────────────────
 
     @Test
-    void credibilityCardsExposeHighlightsAvailabilityFromExistsQuery() {
-        when(builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc())
+    void credibilityCardsExposeHighlightsAvailabilityFromOneBatchQuery() {
+        when(builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(any(Pageable.class)))
             .thenReturn(List.of(builder(1L), builder(2L)));
         when(projectRepository.findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(List.of(1L, 2L)))
             .thenReturn(List.of());
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            1L,
-            BuilderHighlightStatus.PUBLISHED
-        )).thenReturn(true);
-        when(highlightRepository.existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            2L,
-            BuilderHighlightStatus.PUBLISHED
-        )).thenReturn(false);
+        when(highlightRepository.findBuilderIdsWithPublicHighlights(List.of(1L, 2L), BuilderHighlightStatus.PUBLISHED))
+            .thenReturn(Set.of(1L));
 
         var cards = service.publicListCredibilityCards(null, 10);
 
@@ -554,14 +546,10 @@ class BuilderCredibilityServiceImplTest {
         assertThat(cards.get(0).getHighlightsAvailable()).isTrue();
         assertThat(cards.get(0).getHighlightCtaLabel()).isEqualTo("Highlights");
         assertThat(cards.get(1).getHighlightsAvailable()).isFalse();
-        verify(highlightRepository).existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            1L,
-            BuilderHighlightStatus.PUBLISHED
-        );
-        verify(highlightRepository).existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
-            2L,
-            BuilderHighlightStatus.PUBLISHED
-        );
+        // One call covering both builders, not one call per builder - the
+        // same N+1 shape guarded elsewhere in this file for project-meter data.
+        verify(highlightRepository, times(1))
+            .findBuilderIdsWithPublicHighlights(any(), eq(BuilderHighlightStatus.PUBLISHED));
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

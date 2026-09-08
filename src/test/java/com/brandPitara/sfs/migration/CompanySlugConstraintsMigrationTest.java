@@ -21,10 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Runs the actual V137 migration SQL (read from the classpath, not
+ * Runs the actual V144 migration SQL (read from the classpath, not
  * copy-pasted) against a minimal reconstructed `company` table - the same
- * "run the real file" discipline as BuilderSlugMigrationTest (V136) and
- * PhoneNumberCheckConstraintMigrationTest (V110).
+ * "run the real file" discipline as BuilderSlugMigrationTest (V143) and
+ * PhoneNumberCheckConstraintMigrationTest (V110). Originally authored as
+ * V137, renumbered when merged past the immutable V140/V141 repair
+ * checkpoint.
  *
  * Amended Phase 7B-GA (migration safety audit): the original version of
  * this test class (and the migration it exercises) treated a pre-existing
@@ -41,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Per Phase 7B-G's own Migration Safety instruction: GAP-035 (an unrelated
  * business/city seed-ordering break at V6) already prevents a complete
  * fresh Flyway replay of this worktree's full migration history from ever
- * reaching V137 - so this test does NOT attempt a full bootstrap. It tests
+ * reaching V144 - so this test does NOT attempt a full bootstrap. It tests
  * the migration file in isolation against the minimum prerequisite Company
  * schema (the columns the migration itself reads/writes: id, slug,
  * published - plus active/deleted, added this phase purely so the
@@ -76,7 +78,7 @@ class CompanySlugConstraintsMigrationTest {
 
   private String migrationSql() throws IOException {
     ClassPathResource resource = new ClassPathResource(
-        "db/migration/V137__add_company_ever_published_and_reassert_slug_constraints.sql");
+        "db/migration/V144__add_company_ever_published_and_reassert_slug_constraints.sql");
     return Files.readString(resource.getFile().toPath(), StandardCharsets.UTF_8);
   }
 
