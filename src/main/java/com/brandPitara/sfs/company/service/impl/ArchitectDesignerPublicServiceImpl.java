@@ -3,6 +3,7 @@ package com.brandPitara.sfs.company.service.impl;
 import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.company.entity.*;
 import com.brandPitara.sfs.company.enums.ArchitectDesignerType;
+import com.brandPitara.sfs.company.mapper.CompanyProjectCardMapper;
 import com.brandPitara.sfs.company.mapper.CompanyProjectTagMapper;
 import com.brandPitara.sfs.company.repository.*;
 import com.brandPitara.sfs.company.service.ArchitectDesignerPublicService;
@@ -190,6 +191,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .logoUrl(company.getLogoUrl())
         .thumbnailImageUrl(company.getCoverImageUrl())
         .description(company.getDescription())
+        .servicesOffered(CompanyProjectTagMapper.toTags(company.getServicesOffered()))
         .topProjects(topProjects)
         .stats(stats)
         .awardsAndPublications(awards)
@@ -202,26 +204,8 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
         .build();
   }
 
-  private CompanyProjectCardDto toProjectCard(CompanyProjectEntity p) {
-    CompanyEntity c = p.getCompany();
-    return CompanyProjectCardDto.builder()
-        .id(p.getId())
-        .name(p.getName())
-        .companyId(c != null ? c.getId() : null)
-        .companyName(c != null ? c.getName() : null)
-        .companyLogoUrl(c != null ? c.getLogoUrl() : null)
-        .cityId(p.getCity() != null ? p.getCity().getId() : null)
-        .cityName(p.getCity() != null ? p.getCity().getName() : null)
-        .addressLine(p.getAddressLine())
-        .projectCityLatitude(p.getCity() != null ? p.getCity().getLatitude() : null)
-        .projectCityLongitude(p.getCity() != null ? p.getCity().getLongitude() : null)
-        .clientName(p.getClientName())
-        .projectArea(p.getProjectArea())
-        .detail3(p.getDetail3())
-        .tags(CompanyProjectTagMapper.toTags(p.getTags()))
-        .coverMediaUrl(p.getCoverMediaUrl())
-        .coverMediaType(p.getCoverMediaType())
-        .build();
+  private CompanyProjectCardDto toProjectCard(CompanyProjectEntity project) {
+    return CompanyProjectCardMapper.toCard(project);
   }
 
   // No place attached yet -> no source to report at all (null, not a guessed

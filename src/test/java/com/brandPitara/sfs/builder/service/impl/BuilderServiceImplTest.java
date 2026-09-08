@@ -5,8 +5,12 @@ import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
+import com.brandPitara.sfs.project.exception.PublicationConflictException;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +19,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +36,8 @@ class BuilderServiceImplTest {
   @Mock private BuilderRepository builderRepository;
   @Mock private ContentVersionService contentVersionService;
   @Mock private TrustedMediaUrlValidator trustedMediaUrlValidator;
+  @Mock private ProjectRepository projectRepository;
+  @Mock private ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @InjectMocks private BuilderServiceImpl builderService;
 
@@ -289,5 +296,95 @@ class BuilderServiceImplTest {
 
     assertThat(result.getContent()).hasSize(1);
     assertThat(result.getContent().get(0).getSlug()).isEqualTo("meridian-constructions");
+  }
+
+  // ---------- project cache eviction on builder mutation ----------
+
+  @Test
+  void update_evictsEveryProjectOwnedByTheBuilder() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(projectRepository.findIdsByBuilderIdAndDeletedFalse(1L)).thenReturn(List.of(10L, 11L));
+
+    builderService.update(1L, BuilderUpsertRequest.builder().description("Updated").build());
+
+    verify(cacheEvictionPublisher).publishAll(List.of(10L, 11L), ProjectCacheEvictionReason.BUILDER_CHANGED);
+  }
+
+  @Test
+  void softDelete_evictsAffectedProjects_whenBuilderHasNoPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalseForUpdate(1L)).thenReturn(Optional.of(entity));
+    when(projectRepository.countByBuilderIdAndPublishedTrueAndDeletedFalse(1L)).thenReturn(0L);
+    when(projectRepository.findIdsByBuilderIdAndDeletedFalse(1L)).thenReturn(List.of(10L));
+
+    builderService.softDelete(1L);
+
+    verify(builderRepository).save(any(BuilderEntity.class));
+    verify(cacheEvictionPublisher).publishAll(List.of(10L), ProjectCacheEvictionReason.BUILDER_CHANGED);
+  }
+
+  // ---------- published-project guard on deactivate / unpublish / delete ----------
+
+  @Test
+  void softDelete_rejectedWhenBuilderHasPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalseForUpdate(1L)).thenReturn(Optional.of(entity));
+    when(projectRepository.countByBuilderIdAndPublishedTrueAndDeletedFalse(1L)).thenReturn(3L);
+
+    assertThatThrownBy(() -> builderService.softDelete(1L))
+        .isInstanceOf(PublicationConflictException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
+  }
+
+  @Test
+  void setPublished_toFalse_rejectedWhenBuilderHasPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalseForUpdate(1L)).thenReturn(Optional.of(entity));
+    when(projectRepository.countByBuilderIdAndPublishedTrueAndDeletedFalse(1L)).thenReturn(1L);
+
+    assertThatThrownBy(() -> builderService.setPublished(1L, false))
+        .isInstanceOf(PublicationConflictException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
+  }
+
+  @Test
+  void setPublished_toTrue_doesNotCheckForPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(entity));
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(projectRepository.findIdsByBuilderIdAndDeletedFalse(1L)).thenReturn(List.of());
+
+    builderService.setPublished(1L, true);
+
+    verify(projectRepository, never()).countByBuilderIdAndPublishedTrueAndDeletedFalse(any());
+  }
+
+  @Test
+  void update_deactivating_rejectedWhenBuilderHasPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalseForUpdate(1L)).thenReturn(Optional.of(entity));
+    when(projectRepository.countByBuilderIdAndPublishedTrueAndDeletedFalse(1L)).thenReturn(2L);
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().active(false).build();
+    assertThatThrownBy(() -> builderService.update(1L, request))
+        .isInstanceOf(PublicationConflictException.class);
+    verify(builderRepository, never()).save(any(BuilderEntity.class));
+  }
+
+  @Test
+  void update_deactivating_allowedWhenBuilderHasNoPublishedProjects() {
+    BuilderEntity entity = existing(1L, "Meridian Constructions", "meridian-constructions");
+    when(builderRepository.findByIdAndDeletedFalseForUpdate(1L)).thenReturn(Optional.of(entity));
+    when(projectRepository.countByBuilderIdAndPublishedTrueAndDeletedFalse(1L)).thenReturn(0L);
+    when(builderRepository.save(any(BuilderEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(projectRepository.findIdsByBuilderIdAndDeletedFalse(1L)).thenReturn(List.of());
+
+    BuilderUpsertRequest request = BuilderUpsertRequest.builder().active(false).build();
+    builderService.update(1L, request);
+
+    assertThat(entity.getActive()).isFalse();
+    verify(builderRepository).save(any(BuilderEntity.class));
   }
 }

@@ -159,6 +159,53 @@ class DashboardMediaUploadValidatorTest {
         validator.validateContextIds(DashboardMediaUploadType.HOME_LOTTIE_JSON, null, null, null, null, null);
     }
 
+    @Test
+    void homePromoBannerVideoAcceptsOnlyMp4AndUsesDedicatedLimit() {
+        validator.validateContentType(DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO, "video/mp4");
+        validator.validateFileSize(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/mp4",
+                25L * 1024 * 1024
+        );
+
+        assertThatThrownBy(() -> validator.validateContentType(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/quicktime"
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("only video/mp4");
+
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/mp4",
+                25L * 1024 * 1024 + 1
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("25 MB");
+    }
+
+    @Test
+    void homePromoBannerVideoRequiresBannerId() {
+        assertThatThrownBy(() -> validator.validateContextIds(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                null, null, null, null, null, null
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requires promoBannerId");
+
+        validator.validateContextIds(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                null, null, null, null, null, 99L
+        );
+    }
+
+    @Test
+    void companyProjectMediaImageRequiresCompanyProjectId() {
+        assertThatThrownBy(() -> validator.validateContextIds(
+                DashboardMediaUploadType.COMPANY_PROJECT_MEDIA_IMAGE,
+                null, null, null, null, null, null, null
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requires companyProjectId");
+
+        validator.validateContextIds(
+                DashboardMediaUploadType.COMPANY_PROJECT_MEDIA_IMAGE,
+                null, null, null, null, null, null, 55L
+        );
+    }
+
     // --- Brand uploads (Phase 2B.2) ---
 
     @Test

@@ -3102,6 +3102,38 @@ GET /api/admin/interior-cost/addon-rules
 
 ## 11. Media Upload (Presign)
 
+### Home Promo Banners
+
+Secured promo-banner management is available under `/api/dashboard/promo-banners`.
+
+| Method | Path | Access | Purpose |
+|--------|------|--------|---------|
+| `GET` | `/api/dashboard/promo-banners?categoryId=0&slotKey=HERO` | A, R, DE | List non-deleted banners with pagination/filtering |
+| `GET` | `/api/dashboard/promo-banners/{bannerId}` | A, R, DE | Get one banner |
+| `POST` | `/api/dashboard/promo-banners` | A, DE | Create a banner |
+| `PUT` | `/api/dashboard/promo-banners/{bannerId}` | A, DE | Full banner update |
+| `PATCH` | `/api/dashboard/promo-banners/{bannerId}/active?value=true` | A | Activate/deactivate |
+| `DELETE` | `/api/dashboard/promo-banners/{bannerId}` | A | Soft-delete |
+
+Supported `mediaType` values are `IMAGE`, `LOTTIE_JSON`, and `VIDEO`. For `VIDEO`, presign an upload via `POST /api/dashboard/media/presign-upload` with `uploadType: "HOME_PROMO_BANNER_VIDEO"` (see below), then pass the resulting `publicUrl` as `mediaUrl`.
+
+```json
+{
+  "categoryId": 0,
+  "slotKey": "HERO",
+  "title": "Compare Smarter",
+  "subtitle": "Compare projects side by side",
+  "mediaType": "VIDEO",
+  "mediaUrl": "https://cdn.example.com/home/promo-banners/99/hero.mp4",
+  "targetUrl": "/compare-projects/select",
+  "priority": 2,
+  "active": true,
+  "displayDurationMs": 12000,
+  "startAt": null,
+  "endAt": null
+}
+```
+
 Use this endpoint to get a pre-signed S3 URL for direct file upload from the browser. This avoids routing large files through your backend.
 
 **Upload flow:**
@@ -3127,6 +3159,8 @@ POST /api/dashboard/media/presign-upload
 | `projectId` | number | ❌ | Required when uploadType is project-related | Project this upload belongs to |
 | `builderId` | number | ❌ | Required when uploadType is builder-related | Builder this upload belongs to |
 | `cityId` | number | ❌ | Required when uploadType is `CITY_COVER_IMAGE` | City this cover image belongs to |
+| `promoBannerId` | number | ❌ | Required when uploadType is `HOME_PROMO_BANNER_VIDEO` | Existing non-deleted promo banner |
+| `companyProjectId` | number | ❌ | Required when uploadType is `COMPANY_PROJECT_MEDIA_IMAGE` | Existing non-deleted company project |
 
 **`uploadType` values and when to use each:**
 
@@ -3142,6 +3176,8 @@ POST /api/dashboard/media/presign-upload
 | `BUILDER_HIGHLIGHT_THUMBNAIL` | Builder Highlight card thumbnail | `builderId` |
 | `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | Thumbnail for SFS Builder Analysis video/YouTube item | `builderId` |
 | `CITY_COVER_IMAGE` | City/location cover image for homepage/trending city cards | `cityId` |
+| `HOME_PROMO_BANNER_VIDEO` | Home promo-banner MP4 | `promoBannerId` |
+| `COMPANY_PROJECT_MEDIA_IMAGE` | Architect/designer company-project media image | `companyProjectId` |
 | `FLOOR_PLAN_INSIGHT_VISUAL_MEDIA` | Floor Plan Insights "Visual Analysis" media (image/video/Lottie JSON) | `projectId` |
 
 `MASTER_PLAN_IMAGE` accepts only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, rejects PDFs, uses the current 2 MB image limit, and stores objects under `dashboard/projects/{projectId}/master-plan/{uuid}.{ext}`.
@@ -3155,6 +3191,10 @@ Builder Highlight upload types accept only `image/jpeg`, `image/jpg`, `image/png
 | `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | `dashboard/builders/{builderId}/highlights/analysis-thumbnails/{uuid}.{ext}` |
 
 `FLOOR_PLAN_INSIGHT_VISUAL_MEDIA` accepts `image/jpeg`, `image/jpg`, `image/png`, `image/webp`, `video/mp4`, or `application/json` (Lottie) — the only upload type that accepts all three media families, since the Visual Analysis media slot supports image, video, or Lottie JSON. Size limits: 2 MB image/JSON, 5 MB video. Storage key: `dashboard/projects/{projectId}/floor-plans/visual-analysis/{uuid}.{ext}`.
+
+`HOME_PROMO_BANNER_VIDEO` accepts only `video/mp4`, defaults to a configurable 25 MB limit (`app.media.s3.max-promo-banner-video-bytes`), and stores objects under `home/promo-banners/{promoBannerId}/{uuid}.mp4`.
+
+`COMPANY_PROJECT_MEDIA_IMAGE` accepts only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, uses the current 2 MB image limit, and stores objects under `dashboard/company-projects/{companyProjectId}/media/{uuid}.{ext}`.
 
 **Project upload permission rule:**
 - `MASTER_PLAN_IMAGE` follows the relaxed Master Plan permission rule: A and DE can presign for any non-deleted project.

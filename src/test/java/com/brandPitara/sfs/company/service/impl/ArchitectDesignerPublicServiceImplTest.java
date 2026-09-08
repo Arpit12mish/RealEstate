@@ -352,6 +352,48 @@ class ArchitectDesignerPublicServiceImplTest {
   }
 
   @Test
+  void getDetail_includesServicesOfferedPreservingSpacesAndSavedOrder() {
+    CompanyEntity company = company();
+    company.setServicesOffered(" House Interior,Modular Kitchen, Bedroom Design ");
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company));
+    stubCommonEmptyLists();
+    stubRemainingAggregationEmpty();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered())
+        .containsExactly("House Interior", "Modular Kitchen", "Bedroom Design");
+  }
+
+  @Test
+  void getDetail_filtersBlankServicesWithoutConcatenatingNames() {
+    CompanyEntity company = company();
+    company.setServicesOffered("House Interior, ,Modular Kitchen,");
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company));
+    stubCommonEmptyLists();
+    stubRemainingAggregationEmpty();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered())
+        .containsExactly("House Interior", "Modular Kitchen");
+  }
+
+  @Test
+  void getDetail_returnsEmptyServicesWhenStoredValueIsNull() {
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company()));
+    stubCommonEmptyLists();
+    stubRemainingAggregationEmpty();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered()).isEmpty();
+  }
+
+  @Test
   void getDetail_returnsConnectedBrandsFromTheConnectedBrandService() {
     when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
         .thenReturn(Optional.of(company()));

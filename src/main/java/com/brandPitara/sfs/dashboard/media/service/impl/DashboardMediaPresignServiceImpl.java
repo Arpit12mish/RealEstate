@@ -6,6 +6,7 @@ import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
 import com.brandPitara.sfs.dashboard.media.service.DashboardMediaPresignService;
 import com.brandPitara.sfs.brand.repository.BrandRepository;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
+import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
 import com.brandPitara.sfs.media.service.MediaStorageService;
@@ -13,6 +14,7 @@ import com.brandPitara.sfs.media.service.PresignedUploadRequest;
 import com.brandPitara.sfs.media.service.PresignedUploadResult;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
+import com.brandPitara.sfs.repository.PromoBannerRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,6 +35,8 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
     private final ProjectRepository projectRepository;
     private final BrandRepository brandRepository;
     private final CompanyRepository companyRepository;
+    private final CompanyProjectRepository companyProjectRepository;
+    private final PromoBannerRepository promoBannerRepository;
 
     @Override
     public DashboardPresignUploadResponse createPresignedUpload(DashboardPresignUploadRequest request) {
@@ -40,17 +44,19 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         uploadValidator.validateFileSize(request.uploadType(), request.contentType(), request.fileSizeBytes());
         uploadValidator.validateContextIds(
                 request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(),
-                request.companyId()
+                request.companyId(), request.promoBannerId(), request.companyProjectId()
         );
         assertProjectUploadAllowed(request.uploadType(), request.projectId());
         assertCityExistsForCityUpload(request.uploadType(), request.cityId());
         assertBrandExistsForBrandUpload(request.uploadType(), request.brandId());
         assertCompanyExistsForCompanyUpload(request.uploadType(), request.companyId());
+        assertPromoBannerExistsForUpload(request.uploadType(), request.promoBannerId());
+        assertCompanyProjectExistsForUpload(request.uploadType(), request.companyProjectId());
 
         String ext = extFromContentType(request.contentType());
         String key = buildKey(
                 request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(),
-                request.companyId(), ext
+                request.companyId(), request.promoBannerId(), request.companyProjectId(), ext
         );
 
         Map<String, String> requiredHeaders = Map.of(
@@ -108,11 +114,24 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         }
     }
 
+    private void assertPromoBannerExistsForUpload(DashboardMediaUploadType uploadType, Long promoBannerId) {
+        if (uploadType.isPromoBannerScoped() && !promoBannerRepository.existsByIdAndDeletedFalse(promoBannerId)) {
+            throw new EntityNotFoundException("Promo banner not found: " + promoBannerId);
+        }
+    }
+
+    private void assertCompanyProjectExistsForUpload(DashboardMediaUploadType uploadType, Long companyProjectId) {
+        if (uploadType.isCompanyProjectScoped()
+                && companyProjectRepository.findByIdAndDeletedFalse(companyProjectId).isEmpty()) {
+            throw new EntityNotFoundException("Company project not found: " + companyProjectId);
+        }
+    }
+
     // --- key building ---
 
     private String buildKey(
             DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, Long brandId,
-            Long companyId, String ext
+            Long companyId, Long promoBannerId, Long companyProjectId, String ext
     ) {
         String filename = UUID.randomUUID() + "." + ext;
         return switch (uploadType) {
@@ -126,6 +145,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case INSTAGRAM_REEL_THUMBNAIL -> "dashboard/instagram-reels/thumbnails/" + filename;
             case INSTAGRAM_REEL_PREVIEW_VIDEO -> "dashboard/instagram-reels/previews/" + filename;
             case HOME_LOTTIE_JSON -> "home/lottie/" + filename;
+            case HOME_PROMO_BANNER_VIDEO -> "home/promo-banners/" + promoBannerId + "/" + filename;
             case APP_SCREEN_LOTTIE_JSON -> "app/screen-content/lottie/" + filename;
             case APP_SCREEN_VIDEO -> "app/screen-content/video/" + filename;
             case BUILDER_HIGHLIGHT_IMAGE -> "dashboard/builders/" + builderId + "/highlights/images/" + filename;
@@ -141,6 +161,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case COMPANY_COVER_IMAGE  -> "dashboard/companies/" + companyId + "/cover/" + filename;
             case COMPANY_MEDIA_IMAGE  -> "dashboard/companies/" + companyId + "/media/" + filename;
             case COMPANY_CERTIFICATE_IMAGE -> "dashboard/companies/" + companyId + "/certificates/" + filename;
+            case COMPANY_PROJECT_MEDIA_IMAGE -> "dashboard/company-projects/" + companyProjectId + "/media/" + filename;
             case FLOOR_PLAN_INSIGHT_VISUAL_MEDIA -> "dashboard/projects/" + projectId + "/floor-plans/visual-analysis/" + filename;
         };
     }

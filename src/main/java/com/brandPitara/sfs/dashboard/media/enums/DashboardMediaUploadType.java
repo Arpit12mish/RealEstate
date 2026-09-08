@@ -12,6 +12,7 @@ public enum DashboardMediaUploadType {
     INSTAGRAM_REEL_THUMBNAIL,
     INSTAGRAM_REEL_PREVIEW_VIDEO,
     HOME_LOTTIE_JSON,
+    HOME_PROMO_BANNER_VIDEO,
     APP_SCREEN_LOTTIE_JSON,
     APP_SCREEN_VIDEO,
     BUILDER_HIGHLIGHT_IMAGE,
@@ -44,7 +45,9 @@ public enum DashboardMediaUploadType {
     // which allows PDF; this one is image-only, matching COMPANY_MEDIA_IMAGE).
     COMPANY_CERTIFICATE_IMAGE,
 
-    // Floor Plan Insights - Visual Analysis media (image/video/Lottie JSON),
+    COMPANY_PROJECT_MEDIA_IMAGE,
+
+    // Floor Plan Insights redesign - Visual Analysis media (image/video/Lottie JSON),
     // one per floor plan. Project-scoped like FLOOR_PLAN_IMAGE.
     FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
 
@@ -54,6 +57,7 @@ public enum DashboardMediaUploadType {
 
     public boolean requiresVideo() {
         return this == INSTAGRAM_REEL_PREVIEW_VIDEO
+                || this == HOME_PROMO_BANNER_VIDEO
                 || this == APP_SCREEN_VIDEO;
     }
 
@@ -118,5 +122,13 @@ public enum DashboardMediaUploadType {
                 || this == COMPANY_COVER_IMAGE
                 || this == COMPANY_MEDIA_IMAGE
                 || this == COMPANY_CERTIFICATE_IMAGE;
+    }
+
+    public boolean isCompanyProjectScoped() {
+        return this == COMPANY_PROJECT_MEDIA_IMAGE;
+    }
+
+    public boolean isPromoBannerScoped() {
+        return this == HOME_PROMO_BANNER_VIDEO;
     }
 }
