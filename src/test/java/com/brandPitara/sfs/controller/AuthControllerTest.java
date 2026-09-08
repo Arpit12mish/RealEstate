@@ -1,11 +1,13 @@
 package com.brandPitara.sfs.controller;
 
 import com.brandPitara.sfs.dto.LogoutRequest;
+import com.brandPitara.sfs.dto.SendOtpRequest;
 import com.brandPitara.sfs.dto.VerifyOtpRequest;
 import com.brandPitara.sfs.entity.RefreshToken;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.enums.OnboardingStatus;
 import com.brandPitara.sfs.enums.Role;
+import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.service.AppUserDetailsService;
 import com.brandPitara.sfs.service.GuestSessionService;
 import com.brandPitara.sfs.service.LoginHistoryService;
@@ -13,6 +15,7 @@ import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.RefreshTokenService;
 import com.brandPitara.sfs.service.UserService;
+import com.brandPitara.sfs.service.model.OtpSendResult;
 import com.brandPitara.sfs.service.model.OtpVerificationResult;
 import com.brandPitara.sfs.service.model.UserLoginResult;
 import com.brandPitara.sfs.util.JwtTokenUtil;
@@ -58,9 +61,65 @@ class AuthControllerTest {
     private GuestSessionService guestSessionService;
     @Mock
     private HttpServletRequest httpServletRequest;
+    @Mock
+    private LogSanitizer logSanitizer;
 
     @InjectMocks
     private AuthController authController;
+
+    @Test
+    void requestOtpReturnsStructuredSuccessContract() {
+        SendOtpRequest request = new SendOtpRequest();
+        request.setPhoneNumber("9876543210");
+
+        when(otpService.sendOtp("9876543210")).thenReturn(
+                OtpSendResult.builder()
+                        .status("OTP_SENT")
+                        .message("OTP sent successfully")
+                        .resendAfterSeconds(30)
+                        .expiresInSeconds(600)
+                        .normalizedPhoneNumber("+919876543210")
+                        .build()
+        );
+        when(logSanitizer.maskPhone("+919876543210")).thenReturn("98******10");
+
+        ResponseEntity<?> response = authController.requestOtp(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertThat(body.get("success")).isEqualTo(true);
+        assertThat(body.get("status")).isEqualTo("OTP_SENT");
+        assertThat(body.get("resendAfterSeconds")).isEqualTo(30L);
+        assertThat(body.get("expiresInSeconds")).isEqualTo(600L);
+        assertThat(body.get("maskedDestination")).isEqualTo("98******10");
+    }
+
+    @Test
+    void resendOtpDelegatesToSameOtpServiceSendOtpAsRequestOtp() {
+        SendOtpRequest request = new SendOtpRequest();
+        request.setPhoneNumber("9876543210");
+
+        when(otpService.sendOtp("9876543210")).thenReturn(
+                OtpSendResult.builder()
+                        .status("OTP_SENT")
+                        .message("OTP sent successfully")
+                        .resendAfterSeconds(30)
+                        .expiresInSeconds(600)
+                        .normalizedPhoneNumber("+919876543210")
+                        .build()
+        );
+        when(logSanitizer.maskPhone("+919876543210")).thenReturn("98******10");
+
+        ResponseEntity<?> response = authController.resendOtp(request);
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertThat(body.get("success")).isEqualTo(true);
+        assertThat(body.get("maskedDestination")).isEqualTo("98******10");
+        // Resend has no separate service method - it must call the exact same
+        // sendOtp used by request-otp, which is what keeps rate limits/cooldown unified.
+        verify(otpService).sendOtp("9876543210");
+    }
 
     @Test
     void verifyOtpUsesNormalizedPhoneForUserCreationAndJwtClaims() {
@@ -109,6 +168,7 @@ class AuthControllerTest {
         verify(userService).findOrCreateVerifiedUserByPhone("+919876543210");
         verify(userDetailsService).loadUserByUsername("+919876543210");
         verify(jwtTokenUtil).generateToken(userDetails, 42L, "+919876543210", "CUSTOMER");
+        verify(guestSessionService).linkGuestSessionToUser("device-1", user);
     }
 
     @Test
@@ -173,7 +233,7 @@ class AuthControllerTest {
 
         when(refreshTokenService.verifyForLogoutOnly("raw-refresh-token")).thenReturn(refreshToken);
 
-        ResponseEntity<?> response = authController.logoutAll(request);
+        ResponseEntity<?> response = authController.logoutAll(request, httpServletRequest);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         verify(refreshTokenService).verifyForLogoutOnly("raw-refresh-token");
@@ -188,7 +248,7 @@ class AuthControllerTest {
         when(refreshTokenService.verifyForLogoutOnly("bad-token"))
                 .thenThrow(new IllegalArgumentException("Invalid refresh token"));
 
-        ResponseEntity<?> response = authController.logoutAll(request);
+        ResponseEntity<?> response = authController.logoutAll(request, httpServletRequest);
 
         assertThat(response.getStatusCode().value()).isEqualTo(401);
         verify(refreshTokenService, never()).revokeAllByUser(any());

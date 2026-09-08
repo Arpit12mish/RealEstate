@@ -34,4 +34,15 @@ public interface OtpRequestTrackerRepository extends JpaRepository<OtpRequestTra
             ON CONFLICT (phone_number) DO NOTHING
             """, nativeQuery = true)
     int insertIfAbsent(@Param("phoneNumber") String phoneNumber);
+
+    /**
+     * Single-column update for the post-Twilio "record success" step. Deliberately
+     * does not take the PESSIMISTIC_WRITE lock (send/cooldown/window state is
+     * already reserved before the Twilio call) and does not round-trip a full
+     * entity read+save, so it cannot clobber a concurrent transaction's changes
+     * to the other tracker columns.
+     */
+    @Modifying
+    @Query("UPDATE OtpRequestTracker t SET t.lastSentAt = :sentAt WHERE t.phoneNumber = :phoneNumber")
+    void updateLastSentAt(@Param("phoneNumber") String phoneNumber, @Param("sentAt") java.time.OffsetDateTime sentAt);
 }
