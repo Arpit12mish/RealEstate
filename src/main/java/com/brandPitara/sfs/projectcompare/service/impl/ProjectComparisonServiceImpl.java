@@ -7,15 +7,19 @@ import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectConnectivityPlaceEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
+import com.brandPitara.sfs.project.entity.ProjectMasterPlanEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.enums.ProjectMediaType;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityPlaceRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRepository;
+import com.brandPitara.sfs.project.repository.ProjectMasterPlanRepository;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.projectcompare.builder.ProjectComparisonOverviewInsightBuilder;
 import com.brandPitara.sfs.projectcompare.builder.ProjectComparisonSectionBuilder;
 import com.brandPitara.sfs.projectcompare.dto.request.ProjectComparisonRequest;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonProjectHeader;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonOverviewInsightResponse;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonSection;
 import com.brandPitara.sfs.projectcompare.dto.response.ProjectComparisonResponse;
 import com.brandPitara.sfs.projectcompare.enums.ComparisonSectionKey;
@@ -49,8 +53,10 @@ public class ProjectComparisonServiceImpl implements ProjectComparisonService {
     private final ProjectConstructionStageRepository stageRepository;
     private final ProjectFloorPlanRepository floorPlanRepository;
     private final ProjectConnectivityPlaceRepository connectivityPlaceRepository;
+    private final ProjectMasterPlanRepository masterPlanRepository;
     private final ProjectMediaRepository mediaRepository;
     private final BuilderCredibilityService builderCredibilityService;
+    private final ProjectComparisonOverviewInsightBuilder overviewInsightBuilder;
     private final ProjectComparisonSectionBuilder sectionBuilder;
 
     @Override
@@ -130,9 +136,26 @@ public class ProjectComparisonServiceImpl implements ProjectComparisonService {
                         .stream()
                         .collect(Collectors.groupingBy(pl -> pl.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
 
+        Map<Long, ProjectMasterPlanEntity> masterPlans =
+                masterPlanRepository.findByProjectIdInAndActiveTrueAndDeletedFalse(projectIds).stream()
+                        .collect(Collectors.toMap(
+                                plan -> plan.getProject().getId(),
+                                plan -> plan,
+                                (first, ignored) -> first,
+                                LinkedHashMap::new
+                        ));
+
+        List<ProjectMediaEntity> media = mediaRepository.findActiveByProjectIds(projectIds);
+        Map<Long, List<ProjectMediaEntity>> mediaMap = media.stream()
+                .collect(Collectors.groupingBy(
+                        item -> item.getProject().getId(),
+                        LinkedHashMap::new,
+                        Collectors.toList()
+                ));
+
         // Hero image: first IMAGE per project (media ordered by sortOrder asc, id asc for determinism)
         Map<Long, ProjectMediaEntity> heroImageMap = new LinkedHashMap<>();
-        mediaRepository.findActiveByProjectIds(projectIds).forEach(m -> {
+        media.forEach(m -> {
             if (m.getMediaType() == ProjectMediaType.IMAGE) {
                 heroImageMap.putIfAbsent(m.getProject().getId(), m);
             }
@@ -157,11 +180,23 @@ public class ProjectComparisonServiceImpl implements ProjectComparisonService {
         // ── 6. Build headers ──────────────────────────────────────────────────
         List<ComparisonProjectHeader> headers = sectionBuilder.buildHeaders(projects, heroImageMap);
 
+        ComparisonOverviewInsightResponse overviewInsight = sectionKeys.contains(ComparisonSectionKey.OVERVIEW)
+                ? overviewInsightBuilder.build(
+                        projects,
+                        snapshots,
+                        locationScores,
+                        floorPlansMap,
+                        masterPlans,
+                        credibilityMap
+                )
+                : null;
+
         // ── 7. Build requested sections ───────────────────────────────────────
         List<ComparisonSection> sections = new ArrayList<>();
         for (ComparisonSectionKey key : sectionKeys) {
             ComparisonSection section = switch (key) {
-                case OVERVIEW     -> sectionBuilder.buildOverview(projects, snapshots);
+                case VISUAL_COMPARISON -> sectionBuilder.buildVisualComparison(projects, mediaMap);
+                case OVERVIEW     -> sectionBuilder.buildOverview(projects, snapshots, overviewInsight);
                 case PRICE        -> sectionBuilder.buildPrice(projects, snapshots);
                 case UNITS        -> sectionBuilder.buildUnits(projects, floorPlansMap);
                 case AMENITIES    -> sectionBuilder.buildAmenities(projects, amenitiesMap, snapshots);
