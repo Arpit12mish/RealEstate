@@ -17,6 +17,9 @@ import com.brandPitara.sfs.dto.VerifyOtpRequest;
 import com.brandPitara.sfs.dto.SendOtpRequest;
 import com.brandPitara.sfs.entity.RefreshToken;
 import com.brandPitara.sfs.entity.User;
+import com.brandPitara.sfs.observability.LogEvents;
+import com.brandPitara.sfs.observability.LogSanitizer;
+import com.brandPitara.sfs.observability.LoggingConstants;
 import com.brandPitara.sfs.service.AppUserDetailsService;
 import com.brandPitara.sfs.service.GuestSessionService;
 import com.brandPitara.sfs.service.LoginHistoryService;
@@ -24,6 +27,7 @@ import com.brandPitara.sfs.service.OnboardingService;
 import com.brandPitara.sfs.service.OtpService;
 import com.brandPitara.sfs.service.RefreshTokenService;
 import com.brandPitara.sfs.service.UserService;
+import com.brandPitara.sfs.service.model.OtpSendResult;
 import com.brandPitara.sfs.service.model.OtpVerificationResult;
 import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import com.brandPitara.sfs.service.model.UserLoginResult;
@@ -33,12 +37,19 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.logstash.logback.argument.StructuredArguments;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.LinkedHashMap;
 
 @Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
 public class AuthController {
+
+    private static final Logger SECURITY_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_SECURITY);
 
     private final JwtTokenUtil jwtTokenUtil;
     private final AppUserDetailsService userDetailsService;
@@ -48,18 +59,33 @@ public class AuthController {
     private final LoginHistoryService loginHistoryService;
     private final OnboardingService onboardingService ;
     private final GuestSessionService guestSessionService;
+    private final LogSanitizer logSanitizer;
 
-    // 1️⃣ Request OTP  TODO: add rate limiting per phone/IP here
+    // 1️⃣ Request OTP (rate-limited per phone/IP by RateLimitingFilter's MOBILE_OTP_REQUEST policy)
     @PostMapping("/request-otp")
     public ResponseEntity<?> requestOtp(@Valid @RequestBody SendOtpRequest request) {
+        return ResponseEntity.ok(buildSendResponse(otpService.sendOtp(request.getPhoneNumber())));
+    }
 
-        var result = otpService.sendOtp(request.getPhoneNumber());
+    // 1️⃣b Resend OTP - same OtpService.sendOtp() call as above, same MOBILE_OTP_REQUEST
+    // rate-limit policy (see RateLimitPolicyResolver) so initial sends and resends share
+    // one abuse budget per phone/IP. A dedicated route exists only for a clearer client
+    // contract (explicit "resend" semantics, cooldown/limit errors via OtpRequestException);
+    // there is no separate resend state - Twilio Verify has no such distinction either.
+    @PostMapping("/otp/resend")
+    public ResponseEntity<?> resendOtp(@Valid @RequestBody SendOtpRequest request) {
+        return ResponseEntity.ok(buildSendResponse(otpService.sendOtp(request.getPhoneNumber())));
+    }
 
-        return ResponseEntity.ok(Map.of(
-                "status", result.getStatus(),
-                "message", result.getMessage(),
-                "resendAfterSeconds", result.getResendAfterSeconds()
-        ));
+    private Map<String, Object> buildSendResponse(OtpSendResult result) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("success", true);
+        body.put("status", result.getStatus());
+        body.put("message", result.getMessage());
+        body.put("resendAfterSeconds", result.getResendAfterSeconds());
+        body.put("expiresInSeconds", result.getExpiresInSeconds());
+        body.put("maskedDestination", logSanitizer.maskPhone(result.getNormalizedPhoneNumber()));
+        return body;
     }
 
     // 2️⃣ Verify OTP => issue access + refresh tokens
@@ -130,7 +156,18 @@ public class AuthController {
         try {
             rotation = refreshTokenService.rotateRefreshToken(request.getRefreshToken());
         } catch (IllegalArgumentException e) {
+            // Expected rejection (not found / expired / reuse detected) — the
+            // service layer already logged the specific reason before
+            // throwing; this is just the HTTP-shape translation.
             return ResponseEntity.status(401).body(Map.of("error", "INVALID_REFRESH_TOKEN"));
+        } catch (RuntimeException e) {
+            // Anything else is unexpected (DB error, etc.) — log it as its
+            // own distinguishable event, then rethrow unchanged so the
+            // existing GlobalExceptionHandler behavior (500 response) is
+            // not altered by adding this observability.
+            logAuthEvent(LogEvents.REFRESH_ROTATION_FAILED, httpRequest, null,
+                    "Unexpected error during refresh rotation: " + e.getClass().getSimpleName());
+            throw e;
         }
 
         User user = rotation.getUser();
@@ -162,7 +199,7 @@ public class AuthController {
 
     // 5️⃣ Logout all devices -> revoke every refresh token for this user
     @PostMapping("/logout-all")
-    public ResponseEntity<?> logoutAll(@Valid @RequestBody LogoutRequest request) {
+    public ResponseEntity<?> logoutAll(@Valid @RequestBody LogoutRequest request, HttpServletRequest httpRequest) {
         RefreshToken rt;
         try {
             rt = refreshTokenService.verifyForLogoutOnly(request.getRefreshToken());
@@ -170,6 +207,28 @@ public class AuthController {
             return ResponseEntity.status(401).body(Map.of("error", "INVALID_REFRESH_TOKEN"));
         }
         refreshTokenService.revokeAllByUser(rt.getUser().getId());
+        logAuthEvent(LogEvents.LOGOUT_ALL_SUCCESS, httpRequest, rt.getUser().getId(), "All device sessions revoked");
         return ResponseEntity.ok(Map.of("status", "ALL_SESSIONS_REVOKED"));
+    }
+
+    /**
+     * Structured, secret-free audit logging for controller-level auth events
+     * that need request context (path). Never logs the raw or hashed
+     * refresh/access token — only entity ids and the request path.
+     */
+    private void logAuthEvent(String event, HttpServletRequest request, Long userId, String message) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("event", event);
+        fields.put("path", logSanitizer.sanitizePath(request.getRequestURI()));
+        if (userId != null) {
+            fields.put("userId", userId);
+        }
+        fields.put("message", message);
+
+        if (LogEvents.REFRESH_ROTATION_FAILED.equals(event)) {
+            SECURITY_LOG.warn("{}", StructuredArguments.entries(fields));
+        } else {
+            SECURITY_LOG.info("{}", StructuredArguments.entries(fields));
+        }
     }
 }

@@ -25,6 +25,21 @@ public class ProjectPublicController {
     return projectService.publicGet(projectId);
   }
 
+  // GAP-001: canonical public lookup by backend-owned slug. A literal
+  // "slug" segment - not a second {value} pattern sharing this position
+  // with {projectId} above - so the two routes differ in path-segment
+  // count (2 segments here vs. 1 for /{projectId}) and can never collide,
+  // the same way this controller's existing /feature and /browse literal
+  // segments already coexist safely with /{projectId} today. Deliberately
+  // NOT the same same-position {id:\d+}/{slug:...} regex-disambiguation
+  // approach BrandPublicController uses - that pattern exists there
+  // because Brand's two lookups share one path position; this one avoids
+  // the ambiguity entirely by using a distinct position instead.
+  @GetMapping("/slug/{projectSlug}")
+  public ProjectPublicResponse getBySlug(@PathVariable String projectSlug) {
+    return projectService.publicGetBySlug(projectSlug);
+  }
+
   @GetMapping("/{projectId}/media")
   public List<ProjectMediaResponse> media(@PathVariable Long projectId) {
     return projectMediaService.publicList(projectId);

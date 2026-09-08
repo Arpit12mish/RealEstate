@@ -1,0 +1,241 @@
+spring:
+  application:
+    name: sfs
+  config:
+    import: "optional:classpath:application-rate-limit.yml"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      pool-name: ${SPRING_DATASOURCE_HIKARI_POOL_NAME:SfsLocalStagingHikariPool}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:2}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:5000}
+      validation-timeout: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:2000}
+      idle-timeout: ${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}
+      keepalive-time: ${SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME:0}
+      leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
+        jdbc:
+          batch_size: 25
+        generate_statistics: false
+      jakarta:
+        persistence:
+          query:
+            timeout: ${SPRING_JPA_QUERY_TIMEOUT_MS:10000}
+  flyway:
+    enabled: true
+    validate-on-migrate: true
+    clean-disabled: true
+    locations: classpath:db/migration
+  mail:
+    host: localhost
+    port: 2525
+    username: ""
+    password: ""
+
+server:
+  address: 0.0.0.0
+  port: ${SERVER_PORT:8080}
+  # Release 4B2's ClientIpResolver owns trusted-proxy processing.
+  forward-headers-strategy: none
+  tomcat:
+    mbeanregistry:
+      enabled: true
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:50}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:5}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:2048}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
+  health:
+    mail:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+app:
+  cms:
+    media:
+      bucket: ${CMS_MEDIA_S3_BUCKET:sfs-local-staging-disabled}
+      public-delivery:
+        # Optional outside production; media-bearing public articles fail closed when absent.
+        base-url: ${CMS_MEDIA_PUBLIC_BASE_URL:}
+  logging:
+    path: ${APP_LOGGING_PATH:/app/logs}
+  review:
+    enabled: false
+    phone-number: ""
+    fixed-otp: ""
+  media:
+    s3:
+      bucket: ${AWS_S3_BUCKET:sfs-local-staging-disabled}
+      region: ${AWS_S3_REGION:ap-south-1}
+      publicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL:http://invalid.local/media}
+      presignExpirySeconds: ${AWS_S3_PRESIGN_EXPIRY_SECONDS:300}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration:
+    ms: ${JWT_EXPIRATION_MS:900000}
+  refresh:
+    expiration:
+      days: ${JWT_REFRESH_EXPIRATION_DAYS:15}
+
+dashboard:
+  jwt:
+    secret: ${DASHBOARD_JWT_SECRET}
+    access-expiration-ms: ${DASHBOARD_JWT_ACCESS_EXPIRATION_MS:900000}
+  refresh:
+    expiration-days: ${DASHBOARD_REFRESH_EXPIRATION_DAYS:15}
+  seed:
+    enabled: false
+    update-passwords: false
+
+elasticsearch:
+  url: http://invalid.local:9200
+  api-key: ""
+
+google:
+  places:
+    api-key: ""
+    base-url: http://invalid.local/google
+    search-text-url: http://invalid.local/google/search
+    connect-timeout-ms: 1000
+    read-timeout-ms: 1000
+    request-timeout-ms: 1000
+  maps:
+    places:
+      enabled: false
+      api-key: ""
+      text-search-url: http://invalid.local/google/search
+      connect-timeout-ms: 1000
+      read-timeout-ms: 1000
+      request-timeout-ms: 1000
+
+sfs:
+  search:
+    enabled: false
+  analytics:
+    ingestion:
+      enabled: ${SFS_ANALYTICS_ENABLED:true}
+      queue-capacity: ${SFS_ANALYTICS_QUEUE_CAPACITY:10000}
+      drain-batch-size: ${SFS_ANALYTICS_DRAIN_BATCH_SIZE:300}
+      drain-interval-ms: ${SFS_ANALYTICS_DRAIN_INTERVAL_MS:2000}
+      max-properties-json-length: ${SFS_ANALYTICS_MAX_PROPERTIES_JSON_LENGTH:2000}
+      raw-retention-days: ${SFS_ANALYTICS_RAW_RETENTION_DAYS:120}
+      partition-lookahead-months: ${SFS_ANALYTICS_PARTITION_LOOKAHEAD_MONTHS:3}
+    aggregation:
+      schedule: ${SFS_ANALYTICS_AGGREGATION_SCHEDULE:0 30 2 * * *}
+    partition-maintenance:
+      schedule: ${SFS_ANALYTICS_PARTITION_MAINTENANCE_SCHEDULE:0 0 3 * * *}
+  local-staging:
+    fake-otp:
+      enabled: ${SFS_LOCAL_STAGING_FAKE_OTP_ENABLED:false}
+      fixed-otp: "123456"
+      phone-numbers:
+        - "+919900000001"
+        - "+919900000002"
+        - "+919900000003"
+        - "+919900000004"
+        - "+919900000005"
+        - "+919900000006"
+        - "+919900000007"
+        - "+919900000008"
+        - "+919900000009"
+        - "+919900000010"
+        - "+919900000011"
+        - "+919900000012"
+        - "+919900000013"
+        - "+919900000014"
+        - "+919900000015"
+        - "+919900000016"
+        - "+919900000017"
+        - "+919900000018"
+        - "+919900000019"
+        - "+919900000020"
+  # OTP send/verify abuse limits for TwilioOtpServiceImpl - see application-prod.yml
+  # for the full rationale. Only exercised here when fake-otp above is disabled.
+  otp:
+    resend-cooldown-seconds: ${SFS_OTP_RESEND_COOLDOWN_SECONDS:30}
+    max-sends-per-window: ${SFS_OTP_MAX_SENDS_PER_WINDOW:5}
+    send-window-minutes: ${SFS_OTP_SEND_WINDOW_MINUTES:15}
+    max-verify-failures-per-window: ${SFS_OTP_MAX_VERIFY_FAILURES_PER_WINDOW:5}
+    verify-window-minutes: ${SFS_OTP_VERIFY_WINDOW_MINUTES:10}
+    block-minutes: ${SFS_OTP_BLOCK_MINUTES:15}
+    expires-in-seconds: ${SFS_OTP_EXPIRES_IN_SECONDS:600}
+  rate-limit:
+    trusted-proxies:
+      - ${RATE_LIMIT_TRUSTED_PROXY_IP}
+  logging:
+    slow-api-threshold-ms: ${SFS_LOGGING_SLOW_API_THRESHOLD_MS:1500}
+    request:
+      async:
+        queue-size: ${SFS_REQUEST_LOG_ASYNC_QUEUE_SIZE:2048}
+        discarding-threshold: ${SFS_REQUEST_LOG_ASYNC_DISCARDING_THRESHOLD:0}
+        never-block: ${SFS_REQUEST_LOG_ASYNC_NEVER_BLOCK:true}
+        include-caller-data: ${SFS_REQUEST_LOG_ASYNC_INCLUDE_CALLER_DATA:false}
+        max-flush-time-ms: ${SFS_REQUEST_LOG_ASYNC_MAX_FLUSH_TIME_MS:5000}
+  authentication:
+    identity-cache:
+      mobile:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_MAXIMUM_SIZE:50000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_EXPIRE_AFTER_WRITE:30s}
+      dashboard:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_MAXIMUM_SIZE:5000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_EXPIRE_AFTER_WRITE:15s}
+  refresh-token:
+    cleanup:
+      enabled: false
+  instagram:
+    meta:
+      sync-enabled: false
+      app-id: ${META_APP_ID:}
+      app-secret: ${META_APP_SECRET:}
+      access-token: ${META_ACCESS_TOKEN:}
+      facebook-page-id: ${META_FACEBOOK_PAGE_ID:}
+      instagram-business-account-id: ${META_INSTAGRAM_BUSINESS_ACCOUNT_ID:}
+      graph-api-version: ${META_GRAPH_API_VERSION:v25.0}
+
+logging:
+  level:
+    root: INFO
+    "[com.brandPitara.sfs]": INFO
+    "[org.springframework]": WARN
+    "[org.springframework.security]": WARN
+    "[org.hibernate]": WARN
+    "[org.hibernate.SQL]": WARN
+    "[org.hibernate.orm.jdbc.bind]": "OFF"
+    "[com.zaxxer.hikari]": INFO

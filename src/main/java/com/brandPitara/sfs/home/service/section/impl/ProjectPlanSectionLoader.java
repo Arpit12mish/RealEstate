@@ -6,15 +6,18 @@ import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.repository.ProjectPlanRepository;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.Arrays;
 import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class ProjectPlanSectionLoader implements HomeSectionLoader {
 
   private final ProjectPlanRepository projectPlanRepository;
@@ -31,17 +34,17 @@ public class ProjectPlanSectionLoader implements HomeSectionLoader {
     if (categoryId == null) return empty(cfg);
 
     int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 5);
+    var page = PageRequest.of(0, limit);
 
     var rows = (ctx.builderId() != null)
-        ? projectPlanRepository.findByCategory_IdAndBuilder_IdAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(categoryId, ctx.builderId())
+        ? projectPlanRepository.findByCategory_IdAndBuilder_IdAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(categoryId, ctx.builderId(), page)
         : List.<com.brandPitara.sfs.home.entity.ProjectPlanEntity>of();
 
     if (rows.isEmpty()) {
-      rows = projectPlanRepository.findByCategory_IdAndBuilderIsNullAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(categoryId);
+      rows = projectPlanRepository.findByCategory_IdAndBuilderIsNullAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(categoryId, page);
     }
 
     if (rows.isEmpty()) return empty(cfg);
-    if (rows.size() > limit) rows = rows.subList(0, limit);
 
     List<ProjectPlanCardDto> cards = rows.stream()
         .map(r -> ProjectPlanCardDto.builder()

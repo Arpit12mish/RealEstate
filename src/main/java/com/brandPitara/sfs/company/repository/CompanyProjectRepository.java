@@ -2,6 +2,7 @@ package com.brandPitara.sfs.company.repository;
 
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
 import org.springframework.data.domain.*;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,20 +13,65 @@ import java.util.Optional;
 
 public interface CompanyProjectRepository extends JpaRepository<CompanyProjectEntity, Long> {
 
+  // company/city are eagerly graphed - the public card mapper reads both past .getId(),
+  // and this method is called outside any pre-existing session (see ArchitectDesignerPublicServiceImpl,
+  // CompanyProjectPublicServiceImpl), so leaving them LAZY here throws LazyInitializationException.
+  @EntityGraph(attributePaths = {"company", "city"})
   Page<CompanyProjectEntity> findByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalse(
       Long companyId, Pageable pageable
   );
 
   Optional<CompanyProjectEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
 
-  Optional<CompanyProjectEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(Long id);
+  // Public detail read: join fetch (not @EntityGraph) because the Company_PublishedTrue/ActiveTrue/
+  // DeletedFalse filter already needs a join on `company` - reusing that join for the fetch avoids a
+  // redundant second self-join to `company` that @EntityGraph would add alongside it. Same pattern as
+  // searchForDashboard/searchForDashboardByName below.
+  @Query("""
+      select cp
+      from CompanyProjectEntity cp
+        join fetch cp.company c
+        left join fetch cp.city ci
+      where cp.id = :id
+        and cp.published = true and cp.active = true and cp.deleted = false
+        and c.published = true and c.active = true and c.deleted = false
+      """)
+  Optional<CompanyProjectEntity> findPublicByIdWithCompanyAndCity(@Param("id") Long id);
 
   Optional<CompanyProjectEntity> findByIdAndDeletedFalse(Long id);
+
+  Optional<CompanyProjectEntity> findBySlug(String slug);
+
+  Optional<CompanyProjectEntity> findBySlugAndIdNot(String slug, Long id);
 
   List<CompanyProjectEntity> findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
       Collection<Long> companyIds
   );
 
+  @Query("""
+      select cp
+      from CompanyProjectEntity cp
+      where cp.company.id in :companyIds
+        and cp.published = true
+        and cp.active = true
+        and cp.deleted = false
+        and not exists (
+          select earlier.id
+          from CompanyProjectEntity earlier
+          where earlier.company.id = cp.company.id
+            and earlier.published = true
+            and earlier.active = true
+            and earlier.deleted = false
+            and (
+              earlier.priority < cp.priority
+              or (earlier.priority = cp.priority and earlier.id > cp.id)
+            )
+        )
+      order by cp.priority asc, cp.id desc
+      """)
+  List<CompanyProjectEntity> findTopPublicProjectPerCompany(@Param("companyIds") Collection<Long> companyIds);
+
+  @EntityGraph(attributePaths = {"company", "city"})
   List<CompanyProjectEntity> findTop10ByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
       Long companyId
   );

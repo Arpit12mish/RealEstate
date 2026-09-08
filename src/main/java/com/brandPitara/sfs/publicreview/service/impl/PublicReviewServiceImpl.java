@@ -7,10 +7,12 @@ import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.publicreview.client.GooglePlaceDetailsResponse;
+import com.brandPitara.sfs.publicreview.config.GooglePlacesProperties;
 import com.brandPitara.sfs.publicreview.dto.*;
 import com.brandPitara.sfs.publicreview.provider.ReviewPlaceProvider;
 import com.brandPitara.sfs.publicreview.entity.ProjectReviewEntity;
@@ -30,6 +32,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -37,9 +40,12 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -64,6 +70,8 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
     private final ReviewPlaceProvider reviewPlaceProvider;
     private final ContentVersionService contentVersionService;
+    private final ExternalProviderTransactions externalProviderTransactions;
+    private final GooglePlacesProperties googlePlacesProperties;
 
     // =========================================================================
     // Existing methods (unchanged public contract)
@@ -130,122 +138,34 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SyncGooglePublicReviewsResponse syncGoogleReviews(
         PublicReviewTargetType targetType,
         Long targetId,
         Long reviewPlaceId
     ) {
-        validateTargetExistsForAdmin(targetType, targetId);
-
-        PublicReviewPlaceEntity place = placeRepository
-            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
-            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
-
-        PublicReviewSummaryEntity existingSummary = summaryRepository.findByReviewPlaceId(place.getId()).orElse(null);
-        if (isGoogleFetchCompleted(place, existingSummary)) {
-            return returnExistingGoogleFetch(place, existingSummary, targetType);
+        GoogleSyncPreparation preparation = externalProviderTransactions.write(
+            () -> prepareGoogleSync(targetType, targetId, reviewPlaceId)
+        );
+        if (preparation.existingResponse() != null) {
+            return preparation.existingResponse();
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
+        GooglePlaceDetailsResponse googleResponse;
+        try {
+            googleResponse = reviewPlaceProvider.fetchPlaceDetails(preparation.googlePlaceId());
+        } catch (RuntimeException ex) {
+            markGoogleSyncFailed(reviewPlaceId, targetType, targetId, ex);
+            throw ex;
+        }
 
         try {
-            GooglePlaceDetailsResponse googleResponse = reviewPlaceProvider.fetchPlaceDetails(place.getGooglePlaceId());
-
-            place.setPlaceName(extractText(googleResponse.getDisplayName()));
-            place.setFormattedAddress(clean(googleResponse.getFormattedAddress()));
-            place.setGoogleMapsUri(clean(googleResponse.getGoogleMapsUri()));
-            place.setLastSyncedAt(now);
-
-            List<GooglePlaceDetailsResponse.GoogleReview> googleReviews =
-                googleResponse.getReviews() != null ? googleResponse.getReviews() : List.of();
-
-            List<PublicReviewSampleEntity> samples = new ArrayList<>();
-
-            int positive = 0;
-            int negative = 0;
-            int neutral = 0;
-            int mixed = 0;
-
-            sampleRepository.deleteByReviewPlaceId(place.getId());
-
-            for (GooglePlaceDetailsResponse.GoogleReview googleReview : googleReviews) {
-                PublicReviewSentiment sentiment = classifySentiment(googleReview.getRating());
-
-                if (sentiment == PublicReviewSentiment.POSITIVE) positive++;
-                else if (sentiment == PublicReviewSentiment.NEGATIVE) negative++;
-                else if (sentiment == PublicReviewSentiment.NEUTRAL) neutral++;
-                else mixed++;
-
-                PublicReviewSampleEntity sample = PublicReviewSampleEntity.builder()
-                    .reviewPlace(place)
-                    .targetType(targetType)
-                    .targetId(targetId)
-                    .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
-                    .reviewerName(extractReviewerName(googleReview))
-                    .reviewerProfileUrl(extractReviewerProfileUrl(googleReview))
-                    .reviewerPhotoUrl(extractReviewerPhotoUrl(googleReview))
-                    .rating(googleReview.getRating())
-                    .reviewText(extractText(googleReview.getText()))
-                    .originalReviewText(extractText(googleReview.getOriginalText()))
-                    .languageCode(extractLanguageCode(googleReview))
-                    .relativePublishTime(clean(googleReview.getRelativePublishTimeDescription()))
-                    .publishTime(googleReview.getPublishTime())
-                    .sentiment(sentiment)
-                    .category(classifyCategory(extractText(googleReview.getText()), googleReview.getRating()))
-                    .displayStatus(PublicReviewDisplayStatus.INTERNAL_ONLY)
-                    .fetchedAt(now)
-                    .build();
-
-                samples.add(sample);
-            }
-
-            sampleRepository.saveAll(samples);
-
-            PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId())
-                .orElseGet(() -> PublicReviewSummaryEntity.builder()
-                    .reviewPlace(place)
-                    .targetType(targetType)
-                    .targetId(targetId)
-                    .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
-                    .build());
-
-            summary.setRating(googleResponse.getRating());
-            summary.setUserRatingCount(googleResponse.getUserRatingCount());
-            summary.setPositiveSampleCount(positive);
-            summary.setNegativeSampleCount(negative);
-            summary.setNeutralSampleCount(neutral);
-            summary.setMixedSampleCount(mixed);
-            summary.setSourceLabel(GOOGLE_SOURCE_LABEL);
-            summary.setDisclaimer(PUBLIC_DISCLAIMER);
-            summary.setLastSyncedAt(now);
-            summaryRepository.save(summary);
-
-            // Mark as successfully fetched
-            place.setOneTimeFetched(true);
-            place.setFetchStatus(GoogleReviewFetchStatus.FETCHED);
-            place.setDisplayMode(GoogleReviewDisplayMode.RATING_AND_REVIEWS);
-            place.setDisplayGoogleReviews(true);
-            placeRepository.save(place);
-
-            bumpContentVersion(targetType);
-
-            return SyncGooglePublicReviewsResponse.builder()
-                .reviewPlaceId(place.getId())
-                .googlePlaceId(place.getGooglePlaceId())
-                .placeName(place.getPlaceName())
-                .rating(googleResponse.getRating())
-                .userRatingCount(googleResponse.getUserRatingCount())
-                .fetchedReviewSampleCount(samples.size())
-                .syncedAt(now)
-                .build();
-
-        } catch (ResponseStatusException e) {
-            throw e;
-        } catch (Exception e) {
-            place.setFetchStatus(GoogleReviewFetchStatus.FAILED);
-            placeRepository.save(place);
-            throw e;
+            return externalProviderTransactions.write(
+                () -> persistGoogleSync(targetType, targetId, reviewPlaceId, googleResponse)
+            );
+        } catch (RuntimeException ex) {
+            markGoogleSyncFailed(reviewPlaceId, targetType, targetId, ex);
+            throw ex;
         }
     }
 
@@ -285,22 +205,25 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     // =========================================================================
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GooglePlaceSearchResponse searchGooglePlaces(Long projectId, String query) {
-        ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
-            .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
-
-        String resolvedQuery = StringUtils.hasText(query) ? query.trim() : project.getName();
+        GoogleSearchPreparation preparation = externalProviderTransactions.read(() -> {
+            ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+            String resolvedQuery = StringUtils.hasText(query) ? query.trim() : project.getName();
+            return new GoogleSearchPreparation(
+                project.getId(), resolvedQuery, project.getLatitude(), project.getLongitude());
+        });
 
         List<GooglePlaceSearchResultItem> results = reviewPlaceProvider.searchPlaces(
-            resolvedQuery,
-            project.getLatitude(),
-            project.getLongitude()
+            preparation.query(),
+            preparation.latitude(),
+            preparation.longitude()
         );
 
         return GooglePlaceSearchResponse.builder()
-            .projectId(projectId)
-            .query(resolvedQuery)
+            .projectId(preparation.projectId())
+            .query(preparation.query())
             .results(results)
             .build();
     }
@@ -454,19 +377,210 @@ public class PublicReviewServiceImpl implements PublicReviewService {
         List<ProjectReviewEntity> reviews = projectReviewRepository
             .findByUserIdAndDeletedFalseOrderByCreatedAtDesc(currentUser.getId());
 
+        // Batched instead of one findByIdAndDeletedFalse per review (N+1):
+        // a user viewing dozens of submitted reviews previously issued that
+        // many individual project lookups.
+        List<Long> projectIds = reviews.stream()
+            .map(ProjectReviewEntity::getProjectId)
+            .distinct()
+            .toList();
+        Map<Long, String> projectNamesById = projectRepository.findByIdInAndDeletedFalse(projectIds).stream()
+            .collect(Collectors.toMap(ProjectEntity::getId, ProjectEntity::getName));
+
         return reviews.stream()
-            .map(review -> {
-                String projectName = projectRepository.findByIdAndDeletedFalse(review.getProjectId())
-                    .map(ProjectEntity::getName)
-                    .orElse(null);
-                return PublicReviewMapper.toMySubmittedReviewResponse(review, projectName);
-            })
+            .map(review -> PublicReviewMapper.toMySubmittedReviewResponse(
+                review, projectNamesById.get(review.getProjectId())))
             .toList();
     }
 
     // =========================================================================
     // Private helpers
     // =========================================================================
+
+    /**
+     * Checks whether this place still needs a Google fetch AND reserves the
+     * attempt (fetchStatus -> FETCHING, fetchStartedAt -> now) atomically
+     * under the place row's PESSIMISTIC_WRITE lock, before the Google call
+     * ever happens. Concurrent admin sync requests for the same place are
+     * serialized by that lock: the loser re-reads the winner's committed
+     * FETCHING/FETCHED state here and is correctly short-circuited or
+     * rejected, instead of both proceeding to call Google and both trying to
+     * create the (unique-per-place) summary row.
+     * <p>
+     * A FETCHING reservation is a lease, not a permanent lock: if the process
+     * crashes/restarts after committing FETCHING but before persisting a
+     * result (success or failure), fetchStartedAt lets a later sync attempt
+     * tell that apart from a genuinely in-flight one and reclaim it once
+     * googlePlacesProperties.fetchLeaseSeconds has elapsed - otherwise the
+     * row would be stuck rejecting every future sync attempt forever.
+     */
+    private GoogleSyncPreparation prepareGoogleSync(
+        PublicReviewTargetType targetType,
+        Long targetId,
+        Long reviewPlaceId
+    ) {
+        validateTargetExistsForAdmin(targetType, targetId);
+        PublicReviewPlaceEntity place = placeRepository
+            .findByIdAndTargetTypeAndTargetIdAndDeletedFalseForUpdate(reviewPlaceId, targetType, targetId)
+            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
+        PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId()).orElse(null);
+
+        if (isGoogleFetchCompleted(place, summary)) {
+            return new GoogleSyncPreparation(
+                place.getGooglePlaceId(),
+                returnExistingGoogleFetch(place, summary, targetType)
+            );
+        }
+
+        if (place.getFetchStatus() == GoogleReviewFetchStatus.FETCHING && !isReservationStale(place)) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Google review sync is already in progress for this place"
+            );
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        place.setFetchStatus(GoogleReviewFetchStatus.FETCHING);
+        place.setFetchStartedAt(now);
+        placeRepository.save(place);
+
+        return new GoogleSyncPreparation(place.getGooglePlaceId(), null);
+    }
+
+    private boolean isReservationStale(PublicReviewPlaceEntity place) {
+        OffsetDateTime startedAt = place.getFetchStartedAt();
+        if (startedAt == null) {
+            // FETCHING with no recorded start (shouldn't happen going forward,
+            // but could for a row already FETCHING before this column
+            // existed) - treat as immediately reclaimable rather than a
+            // permanent lock with no way out.
+            return true;
+        }
+        Duration lease = Duration.ofSeconds(googlePlacesProperties.getFetchLeaseSeconds());
+        return Duration.between(startedAt, OffsetDateTime.now()).compareTo(lease) >= 0;
+    }
+
+    private SyncGooglePublicReviewsResponse persistGoogleSync(
+        PublicReviewTargetType targetType,
+        Long targetId,
+        Long reviewPlaceId,
+        GooglePlaceDetailsResponse googleResponse
+    ) {
+        PublicReviewPlaceEntity place = placeRepository
+            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+            .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
+        OffsetDateTime now = OffsetDateTime.now();
+
+        place.setPlaceName(extractText(googleResponse.getDisplayName()));
+        place.setFormattedAddress(clean(googleResponse.getFormattedAddress()));
+        place.setGoogleMapsUri(clean(googleResponse.getGoogleMapsUri()));
+        place.setLastSyncedAt(now);
+
+        List<GooglePlaceDetailsResponse.GoogleReview> googleReviews =
+            googleResponse.getReviews() != null ? googleResponse.getReviews() : List.of();
+        List<PublicReviewSampleEntity> samples = new ArrayList<>();
+        int positive = 0;
+        int negative = 0;
+        int neutral = 0;
+        int mixed = 0;
+
+        sampleRepository.deleteByReviewPlaceId(place.getId());
+        for (GooglePlaceDetailsResponse.GoogleReview googleReview : googleReviews) {
+            PublicReviewSentiment sentiment = classifySentiment(googleReview.getRating());
+            if (sentiment == PublicReviewSentiment.POSITIVE) positive++;
+            else if (sentiment == PublicReviewSentiment.NEGATIVE) negative++;
+            else if (sentiment == PublicReviewSentiment.NEUTRAL) neutral++;
+            else mixed++;
+
+            samples.add(PublicReviewSampleEntity.builder()
+                .reviewPlace(place)
+                .targetType(targetType)
+                .targetId(targetId)
+                .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
+                .reviewerName(extractReviewerName(googleReview))
+                .reviewerProfileUrl(extractReviewerProfileUrl(googleReview))
+                .reviewerPhotoUrl(extractReviewerPhotoUrl(googleReview))
+                .rating(googleReview.getRating())
+                .reviewText(extractText(googleReview.getText()))
+                .originalReviewText(extractText(googleReview.getOriginalText()))
+                .languageCode(extractLanguageCode(googleReview))
+                .relativePublishTime(clean(googleReview.getRelativePublishTimeDescription()))
+                .publishTime(googleReview.getPublishTime())
+                .sentiment(sentiment)
+                .category(classifyCategory(extractText(googleReview.getText()), googleReview.getRating()))
+                .displayStatus(PublicReviewDisplayStatus.INTERNAL_ONLY)
+                .fetchedAt(now)
+                .build());
+        }
+        sampleRepository.saveAll(samples);
+
+        PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId())
+            .orElseGet(() -> PublicReviewSummaryEntity.builder()
+                .reviewPlace(place)
+                .targetType(targetType)
+                .targetId(targetId)
+                .sourceType(PublicReviewSourceType.GOOGLE_PLACES)
+                .build());
+        summary.setRating(googleResponse.getRating());
+        summary.setUserRatingCount(googleResponse.getUserRatingCount());
+        summary.setPositiveSampleCount(positive);
+        summary.setNegativeSampleCount(negative);
+        summary.setNeutralSampleCount(neutral);
+        summary.setMixedSampleCount(mixed);
+        summary.setSourceLabel(GOOGLE_SOURCE_LABEL);
+        summary.setDisclaimer(PUBLIC_DISCLAIMER);
+        summary.setLastSyncedAt(now);
+        summaryRepository.save(summary);
+
+        place.setOneTimeFetched(true);
+        place.setFetchStatus(GoogleReviewFetchStatus.FETCHED);
+        place.setFetchStartedAt(null);
+        place.setDisplayMode(GoogleReviewDisplayMode.RATING_AND_REVIEWS);
+        place.setDisplayGoogleReviews(true);
+        placeRepository.save(place);
+        bumpContentVersion(targetType);
+
+        return SyncGooglePublicReviewsResponse.builder()
+            .reviewPlaceId(place.getId())
+            .googlePlaceId(place.getGooglePlaceId())
+            .placeName(place.getPlaceName())
+            .rating(googleResponse.getRating())
+            .userRatingCount(googleResponse.getUserRatingCount())
+            .fetchedReviewSampleCount(samples.size())
+            .syncedAt(now)
+            .build();
+    }
+
+    private void markGoogleSyncFailed(
+        Long reviewPlaceId,
+        PublicReviewTargetType targetType,
+        Long targetId,
+        RuntimeException originalFailure
+    ) {
+        try {
+            externalProviderTransactions.write(() -> placeRepository
+                .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+                .ifPresent(place -> {
+                    place.setFetchStatus(GoogleReviewFetchStatus.FAILED);
+                    place.setFetchStartedAt(null);
+                    placeRepository.save(place);
+                }));
+        } catch (RuntimeException statusFailure) {
+            originalFailure.addSuppressed(statusFailure);
+        }
+    }
+
+    private record GoogleSyncPreparation(
+        String googlePlaceId,
+        SyncGooglePublicReviewsResponse existingResponse
+    ) {}
+
+    private record GoogleSearchPreparation(
+        Long projectId,
+        String query,
+        Double latitude,
+        Double longitude
+    ) {}
 
     private PublicReviewSignalResponse buildSignal(
         PublicReviewTargetType targetType,

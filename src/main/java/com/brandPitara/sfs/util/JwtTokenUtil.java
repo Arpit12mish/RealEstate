@@ -80,6 +80,36 @@ public class JwtTokenUtil {
         return getClaimFromToken(token, Claims::getSubject);
     }
 
+    /**
+     * Parses and verifies the token once, then copies the authentication claims
+     * into an immutable request snapshot. JJWT validates signature and expiry
+     * while parsing; callers must not reparse individual claims afterward.
+     */
+    public ValidatedJwtClaims parseAndValidate(String token) {
+        Claims claims = getAllClaimsFromToken(token);
+        String subject = claims.getSubject();
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalArgumentException("JWT subject is missing");
+        }
+        Date expiration = claims.getExpiration();
+        if (expiration == null || expiration.before(new Date())) {
+            throw new io.jsonwebtoken.ExpiredJwtException(null, claims, "JWT expired");
+        }
+        return new ValidatedJwtClaims(
+                subject,
+                claims.get("principalType", String.class),
+                longClaim(claims, "userId"),
+                longClaim(claims, "guestSessionId"),
+                claims.get("installationId", String.class),
+                expiration.toInstant()
+        );
+    }
+
+    private Long longClaim(Claims claims, String name) {
+        Object value = claims.get(name);
+        return value == null ? null : Long.valueOf(value.toString());
+    }
+
     public String getPrincipalTypeFromToken(String token) {
         return getClaimFromToken(token, claims -> claims.get("principalType", String.class));
     }

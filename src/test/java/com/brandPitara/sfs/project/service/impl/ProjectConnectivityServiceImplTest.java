@@ -1,7 +1,10 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
 import com.brandPitara.sfs.project.connectivity.provider.dto.NearbyPlaceProviderResult;
 import com.brandPitara.sfs.project.dto.ConnectivityProviderSearchRequest;
@@ -18,6 +21,7 @@ import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityPlaceRepository;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,8 +47,16 @@ class ProjectConnectivityServiceImplTest {
   @Mock private ContentVersionService contentVersionService;
   @Mock private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   @Mock private NearbyPlaceProvider nearbyPlaceProvider;
+  @Mock private ExternalProviderTransactions externalProviderTransactions;
+  @Mock private ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @InjectMocks private ProjectConnectivityServiceImpl service;
+
+  @BeforeEach
+  void executeShortTransactionsInline() {
+    lenient().when(externalProviderTransactions.read(any())).thenAnswer(invocation ->
+        ((Supplier<?>) invocation.getArgument(0)).get());
+  }
 
   // ── Public endpoint ─────────────────────────────────────────────────────────
 
@@ -311,6 +324,22 @@ class ProjectConnectivityServiceImplTest {
     assertThat(response.getSavedCount()).isZero();
     assertThat(response.getSkippedDuplicateCount()).isEqualTo(1);
     verify(placeRepository, never()).save(any());
+    verify(cacheEvictionPublisher, never()).publish(anyLong(), any());
+  }
+
+  @Test
+  void overviewWritePublishesConnectivityEviction() {
+    ProjectEntity project = publicProject();
+    when(projectRepository.findByIdAndDeletedFalse(27L)).thenReturn(Optional.of(project));
+    when(connectivityRepository.findByProjectIdAndDeletedFalse(27L)).thenReturn(Optional.empty());
+    when(placeRepository.findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(27L)).thenReturn(List.of());
+
+    service.upsertOverview(27L, com.brandPitara.sfs.project.dto.ProjectConnectivityUpsertRequest.builder()
+        .title("Connectivity")
+        .active(true)
+        .build());
+
+    verify(cacheEvictionPublisher).publish(27L, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

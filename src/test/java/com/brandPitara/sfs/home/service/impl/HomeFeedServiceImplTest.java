@@ -295,8 +295,8 @@ class HomeFeedServiceImplTest {
     when(promoBannerSlotConfigRepository
         .findByScreenAndHomeCategory_IdAndActiveTrueOrderByPriorityAscIdAsc(any(), eq(0L)))
         .thenReturn(List.of(heroRule));
-    // when(promoBannerService.getBannersForCategoryAndSlot(0L, "HERO", 10))
-    //     .thenReturn(List.of(lottieBanner));
+    when(promoBannerService.getBannersForCategoryAndSlot(0L, "HERO", 10))
+        .thenReturn(List.of(lottieBanner));
 
     HomeFeedResponse response = service.getHome(null, null, null, null);
 

@@ -140,6 +140,7 @@ public class DashboardActionAuditServiceImpl implements DashboardActionAuditServ
             case ADMIN -> "Admin";
             case REVIEWER -> "Reviewer";
             case DATA_ENTRY -> "Data Entry";
+            case CONTENT_STAFF -> "Content Staff";
         };
     }
 

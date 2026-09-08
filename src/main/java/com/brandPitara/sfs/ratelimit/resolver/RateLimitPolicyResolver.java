@@ -27,6 +27,11 @@ public class RateLimitPolicyResolver {
     // most-specific-first as a defensive convention.
     private final List<Route> routes = List.of(
             new Route(HttpMethod.POST, "/api/auth/request-otp", RateLimitPolicy.MOBILE_OTP_REQUEST),
+            // Resend deliberately maps to the SAME policy as request-otp above (not a
+            // separate MOBILE_OTP_RESEND policy/bucket) - both routes call the identical
+            // OtpService.sendOtp(), and a distinct bucket would let a client alternate
+            // between the two routes to double its effective phone/IP send quota.
+            new Route(HttpMethod.POST, "/api/auth/otp/resend", RateLimitPolicy.MOBILE_OTP_REQUEST),
             new Route(HttpMethod.POST, "/api/auth/verify-otp", RateLimitPolicy.MOBILE_OTP_VERIFY),
             new Route(HttpMethod.POST, "/api/auth/refresh", RateLimitPolicy.MOBILE_TOKEN_REFRESH),
             new Route(HttpMethod.POST, "/api/auth/logout-all", RateLimitPolicy.MOBILE_LOGOUT_ALL),
@@ -36,6 +41,8 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.POST, "/api/location/resolve", RateLimitPolicy.PUBLIC_LOCATION_RESOLVE),
             new Route(HttpMethod.GET, "/api/home/**", RateLimitPolicy.PUBLIC_HOME_READ),
             new Route(HttpMethod.GET, "/api/public/home/**", RateLimitPolicy.PUBLIC_HOME_READ),
+            new Route(HttpMethod.GET, "/api/v2/public/projects/**", RateLimitPolicy.PUBLIC_PROJECT_READ),
+            new Route(HttpMethod.HEAD, "/api/v2/public/projects/**", RateLimitPolicy.PUBLIC_PROJECT_READ),
             new Route(HttpMethod.GET, "/api/projects/**", RateLimitPolicy.PUBLIC_PROJECT_READ),
             new Route(HttpMethod.GET, "/api/public/search/**", RateLimitPolicy.PUBLIC_SEARCH),
             new Route(HttpMethod.GET, "/api/search/**", RateLimitPolicy.PUBLIC_SEARCH),
@@ -62,6 +69,7 @@ public class RateLimitPolicyResolver {
 
             new Route(HttpMethod.GET, "/api/project-favorites/*/exists", RateLimitPolicy.MOBILE_FAVORITE_READ),
             new Route(HttpMethod.GET, "/api/project-favorites", RateLimitPolicy.MOBILE_FAVORITE_READ),
+            new Route(HttpMethod.GET, "/api/me/project-favorites", RateLimitPolicy.MOBILE_FAVORITE_READ),
             new Route(HttpMethod.POST, "/api/project-favorites/*/toggle", RateLimitPolicy.MOBILE_FAVORITE_WRITE),
             new Route(HttpMethod.DELETE, "/api/project-favorites/**", RateLimitPolicy.MOBILE_FAVORITE_WRITE),
 
@@ -92,6 +100,8 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.GET, "/api/public/instagram-reels/**", RateLimitPolicy.PUBLIC_INSTAGRAM_REELS_READ),
             new Route(HttpMethod.GET, "/api/public/project-meter/**", RateLimitPolicy.PUBLIC_PROJECT_METER_READ),
             new Route(HttpMethod.GET, "/api/public/feed/**", RateLimitPolicy.PUBLIC_FEED_READ),
+            new Route(HttpMethod.GET, "/api/public/content/**", RateLimitPolicy.PUBLIC_CMS_CONTENT_READ),
+            new Route(HttpMethod.GET, "/api/public/content", RateLimitPolicy.PUBLIC_CMS_CONTENT_READ),
 
             // Phase 4: final remaining mobile/public read route policies.
             // Specific distributor-under-brand route must precede the broad
@@ -103,8 +113,17 @@ public class RateLimitPolicyResolver {
             // Distinct prefix from the existing /api/cities/** rule below - reuses
             // PUBLIC_CITY_READ rather than adding a new policy (semantically a city read).
             new Route(HttpMethod.GET, "/api/public/cities/trending", RateLimitPolicy.PUBLIC_CITY_READ),
+            // GAP-017: GET /api/public/cities/{citySlug}. Without this, the new
+            // endpoint would match no route below and silently receive zero rate
+            // limiting (resolve() returns Optional.empty() on no match) - found
+            // during this endpoint's own reconnaissance, not a pre-existing gap.
+            // Placed after the exact-match /trending route above per this file's
+            // own "most-specific-first" convention, though both resolve to the
+            // same policy so the order is not behaviorally load-bearing here.
+            new Route(HttpMethod.GET, "/api/public/cities/*", RateLimitPolicy.PUBLIC_CITY_READ),
             new Route(HttpMethod.GET, "/api/content/version", RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ),
             new Route(HttpMethod.GET, "/api/session/me", RateLimitPolicy.MOBILE_SESSION_READ),
+            new Route(HttpMethod.GET, "/api/public/mobile-app/update-policy", RateLimitPolicy.PUBLIC_MOBILE_UPDATE_POLICY_READ),
 
             // Phase 1.5: remaining public mobile/public read APIs.
             new Route(HttpMethod.GET, "/api/cities/**", RateLimitPolicy.PUBLIC_CITY_READ),
@@ -116,11 +135,20 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.GET, "/api/public/stamp-duty/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
             new Route(HttpMethod.GET, "/api/public/interior-cost/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
             new Route(HttpMethod.GET, "/api/public/circle-rates/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
-            new Route(HttpMethod.GET, "/api/public/calculators/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ)
+            new Route(HttpMethod.GET, "/api/public/calculators/**", RateLimitPolicy.PUBLIC_CALCULATOR_READ),
+
+            // Analytics Phase 1 backend-hardening pass - previously matched nothing here,
+            // so it ran with zero rate limiting and zero request-body-size bound.
+            new Route(HttpMethod.POST, "/api/analytics/events/batch", RateLimitPolicy.PUBLIC_ANALYTICS_INGEST)
     );
 
     public Optional<RateLimitPolicy> resolve(HttpServletRequest request) {
-        HttpMethod method = HttpMethod.valueOf(request.getMethod());
+        HttpMethod method;
+        try {
+            method = HttpMethod.valueOf(request.getMethod());
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
         String path = request.getRequestURI();
         String contextPath = request.getContextPath();
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {

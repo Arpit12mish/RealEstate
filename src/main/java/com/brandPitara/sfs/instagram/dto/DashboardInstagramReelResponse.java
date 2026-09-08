@@ -26,6 +26,7 @@ public class DashboardInstagramReelResponse {
     private String lastSyncStatus;
     private String lastSyncError;
     private String previewVideoUrl;
+    private String previewImageUrl;
     private String mediaType;
     private String mediaProductType;
     private OffsetDateTime publishedAt;

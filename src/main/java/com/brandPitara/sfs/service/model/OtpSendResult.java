@@ -13,4 +13,6 @@ public class OtpSendResult {
     private String status;
     private String message;
     private long resendAfterSeconds;
+    private long expiresInSeconds;
+    private String normalizedPhoneNumber;
 }

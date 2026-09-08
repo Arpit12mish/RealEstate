@@ -2,8 +2,11 @@ package com.brandPitara.sfs.projectmeter.mapper;
 
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
+import com.brandPitara.sfs.project.enums.ProjectMediaType;
 import com.brandPitara.sfs.projectmeter.dto.ProjectConstructionStageResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
+import com.brandPitara.sfs.projectmeter.dto.ProjectMeterMediaItemResponse;
+import com.brandPitara.sfs.projectmeter.dto.ProjectMeterMediaResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterSummaryResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectTimelineResponse;
 import com.brandPitara.sfs.projectmeter.entity.ProjectConstructionStageEntity;
@@ -13,6 +16,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Objects;
 
 public final class ProjectMeterMapper {
 
@@ -52,6 +56,40 @@ public final class ProjectMeterMapper {
             .remarks(entity.getRemarks())
             .evidenceCount(entity.getEvidenceCount())
             .verified(entity.getVerified())
+            .build();
+    }
+
+    public static ProjectMeterMediaResponse toMediaResponse(List<ProjectMediaEntity> media) {
+        List<ProjectMediaEntity> images = media == null ? List.of() : media.stream()
+            .filter(Objects::nonNull)
+            .filter(item -> item.getMediaType() == ProjectMediaType.IMAGE)
+            .filter(item -> Boolean.TRUE.equals(item.getActive()))
+            .filter(item -> Boolean.FALSE.equals(item.getDeleted()))
+            .filter(item -> item.getUrl() != null && !item.getUrl().isBlank())
+            .sorted(java.util.Comparator
+                .comparing(ProjectMediaEntity::getSortOrder, java.util.Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(ProjectMediaEntity::getId, java.util.Comparator.nullsLast(Long::compareTo)))
+            .toList();
+
+        List<ProjectMeterMediaItemResponse> items = java.util.stream.IntStream.range(0, images.size())
+            .mapToObj(index -> {
+                ProjectMediaEntity item = images.get(index);
+                return ProjectMeterMediaItemResponse.builder()
+                    .id(item.getId())
+                    .mediaType(item.getMediaType())
+                    .url(item.getUrl())
+                    .thumbnailUrl(null)
+                    .title(null)
+                    .caption(item.getCaption())
+                    .displayOrder(item.getSortOrder() != null ? item.getSortOrder() : 0)
+                    .cover(index == 0)
+                    .build();
+            })
+            .toList();
+
+        return ProjectMeterMediaResponse.builder()
+            .coverImageUrl(items.isEmpty() ? null : items.get(0).getUrl())
+            .items(items)
             .build();
     }
 

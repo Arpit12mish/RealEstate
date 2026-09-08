@@ -32,6 +32,9 @@ public class DashboardInstagramReelUpsertRequest {
     @Size(max = 1000)
     private String previewVideoUrl;
 
+    @Size(max = 1000)
+    private String previewImageUrl;
+
     private InstagramReelCategory categoryOverride;
 
     private Integer displayOrder;

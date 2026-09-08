@@ -16,8 +16,13 @@ public final class LogEvents {
     public static final String JWT_AUTH_FAILED       = "jwt_auth_failed";
 
     // Refresh token events
-    public static final String REFRESH_TOKEN_INVALID = "refresh_token_invalid";
-    public static final String REFRESH_SUCCESS       = "refresh_success";
+    public static final String REFRESH_TOKEN_INVALID    = "refresh_token_invalid";
+    public static final String REFRESH_SUCCESS          = "refresh_success";
+    public static final String REFRESH_TOKEN_NOT_FOUND  = "refresh_token_not_found";
+    public static final String REFRESH_TOKEN_EXPIRED    = "refresh_token_expired";
+    public static final String REFRESH_TOKEN_REVOKED    = "refresh_token_revoked";
+    public static final String REFRESH_TOKEN_REUSE      = "refresh_token_reuse";
+    public static final String REFRESH_ROTATION_FAILED  = "refresh_rotation_failed";
 
     // OTP events
     public static final String OTP_VERIFY_FAILED     = "otp_verify_failed";
@@ -37,6 +42,7 @@ public final class LogEvents {
 
     // Session events
     public static final String LOGOUT_SUCCESS        = "logout_success";
+    public static final String LOGOUT_ALL_SUCCESS    = "logout_all_success";
 
     // Error events
     public static final String SERVER_ERROR          = "server_error";

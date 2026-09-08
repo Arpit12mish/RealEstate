@@ -3,6 +3,8 @@ package com.brandPitara.sfs.security;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.UserPhoneLookupService;
+import com.brandPitara.sfs.enums.Role;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationUserSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * CurrentUserService no longer hand-rolls its own phone normalization; it must resolve
@@ -91,5 +94,19 @@ class CurrentUserServiceTest {
         assertThatThrownBy(() -> currentUserService.requireUser())
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void snapshotPrincipalProvidesUserIdWithoutSecondDatabaseLookup() {
+        currentUserService = new CurrentUserService(new UserPhoneLookupService(userRepository), userRepository);
+        MobileAuthenticationUserSnapshot snapshot = new MobileAuthenticationUserSnapshot(
+                77L, "+919876543210", Role.CUSTOMER, true
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(snapshot, null, snapshot.getAuthorities())
+        );
+
+        assertThat(currentUserService.requireUserId()).isEqualTo(77L);
+        verifyNoInteractions(userRepository);
     }
 }

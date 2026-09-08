@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(
         classes = RateLimitConfigLoadingTest.TestApplication.class,
-        properties = "spring.config.import=classpath:application-rate-limit.yml"
+        properties = {"spring.config.import=classpath:application-rate-limit.yml", "sfs.log.dir=target/test-logs"}
 )
 class RateLimitConfigLoadingTest {
 
@@ -41,9 +41,40 @@ class RateLimitConfigLoadingTest {
         assertThat(properties.isEnabled()).isTrue();
         assertThat(properties.isDefaultEnabled()).isTrue();
         assertThat(properties.getTrustedProxies()).contains("127.0.0.1", "::1");
-        assertThat(properties.getMaxCachedBodyBytes()).isEqualTo(32 * 1024);
-        assertThat(properties.getBucketCache().getMaximumSize()).isEqualTo(200_000);
-        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(120);
+        // Raised from 32KB during the analytics backend-optimization pass to cover
+        // PUBLIC_ANALYTICS_INGEST's legitimate worst case (~130KB for a 50-event batch).
+        assertThat(properties.getMaxCachedBodyBytes()).isEqualTo(256 * 1024);
+        assertThat(properties.getBucketCache().getPrimaryMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getAbuseMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(30);
+        assertThat(properties.getBucketCache().getAbuseExpireAfterAccessMinutes()).isEqualTo(60);
+        assertThat(properties.getAbuseCapacityMultiplier()).isEqualTo(10);
+        assertThat(properties.getFailClosedPolicies()).contains(RateLimitPolicy.MOBILE_TOKEN_REFRESH);
+    }
+
+    @Test
+    void publicCmsReadPolicyAllows120PerMinuteThenDeterministicallyBlocksOnlyThatIdentity() {
+        RateLimitProperties.PolicyConfig policy =
+                properties.getPolicies().get(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ);
+        assertThat(policy).isNotNull();
+        assertThat(policy.getLimits()).hasSize(1);
+        assertThat(policy.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
+        assertThat(policy.getLimits().get(0).getCapacity()).isEqualTo(120);
+        assertThat(policy.getLimits().get(0).getRefillPeriodSeconds()).isEqualTo(60);
+
+        com.brandPitara.sfs.ratelimit.service.impl.InMemoryRateLimitService service =
+                new com.brandPitara.sfs.ratelimit.service.impl.InMemoryRateLimitService(properties);
+        var caller = java.util.Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "ip:203.0.113.10");
+        for (int request = 1; request <= 120; request++) {
+            assertThat(service.checkAndConsume(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ, caller).allowed())
+                    .as("normal CMS public read %s", request).isTrue();
+        }
+        var blocked = service.checkAndConsume(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ, caller);
+        assertThat(blocked.allowed()).isFalse();
+        assertThat(blocked.blockedOnKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
+        assertThat(blocked.retryAfterSeconds()).isPositive();
+        assertThat(service.checkAndConsume(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ,
+                java.util.Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "ip:203.0.113.11")).allowed()).isTrue();
     }
 
     @Test
@@ -99,7 +130,7 @@ class RateLimitConfigLoadingTest {
         assertThat(calculatorWrite.getLimits()).hasSize(3);
         assertThat(calculatorWrite.getLimits())
                 .extracting(RateLimitProperties.LimitConfig::getKeyType)
-                .contains(RateLimitKeyType.IP, RateLimitKeyType.BODY_FINGERPRINT);
+                .contains(RateLimitKeyType.PRIMARY_IDENTITY, RateLimitKeyType.BODY_FINGERPRINT);
     }
 
     @Test
@@ -145,7 +176,7 @@ class RateLimitConfigLoadingTest {
         assertThat(businessEventWrite.getLimits()).hasSize(2);
         assertThat(businessEventWrite.getLimits())
                 .extracting(RateLimitProperties.LimitConfig::getKeyType)
-                .containsOnly(RateLimitKeyType.IP);
+                .containsOnly(RateLimitKeyType.PRIMARY_IDENTITY);
     }
 
     @Test
@@ -174,7 +205,7 @@ class RateLimitConfigLoadingTest {
                 properties.getPolicies().get(RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ);
 
         assertThat(contentVersionRead.getLimits()).hasSize(1);
-        assertThat(contentVersionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP);
+        assertThat(contentVersionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
         assertThat(contentVersionRead.getLimits().get(0).getCapacity()).isEqualTo(600);
     }
 
@@ -184,8 +215,27 @@ class RateLimitConfigLoadingTest {
                 properties.getPolicies().get(RateLimitPolicy.MOBILE_SESSION_READ);
 
         assertThat(sessionRead.getLimits()).hasSize(1);
-        assertThat(sessionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP_OR_USER);
+        assertThat(sessionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
         assertThat(sessionRead.getLimits().get(0).getCapacity()).isEqualTo(300);
+    }
+
+    @Test
+    void mobileUpdatePolicyAllowsSharedIpTrafficWithoutTheOldThirtyRequestCeiling() {
+        RateLimitProperties.PolicyConfig policy =
+                properties.getPolicies().get(RateLimitPolicy.PUBLIC_MOBILE_UPDATE_POLICY_READ);
+        assertThat(policy.getLimits()).hasSize(1);
+        assertThat(policy.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
+        assertThat(policy.getLimits().get(0).getCapacity()).isEqualTo(300);
+
+        com.brandPitara.sfs.ratelimit.service.impl.InMemoryRateLimitService service =
+                new com.brandPitara.sfs.ratelimit.service.impl.InMemoryRateLimitService(properties);
+        var sharedIp = java.util.Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "anonymous:203.0.113.20");
+        for (int request = 1; request <= 300; request++) {
+            assertThat(service.checkAndConsume(
+                    RateLimitPolicy.PUBLIC_MOBILE_UPDATE_POLICY_READ, sharedIp).allowed()).isTrue();
+        }
+        assertThat(service.checkAndConsume(
+                RateLimitPolicy.PUBLIC_MOBILE_UPDATE_POLICY_READ, sharedIp).allowed()).isFalse();
     }
 
     @Test

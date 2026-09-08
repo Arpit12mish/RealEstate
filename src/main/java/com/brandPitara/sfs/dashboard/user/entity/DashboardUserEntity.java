@@ -1,10 +1,13 @@
 package com.brandPitara.sfs.dashboard.user.entity;
 
 import com.brandPitara.sfs.dashboard.common.enums.DashboardRole;
+import com.brandPitara.sfs.dashboard.common.enums.DashboardPermission;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Entity
 @Table(
@@ -62,6 +65,16 @@ public class DashboardUserEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 50)
     private DashboardRole role;
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(
+            name = "dashboard_user_permissions",
+            joinColumns = @JoinColumn(name = "dashboard_user_id")
+    )
+    @Enumerated(EnumType.STRING)
+    @Column(name = "permission", nullable = false, length = 80)
+    @Builder.Default
+    private Set<DashboardPermission> permissions = new LinkedHashSet<>();
 
     @ToString.Include
     @Column(nullable = false)

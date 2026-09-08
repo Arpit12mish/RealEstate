@@ -637,4 +637,77 @@ class RateLimitPolicyResolverTest {
         assertThat(resolver.resolve(request("GET", "/api/admin/distributors"))).isEmpty();
         assertThat(resolver.resolve(request("GET", "/api/admin/session/me"))).isEmpty();
     }
+
+    @Test
+    void unknownHttpMethodDoesNotThrowOrMatchAPolicy() {
+        assertThat(resolver.resolve(request("BREW", "/api/home"))).isEmpty();
+    }
+
+    @Test
+    void otpResendSharesRequestOtpPolicy() {
+        // Resend shares request-otp's exact policy/bucket - see RateLimitPolicyResolver.
+        assertThat(resolver.resolve(request("POST", "/api/auth/otp/resend")))
+                .contains(RateLimitPolicy.MOBILE_OTP_REQUEST);
+    }
+
+    @Test
+    void v2PublicProjectDetailMapsToPublicProjectRead() {
+        assertThat(resolver.resolve(request("GET", "/api/v2/public/projects/42")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+        assertThat(resolver.resolve(request("HEAD", "/api/v2/public/projects/42")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+    }
+
+    @Test
+    void gap001SlugLookupRouteIsAlreadyCoveredByPublicProjectRead() {
+        // GET /api/projects/slug/{projectSlug} (GAP-001) is under the existing
+        // /api/projects/** wildcard rule and needed no new Route entry.
+        assertThat(resolver.resolve(request("GET", "/api/projects/slug/m3m-antalya-hills")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+    }
+
+    @Test
+    void getFavoriteOverlayMapsToAuthenticatedFavoriteReadPolicy() {
+        assertThat(resolver.resolve(request("GET", "/api/me/project-favorites")))
+                .contains(RateLimitPolicy.MOBILE_FAVORITE_READ);
+    }
+
+    @Test
+    void publicCmsContentReadRoutesMapToPublicCmsContentRead() {
+        assertThat(resolver.resolve(request("GET", "/api/public/content")))
+                .contains(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/content/published-slug")))
+                .contains(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ);
+    }
+
+    @Test
+    void publicCmsContentWritesDoNotReceiveTheReadPolicy() {
+        assertThat(resolver.resolve(request("POST", "/api/public/content"))).isEmpty();
+        assertThat(resolver.resolve(request("PUT", "/api/public/content/published-slug"))).isEmpty();
+    }
+
+    @Test
+    void analyticsIngestRouteMapsToPublicAnalyticsIngest() {
+        // Before this route existed, this request resolved to Optional.empty() - i.e.
+        // zero rate limiting and zero body-size bound on a permitAll endpoint. This
+        // test guards against that regressing silently.
+        assertThat(resolver.resolve(request("POST", "/api/analytics/events/batch")))
+                .contains(RateLimitPolicy.PUBLIC_ANALYTICS_INGEST);
+        assertThat(resolver.resolve(request("GET", "/api/analytics/events/batch"))).isEmpty();
+    }
+
+    @Test
+    void cityDetailRouteReusesPublicCityReadPolicy() {
+        // GET /api/public/cities/{citySlug}. Before this route existed, this request
+        // resolved to Optional.empty() (no rate limiting at all) - this test guards
+        // against that regressing silently in the future.
+        assertThat(resolver.resolve(request("GET", "/api/public/cities/mumbai")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+        // The exact-match /trending route still wins over the new wildcard for that
+        // specific path - both resolve to the same policy, but this proves the new
+        // route did not shadow the existing one.
+        assertThat(resolver.resolve(request("GET", "/api/public/cities/trending")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+        assertThat(resolver.resolve(request("POST", "/api/public/cities/mumbai"))).isEmpty();
+    }
 }

@@ -2,14 +2,23 @@ package com.brandPitara.sfs.media.service.impl;
 
 import com.brandPitara.sfs.media.config.S3Properties;
 import com.brandPitara.sfs.media.service.MediaStorageService;
+import com.brandPitara.sfs.media.service.MediaObjectStorageService;
+import com.brandPitara.sfs.media.service.PresignedReadResult;
 import com.brandPitara.sfs.media.service.PresignedUploadRequest;
 import com.brandPitara.sfs.media.service.PresignedUploadResult;
+import com.brandPitara.sfs.media.service.StoredObjectMetadata;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
+import software.amazon.awssdk.awscore.AwsRequestOverrideConfiguration;
 
 import java.time.Duration;
 
@@ -21,11 +30,12 @@ import java.time.Duration;
  */
 @Service
 @RequiredArgsConstructor
-public class S3MediaStorageServiceImpl implements MediaStorageService {
+public class S3MediaStorageServiceImpl implements MediaStorageService, MediaObjectStorageService {
 
     private static final String CACHE_CONTROL_HEADER = "Cache-Control";
 
     private final S3Presigner s3Presigner;
+    private final S3Client s3Client;
     private final S3Properties s3Properties;
 
     @Override
@@ -54,6 +64,105 @@ public class S3MediaStorageServiceImpl implements MediaStorageService {
                 s3Properties.getPresignExpirySeconds(),
                 request.additionalHeaders()
         );
+    }
+
+    @Override
+    public PresignedUploadResult createPresignedUpload(
+            String bucket, String storageKey, String contentType, long contentLength
+    ) {
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(storageKey)
+                .contentType(contentType)
+                .contentLength(contentLength)
+                .build();
+        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(
+                PutObjectPresignRequest.builder()
+                        .signatureDuration(Duration.ofSeconds(s3Properties.getPresignExpirySeconds()))
+                        .putObjectRequest(request)
+                        .build()
+        );
+        return new PresignedUploadResult(
+                presigned.url().toString(),
+                null,
+                storageKey,
+                s3Properties.getPresignExpirySeconds(),
+                java.util.Map.of(
+                        "Content-Type", contentType,
+                        "Content-Length", Long.toString(contentLength)
+                )
+        );
+    }
+
+    @Override
+    public PresignedUploadResult createImmutablePresignedUpload(
+            String bucket,
+            String storageKey,
+            String contentType,
+            long contentLength,
+            String cacheControl
+    ) {
+        PutObjectRequest request = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(storageKey)
+                .contentType(contentType)
+                .contentLength(contentLength)
+                .cacheControl(cacheControl)
+                .overrideConfiguration(AwsRequestOverrideConfiguration.builder()
+                        .putHeader("If-None-Match", "*")
+                        .build())
+                .build();
+        PresignedPutObjectRequest presigned = s3Presigner.presignPutObject(
+                PutObjectPresignRequest.builder()
+                        .signatureDuration(Duration.ofSeconds(s3Properties.getPresignExpirySeconds()))
+                        .putObjectRequest(request)
+                        .build()
+        );
+        return new PresignedUploadResult(
+                presigned.url().toString(),
+                null,
+                storageKey,
+                s3Properties.getPresignExpirySeconds(),
+                java.util.Map.of(
+                        "Content-Type", contentType,
+                        "Content-Length", Long.toString(contentLength),
+                        CACHE_CONTROL_HEADER, cacheControl,
+                        "If-None-Match", "*"
+                )
+        );
+    }
+
+    @Override
+    public StoredObjectMetadata head(String bucket, String storageKey) {
+        var response = s3Client.headObject(HeadObjectRequest.builder()
+                .bucket(bucket).key(storageKey).build());
+        return new StoredObjectMetadata(response.contentLength(), response.contentType(), response.eTag());
+    }
+
+    @Override
+    public byte[] readPrefix(String bucket, String storageKey, int maximumBytes) {
+        return s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(storageKey)
+                        .range("bytes=0-" + (maximumBytes - 1))
+                        .build())
+                .asByteArray();
+    }
+
+    @Override
+    public PresignedReadResult createPresignedRead(String bucket, String storageKey) {
+        var request = software.amazon.awssdk.services.s3.model.GetObjectRequest.builder()
+                .bucket(bucket).key(storageKey).build();
+        var presigned = s3Presigner.presignGetObject(GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofSeconds(s3Properties.getPresignExpirySeconds()))
+                .getObjectRequest(request)
+                .build());
+        return new PresignedReadResult(presigned.url().toString(), s3Properties.getPresignExpirySeconds());
+    }
+
+    @Override
+    public void delete(String bucket, String storageKey) {
+        s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(storageKey).build());
     }
 
     /**

@@ -55,24 +55,6 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
   }
 
   @Override
-  public ProjectPublicResponse composePublic(ProjectEntity project, List<ProjectMediaEntity> media) {
-    ProjectPublicResponse response = ProjectMapper.toPublicResponse(project, media);
-
-    ProjectMeterDetailResponse meterDetail = safeGetMeterDetail(project.getId());
-    ProjectConnectivityResponse connectivity = safeGetConnectivity(project.getId());
-
-    response.setPricing(buildPricing(project, meterDetail));
-    response.setLocation(buildLocation(project, connectivity));
-    response.setFloorPlanGroups(buildFloorPlanGroups(project.getId()));
-    response.setConnectivity(connectivity);
-    response.setGlimpses(buildGlimpses(media));
-    response.setAmenities(meterDetail != null ? meterDetail.getAmenities() : null);
-    response.setMasterPlan(safeGetMasterPlan(project.getId()));
-
-    return response;
-  }
-
-  @Override
   public ProjectResponse composeForPreview(ProjectEntity project, List<ProjectMediaEntity> media,
                                            @Nullable ProjectMeterDetailResponse meterDetail) {
     ProjectResponse response = ProjectMapper.toResponse(project, media);
@@ -100,14 +82,6 @@ public class ProjectDetailComposerImpl implements ProjectDetailComposer {
   private ProjectConnectivityResponse safeGetDashboardConnectivity(Long projectId) {
     try {
       return projectConnectivityService.adminGet(projectId);
-    } catch (Exception ignored) {
-      return null;
-    }
-  }
-
-  private ProjectMasterPlanResponse safeGetMasterPlan(Long projectId) {
-    try {
-      return projectMasterPlanService.publicGet(projectId);
     } catch (Exception ignored) {
       return null;
     }

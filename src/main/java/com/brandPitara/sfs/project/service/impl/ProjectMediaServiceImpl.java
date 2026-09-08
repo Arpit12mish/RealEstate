@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.project.dto.ProjectMediaResponse;
 import com.brandPitara.sfs.project.dto.ProjectMediaUpsertRequest;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -25,6 +27,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
   private final ProjectMediaRepository mediaRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -51,6 +54,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MEDIA_CHANGED);
     return ProjectMediaMapper.toResponse(saved);
   }
 
@@ -65,7 +69,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
   @Transactional(readOnly = true)
   public List<ProjectMediaResponse> publicList(Long projectId) {
     // Ensure project is public
-    ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+    ProjectEntity project = projectRepository.findWithBuilderByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new EntityNotFoundException("Project not found: " + projectId));
 
     projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
@@ -93,6 +97,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MEDIA_CHANGED);
     return ProjectMediaMapper.toResponse(saved);
   }
 
@@ -107,6 +112,7 @@ public class ProjectMediaServiceImpl implements ProjectMediaService {
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MEDIA_CHANGED);
   }
 
   private String clean(String s) {

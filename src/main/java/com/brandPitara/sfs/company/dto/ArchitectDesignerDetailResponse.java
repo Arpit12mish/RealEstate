@@ -19,6 +19,7 @@ public class ArchitectDesignerDetailResponse {
   private String logoUrl;
   private String thumbnailImageUrl;
   private String description;
+  private List<String> servicesOffered;
 
   private List<CompanyProjectCardDto> topProjects;
   private List<CompanyStatDto> stats;

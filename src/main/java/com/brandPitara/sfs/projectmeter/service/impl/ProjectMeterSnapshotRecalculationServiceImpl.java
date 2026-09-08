@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.projectmeter.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -43,6 +45,7 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
     private final ProjectLocationScoreRepository projectLocationScoreRepository;
     private final ProjectCostBreakdownRepository projectCostBreakdownRepository;
     private final ProjectPriceHistoryRepository projectPriceHistoryRepository;
+    private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
     @Override
     @Transactional
@@ -155,6 +158,7 @@ public class ProjectMeterSnapshotRecalculationServiceImpl implements ProjectMete
         snapshot.setLastVerifiedAt(Boolean.TRUE.equals(snapshot.getVerified()) ? OffsetDateTime.now() : snapshot.getLastVerifiedAt());
 
         projectMeterSnapshotRepository.save(snapshot);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.ANALYTICS_CHANGED);
     }
 
     @Override

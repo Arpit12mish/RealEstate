@@ -38,6 +38,11 @@ public class ProjectFloorPlanInsightEntity extends BaseEntity {
   @Column(name = "detailed_text", columnDefinition = "text")
   private String detailedText;
 
+  // Free-form dimension string for room-size insight types (e.g. "12ft x
+  // 14ft"), matching ProjectFloorPlanRoomDimensionEntity#dimensionText.
+  @Column(name = "dimension_text", length = 100)
+  private String dimensionText;
+
   // Numeric benchmark comparison fields
   @Column(name = "unit_value", precision = 12, scale = 4)
   private BigDecimal unitValue;

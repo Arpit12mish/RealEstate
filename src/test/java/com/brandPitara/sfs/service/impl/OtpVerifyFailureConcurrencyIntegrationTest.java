@@ -1,10 +1,16 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.config.AppReviewLoginProperties;
+import com.brandPitara.sfs.config.OtpProperties;
 import com.brandPitara.sfs.config.TwilioProperties;
 import com.brandPitara.sfs.entity.OtpRequestTracker;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.observability.LogSanitizer;
+import com.brandPitara.sfs.observability.OtpMetrics;
 import com.brandPitara.sfs.repository.OtpRequestTrackerRepository;
+import com.brandPitara.sfs.service.TwilioVerifyClient;
+import com.brandPitara.sfs.service.model.OtpSendResult;
+import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -13,6 +19,8 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -20,6 +28,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -29,8 +39,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 
 /**
  * Proves that concurrent failed verify-otp attempts for the same phone number cannot
@@ -47,7 +59,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "spring.jpa.hibernate.ddl-auto=create-drop",
                 "spring.flyway.enabled=false",
-                "app.logging.path=target/test-logs",
+                "sfs.log.dir=target/test-logs",
                 "twilio.account-sid=ACtest",
                 "twilio.auth-token=test-token",
                 "twilio.verify-service-sid=VAtest",
@@ -56,6 +68,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @ActiveProfiles({"test", "dev"})
 @Testcontainers(disabledWithoutDocker = true)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OtpVerifyFailureConcurrencyIntegrationTest {
 
     @Container
@@ -75,8 +88,14 @@ class OtpVerifyFailureConcurrencyIntegrationTest {
     @Autowired
     private TwilioOtpServiceImpl otpService;
 
+    @MockitoBean
+    private TwilioVerifyClient twilioVerifyClient;
+
     @Autowired
     private OtpRequestTrackerRepository trackerRepository;
+
+    @Autowired
+    private DataSource dataSource;
 
     @Test
     void concurrentFailedVerifyAttemptsDoNotLoseUpdatesOrExceedBlockThreshold() throws Exception {
@@ -113,12 +132,45 @@ class OtpVerifyFailureConcurrencyIntegrationTest {
         assertThat(persisted.getBlockedUntil()).isNotNull();
     }
 
+    @Test
+    void slowTwilioSendDoesNotRetainADatabaseConnection() throws Exception {
+        String phoneNumber = "+919876543299";
+        CountDownLatch providerEntered = new CountDownLatch(1);
+        CountDownLatch releaseProvider = new CountDownLatch(1);
+        when(twilioVerifyClient.sendVerification(phoneNumber)).thenAnswer(invocation -> {
+            providerEntered.countDown();
+            assertThat(releaseProvider.await(5, TimeUnit.SECONDS)).isTrue();
+            return new TwilioVerifyClient.VerificationResult("VE-test", "pending");
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<OtpSendResult> result = executor.submit(() -> otpService.sendOtp(phoneNumber));
+
+        assertThat(providerEntered.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(dataSource).isInstanceOf(HikariDataSource.class);
+        HikariDataSource hikari = (HikariDataSource) dataSource;
+        assertThat(hikari.getHikariPoolMXBean().getActiveConnections()).isZero();
+        assertThat(hikari.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
+
+        releaseProvider.countDown();
+        assertThat(result.get(5, TimeUnit.SECONDS).getStatus()).isEqualTo("OTP_SENT");
+        executor.shutdown();
+        assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(hikari.getHikariPoolMXBean().getActiveConnections()).isZero();
+    }
+
     @SpringBootConfiguration
     @EnableAutoConfiguration
-    @EnableConfigurationProperties({TwilioProperties.class, AppReviewLoginProperties.class})
+    @EnableConfigurationProperties({TwilioProperties.class, AppReviewLoginProperties.class, OtpProperties.class})
     @EntityScan(basePackageClasses = OtpRequestTracker.class)
-    @EnableJpaRepositories(basePackageClasses = OtpRequestTrackerRepository.class)
-    @Import({TwilioOtpServiceImpl.class, LogSanitizer.class})
+    @EnableJpaRepositories(
+            basePackageClasses = OtpRequestTrackerRepository.class,
+            excludeFilters = @ComponentScan.Filter(
+                    type = FilterType.REGEX,
+                    pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!OtpRequestTrackerRepository$).*"
+            )
+    )
+    @Import({TwilioOtpServiceImpl.class, LogSanitizer.class, OtpMetrics.class, ExternalProviderTransactions.class})
     static class TestApplication {
     }
 }

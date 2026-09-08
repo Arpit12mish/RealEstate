@@ -39,25 +39,31 @@ class RateLimitKeyResolverTest {
     }
 
     @Test
-    void neverUsesRawRefreshTokenAsKeyMaterial() {
+    void rawRefreshTokenCannotChangeCacheIdentity() {
         String rawToken = "super-secret-refresh-token-value";
         RateLimitRequestContext context = RateLimitRequestContext.builder()
-                .ip("1.2.3.4")
+                .ip("invalid-auth:1.2.3.4")
+                .primaryIdentity("invalid-auth:1.2.3.4")
                 .refreshToken(rawToken)
                 .build();
 
         String key = resolver.resolveKeys(List.of(RateLimitKeyType.IP_AND_TOKEN), context).get(RateLimitKeyType.IP_AND_TOKEN);
 
-        assertThat(key).isNotNull();
-        assertThat(key).doesNotContain(rawToken);
-        // SHA-256 hex digest is 64 chars; key format is "<ip>|<hash>".
-        assertThat(key.substring(key.indexOf('|') + 1)).hasSize(64);
+        assertThat(key).isEqualTo("invalid-auth:1.2.3.4").doesNotContain(rawToken);
     }
 
     @Test
-    void hashTokenIsDeterministicForTheSameInput() {
-        assertThat(resolver.hashToken("abc")).isEqualTo(resolver.hashToken("abc"));
-        assertThat(resolver.hashToken("abc")).isNotEqualTo(resolver.hashToken("abd"));
+    void arbitraryClientDimensionsCannotChangePrimaryIdentity() {
+        RateLimitRequestContext one = RateLimitRequestContext.builder().ip("anonymous:1.2.3.4")
+                .primaryIdentity("anonymous:1.2.3.4").installationId("one").deviceId("one").query("one").build();
+        RateLimitRequestContext two = RateLimitRequestContext.builder().ip("anonymous:1.2.3.4")
+                .primaryIdentity("anonymous:1.2.3.4").installationId("two").deviceId("two").query("two").build();
+        for (RateLimitKeyType type : List.of(RateLimitKeyType.IP_AND_INSTALLATION,
+                RateLimitKeyType.IP_AND_DEVICE, RateLimitKeyType.IP_AND_QUERY)) {
+            assertThat(resolver.resolveKeys(List.of(type), one).get(type))
+                    .isEqualTo(resolver.resolveKeys(List.of(type), two).get(type))
+                    .isEqualTo("anonymous:1.2.3.4");
+        }
     }
 
     @Test
@@ -85,6 +91,31 @@ class RateLimitKeyResolverTest {
         Map<RateLimitKeyType, String> keys = resolver.resolveKeys(List.of(RateLimitKeyType.IP_AND_TOKEN), context);
 
         assertThat(keys).doesNotContainKey(RateLimitKeyType.IP_AND_TOKEN);
+    }
+
+    @Test
+    void missingPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        // A shared literal like "missing-phone" would let one attacker exhaust a
+        // single global bucket and block every other client that also omits the
+        // phone field. Omitting the dimension instead means only the co-configured
+        // PRIMARY_IDENTITY/IP dimension protects this request - never nothing.
+        RateLimitRequestContext context = RateLimitRequestContext.builder().ip("9.9.9.9").build();
+
+        Map<RateLimitKeyType, String> keys = resolver.resolveKeys(List.of(RateLimitKeyType.PHONE), context);
+
+        assertThat(keys).doesNotContainKey(RateLimitKeyType.PHONE);
+    }
+
+    @Test
+    void malformedPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        RateLimitRequestContext context = RateLimitRequestContext.builder()
+                .ip("9.9.9.9")
+                .phoneNumber("not-a-real-phone-number")
+                .build();
+
+        Map<RateLimitKeyType, String> keys = resolver.resolveKeys(List.of(RateLimitKeyType.PHONE), context);
+
+        assertThat(keys).doesNotContainKey(RateLimitKeyType.PHONE);
     }
 
     // ── Phase 2: mobile action APIs ──────────────────────────────────────────────
@@ -140,6 +171,21 @@ class RateLimitKeyResolverTest {
     }
 
     @Test
+    void missingOrBlankBodyFingerprintIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        // Same contract as PHONE (malformedPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity):
+        // a request with no usable body must not collapse onto one shared "_none_" bucket with
+        // every other client whose body is also missing/blank/unparsable - that would let one
+        // attacker exhaust the shared bucket and 429 unrelated legitimate requests.
+        RateLimitRequestContext missing = RateLimitRequestContext.builder().build();
+        RateLimitRequestContext blank = RateLimitRequestContext.builder().bodyFingerprint("   ").build();
+
+        assertThat(resolver.resolveKeys(List.of(RateLimitKeyType.BODY_FINGERPRINT), missing))
+                .doesNotContainKey(RateLimitKeyType.BODY_FINGERPRINT);
+        assertThat(resolver.resolveKeys(List.of(RateLimitKeyType.BODY_FINGERPRINT), blank))
+                .doesNotContainKey(RateLimitKeyType.BODY_FINGERPRINT);
+    }
+
+    @Test
     void rawBodyFingerprintInputNeverAppearsInTheResolvedKey() {
         String rawBody = "{\"note\":\"unique-body-marker-should-never-appear-in-key\"}";
         RateLimitRequestContext context = RateLimitRequestContext.builder().bodyFingerprint(rawBody).build();
@@ -148,8 +194,7 @@ class RateLimitKeyResolverTest {
 
         assertThat(key).isNotNull();
         assertThat(key).doesNotContain("unique-body-marker-should-never-appear-in-key");
-        // SHA-256 hex digest is 64 chars, matching the same hashing convention as
-        // IP_AND_TOKEN/IP_AND_QUERY - never the raw value itself.
+        // SHA-256 hex digest is 64 chars; never the raw value itself.
         assertThat(key).hasSize(64);
     }
 

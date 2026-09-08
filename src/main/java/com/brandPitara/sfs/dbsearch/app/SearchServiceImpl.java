@@ -15,6 +15,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMediaPicker;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
@@ -24,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
@@ -36,12 +38,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class SearchServiceImpl implements SearchService {
 
     private final ProjectSearchRepository projectSearchRepository;
     private final BuilderSearchRepository builderSearchRepository;
     private final CompanySearchRepository companySearchRepository;
     private final ProjectMediaRepository projectMediaRepository;
+    private final ProjectRepository projectRepository;
     private final SearchMapper searchMapper;
     private final ProjectFavoriteService projectFavoriteService;
     private final CityRepository cityRepository;
@@ -52,6 +56,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public SearchSuggestResponse suggest(String query, Long cityId, String citySlug, Integer limit) {
         String normalizedQuery = normalizeQuery(query);
         int safeLimit = normalizeLimit(limit);
@@ -67,6 +72,7 @@ public class SearchServiceImpl implements SearchService {
         List<ProjectEntity> projects = projectSearchRepository.searchProjects(
                 normalizedQuery, cityFilter.cityId(), PageRequest.of(0, safeLimit)
         );
+        preloadPropertyTypes(projects);
         List<BuilderEntity> builders = builderSearchRepository.searchBuilders(
                 normalizedQuery, cityFilter.cityId(), PageRequest.of(0, safeLimit)
         );
@@ -130,6 +136,7 @@ public class SearchServiceImpl implements SearchService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public SearchResultResponse search(SearchCriteria criteria) {
         SearchCriteria normalizedCriteria = normalizeCriteria(criteria);
         String normalizedQuery = normalizedCriteria.query();
@@ -155,6 +162,7 @@ public class SearchServiceImpl implements SearchService {
                 PageRequest.of(safePage, safeSize)
         );
         List<ProjectEntity> projects = projectPage.getContent();
+        preloadPropertyTypes(projects);
 
         if (hasFilters) {
             List<SearchItemDto> projectItems = mapProjectItems(projects);
@@ -211,6 +219,16 @@ public class SearchServiceImpl implements SearchService {
                 .hasNextPage(false)
                 .items(List.of())
                 .build();
+    }
+
+    private void preloadPropertyTypes(List<ProjectEntity> projects) {
+        List<Long> projectIds = projects.stream()
+                .map(ProjectEntity::getId)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        if (!projectIds.isEmpty()) {
+            projectRepository.findAllWithPropertyTypesByIdIn(projectIds);
+        }
     }
 
     private List<SearchItemDto> mapProjectItems(List<ProjectEntity> projects) {

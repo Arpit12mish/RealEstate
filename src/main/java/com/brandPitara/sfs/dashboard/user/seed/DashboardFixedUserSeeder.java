@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.util.StringUtils;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 
 @Slf4j
 @Component
@@ -19,6 +20,7 @@ public class DashboardFixedUserSeeder implements CommandLineRunner {
 
     private final DashboardUserRepository dashboardUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
 
     @Value("${dashboard.seed.enabled:false}")
     private boolean seedEnabled;
@@ -105,7 +107,8 @@ public class DashboardFixedUserSeeder implements CommandLineRunner {
                 .active(true)
                 .build();
 
-        dashboardUserRepository.save(user);
+        DashboardUserEntity saved = dashboardUserRepository.save(user);
+        identityCacheInvalidator.invalidateDashboardAfterCommit(saved.getId());
 
         log.info("Created dashboard fixed user: email={}, role={}", email, role);
     }
@@ -127,7 +130,8 @@ public class DashboardFixedUserSeeder implements CommandLineRunner {
             user.setPasswordHash(passwordEncoder.encode(rawPassword));
         }
 
-        dashboardUserRepository.save(user);
+        DashboardUserEntity saved = dashboardUserRepository.save(user);
+        identityCacheInvalidator.invalidateDashboardAfterCommit(saved.getId());
 
         log.info("Updated dashboard fixed user: email={}, role={}", user.getEmail(), role);
     }

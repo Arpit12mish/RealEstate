@@ -1,0 +1,11 @@
+.git
+.idea
+.vscode
+target
+logs
+infra/local-staging/.env
+infra/local-staging/runtime
+*.log
+*.jar
+.DS_Store
+docs/floor-plan-insights-*

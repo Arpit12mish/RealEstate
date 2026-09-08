@@ -8,10 +8,13 @@ import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityPlaceRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRepository;
+import com.brandPitara.sfs.project.repository.ProjectMasterPlanRepository;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.projectcompare.builder.ProjectComparisonOverviewInsightBuilder;
 import com.brandPitara.sfs.projectcompare.builder.ProjectComparisonSectionBuilder;
 import com.brandPitara.sfs.projectcompare.dto.request.ProjectComparisonRequest;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonOverviewInsightResponse;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonProjectHeader;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonSection;
 import com.brandPitara.sfs.projectcompare.dto.response.ProjectComparisonResponse;
@@ -28,6 +31,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -46,8 +50,10 @@ class ProjectComparisonServiceImplTest {
     @Mock private ProjectConstructionStageRepository stageRepository;
     @Mock private ProjectFloorPlanRepository floorPlanRepository;
     @Mock private ProjectConnectivityPlaceRepository connectivityPlaceRepository;
+    @Mock private ProjectMasterPlanRepository masterPlanRepository;
     @Mock private ProjectMediaRepository mediaRepository;
     @Mock private BuilderCredibilityService builderCredibilityService;
+    @Mock private ProjectComparisonOverviewInsightBuilder overviewInsightBuilder;
     @Mock private ProjectComparisonSectionBuilder sectionBuilder;
 
     @InjectMocks private ProjectComparisonServiceImpl service;
@@ -89,6 +95,7 @@ class ProjectComparisonServiceImplTest {
         when(connectivityPlaceRepository
                 .findByProjectIdInAndActiveTrueAndDeletedFalseOrderByProjectIdAscCategoryAscSortOrderAscIdAsc(ids))
                 .thenReturn(List.of());
+        when(masterPlanRepository.findByProjectIdInAndActiveTrueAndDeletedFalse(ids)).thenReturn(List.of());
         when(mediaRepository.findActiveByProjectIds(ids)).thenReturn(List.of());
     }
 
@@ -103,10 +110,17 @@ class ProjectComparisonServiceImplTest {
     }
 
     private void stubSectionBuilder(List<ProjectEntity> projects) {
+        lenient().when(overviewInsightBuilder.build(any(), any(), any(), any(), any(), any()))
+                .thenReturn(ComparisonOverviewInsightResponse.builder()
+                        .title("A vs B — Clear, Data-Led Comparison")
+                        .blocks(List.of())
+                        .build());
         lenient().when(sectionBuilder.buildHeaders(any(), any())).thenReturn(
                 projects.stream().map(p -> ComparisonProjectHeader.builder()
                         .projectId(p.getId()).name(p.getName()).slug(p.getSlug()).build()).toList());
-        lenient().when(sectionBuilder.buildOverview(any(), any())).thenReturn(stubSection(ComparisonSectionKey.OVERVIEW));
+        lenient().when(sectionBuilder.buildVisualComparison(any(), any()))
+                .thenReturn(stubSection(ComparisonSectionKey.VISUAL_COMPARISON));
+        lenient().when(sectionBuilder.buildOverview(any(), any(), any())).thenReturn(stubSection(ComparisonSectionKey.OVERVIEW));
         lenient().when(sectionBuilder.buildPrice(any(), any())).thenReturn(stubSection(ComparisonSectionKey.PRICE));
         lenient().when(sectionBuilder.buildUnits(any(), any())).thenReturn(stubSection(ComparisonSectionKey.UNITS));
         lenient().when(sectionBuilder.buildAmenities(any(), any(), any())).thenReturn(stubSection(ComparisonSectionKey.AMENITIES));
@@ -240,6 +254,27 @@ class ProjectComparisonServiceImplTest {
     }
 
     @Test
+    void visualComparisonIsIncludedOnlyWhenExplicitlyRequestedByFilteredRequest() {
+        List<Long> ids = List.of(1L, 2L);
+        List<ProjectEntity> projects = List.of(project(1L, "A"), project(2L, "B"));
+
+        when(projectRepository.findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(ids, ReviewStatus.APPROVED))
+                .thenReturn(projects);
+        stubEmptyBatchRepos(ids);
+        stubSectionBuilder(projects);
+
+        ProjectComparisonRequest req = new ProjectComparisonRequest();
+        req.setProjectIds(ids);
+        req.setSectionKeys(List.of(ComparisonSectionKey.VISUAL_COMPARISON));
+
+        ProjectComparisonResponse response = service.compare(req);
+
+        assertThat(response.getSections()).singleElement()
+                .extracting(ComparisonSection::getSectionKey)
+                .isEqualTo(ComparisonSectionKey.VISUAL_COMPARISON);
+    }
+
+    @Test
     void sectionsAreReturnedInDisplayOrder() {
         List<Long> ids = List.of(1L, 2L);
         List<ProjectEntity> projects = List.of(project(1L, "A"), project(2L, "B"));
@@ -298,6 +333,8 @@ class ProjectComparisonServiceImplTest {
         ProjectComparisonResponse response = service.compare(req);
 
         assertThat(response.getSections()).hasSize(ComparisonSectionKey.values().length);
+        assertThat(response.getSections().get(0).getSectionKey())
+                .isEqualTo(ComparisonSectionKey.VISUAL_COMPARISON);
     }
 
     @Test
@@ -327,7 +364,7 @@ class ProjectComparisonServiceImplTest {
         when(projectRepository.findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(ids, ReviewStatus.APPROVED))
                 .thenReturn(projects);
         stubEmptyBatchRepos(ids);
-        when(builderCredibilityService.publicGetCredibilitySummary(100L))
+        when(builderCredibilityService.publicGetCredibilitySummaries(Set.of(100L)))
                 .thenThrow(new RuntimeException("credibility service down"));
         stubSectionBuilder(projects);
 

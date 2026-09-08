@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
 import lombok.RequiredArgsConstructor;
 import net.logstash.logback.argument.StructuredArguments;
 import org.slf4j.Logger;
@@ -13,6 +14,7 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -53,7 +55,15 @@ import java.util.Map;
  *  • Request bodies
  *  • Authorization / Cookie headers
  *  • Sensitive query params (masked by LogSanitizer)
- *  • /actuator/health when status < 400
+ *  • /api/health and /actuator/health when status < 400 (a FAILING health
+ *    check - e.g. the readiness probe's `db` indicator going down during a
+ *    Hikari-pool-exhaustion-class incident - is always logged; suppressing
+ *    that too would remove the exact signal an on-call engineer needs to
+ *    correlate probe failures with incident timing). This can only be
+ *    decided after the response exists, so - unlike the other exclusions
+ *    below - it is NOT implemented in shouldNotFilter (which runs before
+ *    the response exists and would have to exclude unconditionally); see
+ *    isSuccessfulHealthCheck's use in logRequest.
  *  • OPTIONS pre-flight requests
  *  • DispatcherType.ERROR re-dispatches (prevents duplicate entry when Tomcat
  *    internally forwards the original 4xx/5xx response to /error)
@@ -63,19 +73,35 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ApiRequestLoggingFilter extends OncePerRequestFilter {
 
-    private static final Logger API_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_API);
+    private static final Logger API_INFO_LOG = LoggerFactory.getLogger(LoggingConstants.LOGGER_API);
+    private static final Logger API_RELIABLE_LOG =
+            LoggerFactory.getLogger(LoggingConstants.LOGGER_API_RELIABLE);
 
     private final LogSanitizer sanitizer;
+    // Reused rather than re-implementing X-Forwarded-For parsing here: only trusts XFF from a
+    // configured trusted proxy, exactly like the rate-limit filters - a separate, blind
+    // xff.split(",")[0] here would let any client spoof the clientIp recorded in this log,
+    // independently of (and inconsistently with) what the rate limiter resolves for the same
+    // request.
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${sfs.logging.slow-api-threshold-ms:1500}")
     private long slowApiThresholdMs;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (request.getDispatcherType() == DispatcherType.ERROR)            return true;
+        if (request.getDispatcherType() == DispatcherType.ERROR
+                || request.getDispatcherType() == DispatcherType.ASYNC)     return true;
         if ("OPTIONS".equalsIgnoreCase(request.getMethod()))                return true;
         if (LoggingConstants.PATH_FAVICON.equals(request.getRequestURI())) return true;
         return false;
+    }
+
+    private boolean isHealthCheckPath(String path) {
+        return "/api/health".equals(path)
+                || (path != null && path.startsWith("/api/health/"))
+                || LoggingConstants.PATH_ACTUATOR_HEALTH.equals(path)
+                || (path != null && path.startsWith(LoggingConstants.PATH_ACTUATOR_HEALTH + "/"));
     }
 
     @Override
@@ -105,11 +131,17 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             long durationMs,
             Throwable exception
     ) {
-        String path   = sanitizer.sanitizePath(request.getRequestURI());
-        String method = request.getMethod();
-        int    status = resolveStatus(response, exception);
+        String rawPath = request.getRequestURI();
+        int    status  = resolveStatus(response, exception);
+        // Only a SUCCESSFUL health check is noise-suppressed - a failing one (e.g. the
+        // readiness probe's `db` indicator during a pool-exhaustion incident) is always logged,
+        // restoring the visibility the class doc comment already promises.
+        if (isHealthCheckPath(rawPath) && exception == null && status < 400) {
+            return;
+        }
 
-        if (LoggingConstants.PATH_ACTUATOR_HEALTH.equals(path) && status < 400) return;
+        String path   = sanitizer.sanitizePath(rawPath);
+        String method = request.getMethod();
 
         String clientIp  = sanitizer.maskIp(resolveClientIp(request));
         String userAgent = sanitizer.simplifyUserAgent(request.getHeader("User-Agent"));
@@ -123,11 +155,15 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         fields.put("event",      event);
         fields.put("method",     method);
         fields.put("path",       path);
+        fields.put("route",      resolveRoute(request, path));
         if (query != null)         fields.put("query",      query);
         fields.put("status",     status);
         fields.put("durationMs", durationMs);
         fields.put("userId",     resolveUserId());
         fields.put("role",       resolveRole());
+        fields.put("principalType", resolvePrincipalType());
+        long responseSize = resolveResponseSize(response);
+        if (responseSize >= 0)      fields.put("responseSizeBytes", responseSize);
         fields.put("clientIp",   clientIp);
         fields.put("userAgent",  userAgent);
         if (exception != null) {
@@ -136,21 +172,25 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         }
 
         if (status >= 500 || exception != null) {
-            API_LOG.error("{}", StructuredArguments.entries(fields));
-        } else if (status >= 400) {
-            API_LOG.warn("{}", StructuredArguments.entries(fields));
+            API_RELIABLE_LOG.error("{}", StructuredArguments.entries(fields));
         } else {
-            API_LOG.info("{}", StructuredArguments.entries(fields));
+            API_INFO_LOG.info("{}", StructuredArguments.entries(fields));
         }
 
         if (durationMs >= slowApiThresholdMs) {
             Map<String, Object> slowFields = new LinkedHashMap<>();
             slowFields.put("event",      LogEvents.SLOW_API);
+            slowFields.put("slow",       true);
             slowFields.put("method",     method);
             slowFields.put("path",       path);
             slowFields.put("status",     status);
             slowFields.put("durationMs", durationMs);
-            API_LOG.warn("{}", StructuredArguments.entries(slowFields));
+            slowFields.put("route", resolveRoute(request, path));
+            if (exception == null && status < 500) {
+                API_INFO_LOG.info("{}", StructuredArguments.entries(slowFields));
+            } else {
+                API_RELIABLE_LOG.warn("{}", StructuredArguments.entries(slowFields));
+            }
         }
     }
 
@@ -166,6 +206,13 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
         return (mdc != null && !mdc.isBlank()) ? mdc : "NONE";
     }
 
+    private String resolvePrincipalType() {
+        String role = resolveRole();
+        if ("GUEST".equalsIgnoreCase(role)) return "guest";
+        if ("NONE".equalsIgnoreCase(role)) return "anonymous";
+        return "authenticated";
+    }
+
     // ── Misc helpers ─────────────────────────────────────────────────────────
 
     private int resolveStatus(HttpServletResponse response, Throwable exception) {
@@ -177,10 +224,23 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
+        return clientIpResolver.resolve(request);
+    }
+
+    private long resolveResponseSize(HttpServletResponse response) {
+        String contentLength = response.getHeader("Content-Length");
+        if (contentLength == null) return -1;
+        try {
+            return Long.parseLong(contentLength);
+        } catch (NumberFormatException ignored) {
+            return -1;
         }
-        return request.getRemoteAddr();
+    }
+
+    private String resolveRoute(HttpServletRequest request, String fallbackPath) {
+        Object route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+        if (route == null) return fallbackPath;
+        String sanitized = sanitizer.sanitizePath(route.toString());
+        return sanitized.isBlank() ? fallbackPath : sanitized;
     }
 }

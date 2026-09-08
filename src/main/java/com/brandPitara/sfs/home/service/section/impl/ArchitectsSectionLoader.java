@@ -12,10 +12,10 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class ArchitectsSectionLoader implements HomeSectionLoader {
 
   // Phase 8A-G: sourced from ArchitectDesignerType, the single authoritative
@@ -51,15 +52,8 @@ public class ArchitectsSectionLoader implements HomeSectionLoader {
   public HomeSectionDto<?> load(HomeSectionConfigEntity cfg, SectionContext ctx) {
     int limit = Math.max(1, cfg.getMaxItems() != null ? cfg.getMaxItems() : 10);
 
-    List<CompanyEntity> companies = companyRepository
-        .findByActiveTrueAndPublishedTrueAndDeletedFalse(
-            PageRequest.of(0, limit * 3, Sort.by("priority").ascending().and(Sort.by("id").descending()))
-        )
-        .getContent()
-        .stream()
-        .filter(this::isArchitect)
-        .limit(limit)
-        .toList();
+    List<CompanyEntity> companies = companyRepository.findPublicByNormalizedCompanyTypes(
+        ALLOWED_TYPES, PageRequest.of(0, limit));
 
     if (companies.isEmpty()) {
       return HomeSectionDto.<ArchitectDesignerCardDto>builder()
@@ -75,7 +69,7 @@ public class ArchitectsSectionLoader implements HomeSectionLoader {
 
     Map<Long, CompanyProjectEntity> topProjectByCompanyId =
         companyProjectRepository
-            .findByCompany_IdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(companyIds)
+            .findTopPublicProjectPerCompany(companyIds)
             .stream()
             .collect(Collectors.toMap(
                 p -> p.getCompany().getId(),
@@ -97,11 +91,6 @@ public class ArchitectsSectionLoader implements HomeSectionLoader {
         .title(cfg.getTitle() != null ? cfg.getTitle() : "Top Architects")
         .items(cards)
         .build();
-  }
-
-  private boolean isArchitect(CompanyEntity company) {
-    return company.getCompanyType() != null
-        && ALLOWED_TYPES.contains(company.getCompanyType().trim().toUpperCase());
   }
 
   private Map<Long, Map<String, String>> buildStatMap(List<Long> companyIds) {

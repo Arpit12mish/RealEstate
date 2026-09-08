@@ -10,7 +10,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 public interface BuilderHighlightItemRepository extends JpaRepository<BuilderHighlightItemEntity, Long> {
 
@@ -28,6 +30,20 @@ public interface BuilderHighlightItemRepository extends JpaRepository<BuilderHig
     boolean existsByBuilder_IdAndStatusAndPublicVisibleTrueAndActiveTrueAndDeletedAtIsNull(
         Long builderId,
         BuilderHighlightStatus status
+    );
+
+    @Query("""
+        select distinct i.builder.id
+        from BuilderHighlightItemEntity i
+        where i.builder.id in :builderIds
+          and i.status = :status
+          and i.publicVisible = true
+          and i.active = true
+          and i.deletedAt is null
+        """)
+    Set<Long> findBuilderIdsWithPublicHighlights(
+        @Param("builderIds") Collection<Long> builderIds,
+        @Param("status") BuilderHighlightStatus status
     );
 
     @EntityGraph(attributePaths = {"builder", "project", "city"})

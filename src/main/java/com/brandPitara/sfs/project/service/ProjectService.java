@@ -26,6 +26,7 @@ public interface ProjectService {
 
   Page<ProjectPublicResponse> publicListByBuilder(Long builderId, Pageable pageable);
   ProjectPublicResponse publicGet(Long projectId);
+  ProjectPublicResponse publicGetBySlug(String projectSlug);
   Page<ProjectPublicResponse> publicFeatured(Long builderId, Pageable pageable);
   Page<ProjectPublicResponse> publicBrowse(List<UnitConfigurationType> unitConfigurations, Long cityId, Pageable pageable);
 }

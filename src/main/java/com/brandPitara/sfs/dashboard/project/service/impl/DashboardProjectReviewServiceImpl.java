@@ -1,5 +1,9 @@
 package com.brandPitara.sfs.dashboard.project.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
+import com.brandPitara.sfs.builder.entity.BuilderEntity;
+import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.auth.service.DashboardCurrentUserService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewActionType;
@@ -15,6 +19,7 @@ import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +39,9 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
     private final DashboardFieldReviewIssueService fieldReviewIssueService;
     private final DashboardReviewHistoryService reviewHistoryService;
     private final ContentVersionService contentVersionService;
+    private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
+    private final BuilderRepository builderRepository;
+    private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
     @Override
     @Transactional(readOnly = true)
@@ -84,6 +92,7 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
         );
 
         contentVersionService.bump(KEY_PROJECTS);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
         return DashboardProjectReviewResponse.from(saved);
     }
@@ -120,6 +129,9 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
             throw new IllegalStateException("Project cannot be approved while active field review issues exist.");
         }
 
+        attachLockedBuilder(project);
+        projectPublicVisibilityPolicy.assertEligibleForApprovalPublication(project, projectId);
+
         String remarks = request != null ? clean(request.getRemarks()) : null;
 
         project.setReviewStatus(ReviewStatus.APPROVED);
@@ -142,6 +154,7 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
 
         contentVersionService.bump(KEY_PROJECTS);
         contentVersionService.bump(KEY_HOME);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
         return DashboardProjectReviewResponse.from(saved);
     }
@@ -189,6 +202,7 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
 
         contentVersionService.bump(KEY_PROJECTS);
         contentVersionService.bump(KEY_HOME);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
         return DashboardProjectReviewResponse.from(saved);
     }
@@ -236,6 +250,7 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
 
         contentVersionService.bump(KEY_PROJECTS);
         contentVersionService.bump(KEY_HOME);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
         return DashboardProjectReviewResponse.from(saved);
     }
@@ -275,6 +290,7 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
         );
 
         contentVersionService.bump(KEY_PROJECTS);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
         return DashboardProjectReviewResponse.from(saved);
     }
@@ -290,6 +306,18 @@ public class DashboardProjectReviewServiceImpl implements DashboardProjectReview
 
     private ReviewStatus normalizeStatus(ReviewStatus status) {
         return status != null ? status : ReviewStatus.DRAFT;
+    }
+
+    private void attachLockedBuilder(ProjectEntity project) {
+        BuilderEntity currentBuilder = project.getBuilder();
+        if (currentBuilder == null || currentBuilder.getId() == null) {
+            return;
+        }
+
+        BuilderEntity lockedBuilder = builderRepository
+                .findByIdAndDeletedFalseForUpdate(currentBuilder.getId())
+                .orElse(null);
+        project.setBuilder(lockedBuilder);
     }
 
     private String clean(String value) {

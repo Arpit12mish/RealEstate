@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: ${STAGING_DATABASE_URL}
+    username: ${STAGING_DATABASE_USERNAME}
+    password: ${STAGING_DATABASE_PASSWORD}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+sfs:
+  environment: staging

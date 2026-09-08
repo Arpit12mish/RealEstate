@@ -10,6 +10,7 @@ import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,11 +18,14 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -42,12 +46,13 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.jpa.hibernate.ddl-auto=create-drop",
                 "spring.flyway.enabled=false",
                 "jwt.refresh.expiration.days=30",
-                "app.logging.path=target/test-logs"
+                "sfs.log.dir=target/test-logs"
         }
 )
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 @ExtendWith(OutputCaptureExtension.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class RefreshTokenRotationConcurrencyIntegrationTest {
 
     @Container
@@ -69,6 +74,7 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
 
+    @Autowired
     RefreshTokenRotationConcurrencyIntegrationTest(
             RefreshTokenServiceImpl refreshTokenService,
             RefreshTokenRepository refreshTokenRepository,
@@ -138,8 +144,19 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
         Long activeSameUserOtherDeviceTokens = countTokens(user.getId(), "android-secondary", false);
         Long activeOtherUserTokens = countTokens(unrelatedUser.getId(), "ios-primary", false);
 
-        assertThat(revokedOldPrimaryTokens).isEqualTo(1L);
-        assertThat(activePrimaryReplacementTokens).isEqualTo(1L);
+        // The loser's "already revoked" branch revokes the WHOLE active
+        // family for this device, not just the one replayed token - so the
+        // winner's brand-new replacement is collateral damage too, leaving
+        // 2 revoked rows (the original + the winner's replacement) and 0
+        // still-active for "ios-primary". This is intentional: the backend
+        // cannot distinguish "two legitimate concurrent calls raced" from
+        // "an attacker replayed an already-superseded token", and the
+        // standard defense is to always assume compromise. A well-behaved
+        // client avoids ever triggering this by single-flighting its own
+        // refresh calls (as this project's mobile client does) rather than
+        // relying on the backend to tell the two cases apart.
+        assertThat(revokedOldPrimaryTokens).isEqualTo(2L);
+        assertThat(activePrimaryReplacementTokens).isEqualTo(0L);
         assertThat(activeSameUserOtherDeviceTokens).isEqualTo(1L);
         assertThat(activeOtherUserTokens).isEqualTo(1L);
     }
@@ -188,8 +205,14 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
     @SpringBootConfiguration
     @EnableAutoConfiguration
     @EntityScan(basePackageClasses = {User.class, RefreshToken.class, Otp.class})
-    @EnableJpaRepositories(basePackageClasses = {UserRepository.class, RefreshTokenRepository.class})
-    @Import(RefreshTokenServiceImpl.class)
+    @EnableJpaRepositories(
+            basePackageClasses = {UserRepository.class, RefreshTokenRepository.class},
+            excludeFilters = @ComponentScan.Filter(
+                    type = FilterType.REGEX,
+                    pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!(RefreshTokenRepository|UserRepository)$).*"
+            )
+    )
+    @Import({RefreshTokenServiceImpl.class, RefreshTokenFamilyRevoker.class})
     static class TestApplication {
     }
 }

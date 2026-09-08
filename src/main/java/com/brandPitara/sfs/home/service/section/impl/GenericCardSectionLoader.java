@@ -14,6 +14,7 @@ import com.brandPitara.sfs.home.enums.HomeSectionItemType;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.repository.HomeSectionItemRepository;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
@@ -22,6 +23,7 @@ import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.*;
 import java.util.function.Function;
@@ -30,6 +32,7 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@HomeSectionReadTransaction
 public class GenericCardSectionLoader implements HomeSectionLoader {
 
   private final HomeSectionItemRepository itemRepo;
@@ -60,10 +63,9 @@ public class GenericCardSectionLoader implements HomeSectionLoader {
 
     List<HomeSectionItemEntity> rows =
     itemRepo.findByConfig_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
-        cfg.getId()
+        cfg.getId(), PageRequest.of(0, limit)
     );
     if (rows.isEmpty()) return empty(cfg);
-    if (rows.size() > limit) rows = rows.subList(0, limit);
 
     // Collect ids
     List<Long> brandIds = rows.stream()

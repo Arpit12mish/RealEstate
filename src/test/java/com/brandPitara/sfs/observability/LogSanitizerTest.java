@@ -54,6 +54,12 @@ class LogSanitizerTest {
         assertThat(sanitizer.sanitizeQueryString("refreshToken=raw-refresh-token-value"))
                 .isEqualTo("refreshToken=****")
                 .doesNotContain("raw-refresh-token-value");
+        assertThat(sanitizer.sanitizeQueryString("access_token=raw-access-token-value"))
+                .isEqualTo("access_token=****")
+                .doesNotContain("raw-access-token-value");
+        assertThat(sanitizer.sanitizeQueryString("refresh-token=raw-refresh-token-value"))
+                .isEqualTo("refresh-token=****")
+                .doesNotContain("raw-refresh-token-value");
     }
 
     @Test
@@ -73,6 +79,29 @@ class LogSanitizerTest {
         String malicious = "q=test\nfake-log-line=injected";
 
         assertThat(sanitizer.sanitizeQueryString(malicious)).doesNotContain("\n");
+    }
+
+    @Test
+    void sanitizeMessageRedactsBearerJwtOtpPasswordApiKeyCredentialAndPhoneValues() {
+        String jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZW5zaXRpdmUifQ.signaturevalue123";
+        String raw = "Bearer bearer-secret token=" + jwt
+                + " otp=482913 password=hunter2 apiKey=AIza-real credential=cloud-secret phone +919876543210";
+
+        String sanitized = sanitizer.sanitizeMessage(raw);
+
+        assertThat(sanitized)
+                .contains("Bearer ****", "otp=****", "password=****", "apiKey=****", "credential=****")
+                .doesNotContain("bearer-secret", jwt, "482913", "hunter2", "AIza-real", "cloud-secret", "+919876543210");
+    }
+
+    @Test
+    void sanitizeMessageRedactsEmailAddresses() {
+        // Added for analytics search-query PII masking (AnalyticsEventValidator reuses
+        // this method) - a user pasting their email into free text must not have it
+        // survive verbatim.
+        String sanitized = sanitizer.sanitizeMessage("contact buyer at jane.doe+realestate@example.co.in please");
+
+        assertThat(sanitized).contains("****").doesNotContain("jane.doe+realestate@example.co.in");
     }
 
     @Test

@@ -11,6 +11,7 @@ public class CompanyProjectResponse {
   private Long id;
   private String name;
   private String slug;
+  private String shortDescription;
 
   private Long companyId;
   private String companyName;
@@ -19,6 +20,7 @@ public class CompanyProjectResponse {
   private Long cityId;
   private String cityName;
   private String addressLine;
+  private String locationLabel;
   private Double projectCityLatitude;
   private Double projectCityLongitude;
 
@@ -32,4 +34,10 @@ public class CompanyProjectResponse {
   private String coverMediaUrl;
   private String coverMediaType;
   private List<PublicBrandConnectedResponse> brandsUsed;
+  private List<CompanyProjectStatDto> stats;
+  private CompanyProjectBudgetDto budget;
+  private List<CompanyProjectPriceBreakdownItemDto> priceBreakdown;
+  private List<CompanyProjectClientRequirementDto> clientRequirements;
+  private CompanyProjectDesignMaterialsDto designMaterials;
+  private List<CompanyProjectMediaResponse> mediaGallery;
 }

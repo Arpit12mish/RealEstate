@@ -7,7 +7,6 @@ import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -18,7 +17,7 @@ public class DashboardLoginAuditServiceImpl implements DashboardLoginAuditServic
     private final DashboardLoginAuditRepository loginAuditRepository;
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void recordSuccess(DashboardUserEntity user, HttpServletRequest request) {
         loginAuditRepository.save(
                 DashboardLoginAuditEntity.success(
@@ -30,7 +29,7 @@ public class DashboardLoginAuditServiceImpl implements DashboardLoginAuditServic
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void recordFailure(String email, String reason, HttpServletRequest request) {
         loginAuditRepository.save(
                 DashboardLoginAuditEntity.failure(

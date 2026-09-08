@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.repository;
 
 import com.brandPitara.sfs.entity.CategoryEntity;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -19,6 +20,8 @@ public interface CategoryRepository extends JpaRepository<CategoryEntity, Long> 
 
     // new: only active children by parent
     List<CategoryEntity> findByParentIdAndActiveTrueOrderByPriorityAsc(Long parentId);
+    List<CategoryEntity> findByParentIsNullAndActiveTrueOrderByPriorityAscIdAsc(Pageable pageable);
+    List<CategoryEntity> findByParentIdAndActiveTrueOrderByPriorityAscIdAsc(Long parentId, Pageable pageable);
     List<CategoryEntity> findByActiveTrueOrderByPriorityAscIdAsc();
 
     Optional<CategoryEntity> findByIdAndActiveTrue(Long id);

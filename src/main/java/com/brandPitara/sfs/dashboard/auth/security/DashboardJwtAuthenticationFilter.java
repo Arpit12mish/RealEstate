@@ -59,7 +59,10 @@ public class DashboardJwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
                 String email = dashboardJwtService.getSubject(token);
-                UserDetails userDetails = dashboardUserDetailsService.loadUserByUsername(email);
+                Long userId = dashboardJwtService.getDashboardUserId(token);
+                UserDetails userDetails = userId == null
+                        ? dashboardUserDetailsService.loadUserByUsername(email)
+                        : dashboardUserDetailsService.loadById(userId);
 
                 if (userDetails instanceof DashboardUserDetails dashboardUserDetails
                         && dashboardJwtService.validateAccessToken(token, dashboardUserDetails)) {
@@ -76,8 +79,8 @@ public class DashboardJwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
 
                     // Populate MDC for ApiRequestLoggingFilter
-                    MDC.put(LoggingConstants.MDC_USER_ID, String.valueOf(dashboardUserDetails.getUser().getId()));
-                    MDC.put(LoggingConstants.MDC_ROLE, "DASHBOARD_" + dashboardUserDetails.getUser().getRole().name());
+                    MDC.put(LoggingConstants.MDC_USER_ID, String.valueOf(dashboardUserDetails.getId()));
+                    MDC.put(LoggingConstants.MDC_ROLE, "DASHBOARD_" + dashboardUserDetails.getRoleName());
                 }
 
             } catch (ExpiredJwtException ex) {

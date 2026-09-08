@@ -1,11 +1,11 @@
 package com.brandPitara.sfs.publicreview.client;
 
+import com.brandPitara.sfs.integration.ExternalProviderException;
 import com.brandPitara.sfs.publicreview.config.GooglePlacesProperties;
 import com.brandPitara.sfs.publicreview.dto.GooglePlaceSearchResultItem;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -17,20 +17,30 @@ import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 @Component
-@RequiredArgsConstructor
 public class GooglePlacesClient {
 
     private static final int SEARCH_MAX_RESULTS = 5;
+    private static final String PROVIDER = "Google Places";
 
     private final GooglePlacesProperties properties;
     private final ObjectMapper objectMapper;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient;
+
+    public GooglePlacesClient(GooglePlacesProperties properties, ObjectMapper objectMapper) {
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()))
+            .build();
+    }
 
     public GooglePlaceDetailsResponse fetchPlaceDetails(String googlePlaceId) {
         assertApiKeyPresent();
@@ -42,24 +52,31 @@ public class GooglePlacesClient {
         String encodedPlaceId = URLEncoder.encode(googlePlaceId.trim(), StandardCharsets.UTF_8);
         String baseUrl = normalizeBaseUrl(properties.getBaseUrl());
 
-        URI uri = URI.create(baseUrl + "/places/" + encodedPlaceId);
-
-        HttpRequest request = HttpRequest.newBuilder(uri)
-            .GET()
-            .header("Content-Type", "application/json")
-            .header("X-Goog-Api-Key", properties.getApiKey())
-            .header("X-Goog-FieldMask", properties.getFieldMask())
-            .build();
+        HttpRequest request;
+        try {
+            URI uri = URI.create(baseUrl + "/places/" + encodedPlaceId);
+            request = HttpRequest.newBuilder(uri)
+                .timeout(effectiveResponseTimeout())
+                .GET()
+                .header("Content-Type", "application/json")
+                .header("X-Goog-Api-Key", properties.getApiKey())
+                .header("X-Goog-FieldMask", properties.getFieldMask())
+                .build();
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            throw ExternalProviderException.unavailable(PROVIDER, "configuration is invalid");
+        }
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             assertSuccess(response);
             return objectMapper.readValue(response.body(), GooglePlaceDetailsResponse.class);
+        } catch (HttpTimeoutException e) {
+            throw ExternalProviderException.timeout(PROVIDER, e);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to parse Google Places API response", e);
+            throw ExternalProviderException.upstreamFailure(PROVIDER, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Google Places API request interrupted", e);
+            throw ExternalProviderException.unavailable(PROVIDER, "request interrupted");
         }
     }
 
@@ -80,23 +97,31 @@ public class GooglePlacesClient {
 
         String body = buildSearchRequestBody(textQuery.trim(), latitude, longitude);
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(properties.getSearchTextUrl()))
-            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-            .header("Content-Type", "application/json")
-            .header("X-Goog-Api-Key", properties.getApiKey())
-            .header("X-Goog-FieldMask",
-                "places.id,places.displayName,places.formattedAddress,places.googleMapsUri,places.rating,places.userRatingCount")
-            .build();
+        HttpRequest request;
+        try {
+            request = HttpRequest.newBuilder(URI.create(properties.getSearchTextUrl()))
+                .timeout(effectiveResponseTimeout())
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .header("Content-Type", "application/json")
+                .header("X-Goog-Api-Key", properties.getApiKey())
+                .header("X-Goog-FieldMask",
+                    "places.id,places.displayName,places.formattedAddress,places.googleMapsUri,places.rating,places.userRatingCount")
+                .build();
+        } catch (IllegalArgumentException | NullPointerException ex) {
+            throw ExternalProviderException.unavailable(PROVIDER, "configuration is invalid");
+        }
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             assertSuccess(response);
             return parseSearchResponse(response.body());
+        } catch (HttpTimeoutException e) {
+            throw ExternalProviderException.timeout(PROVIDER, e);
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to parse Google Places Text Search response", e);
+            throw ExternalProviderException.upstreamFailure(PROVIDER, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Google Places Text Search request interrupted", e);
+            throw ExternalProviderException.unavailable(PROVIDER, "request interrupted");
         }
     }
 
@@ -142,16 +167,22 @@ public class GooglePlacesClient {
 
     private void assertApiKeyPresent() {
         if (!StringUtils.hasText(properties.getApiKey())) {
-            throw new IllegalStateException("Google Places API key is missing. Set GOOGLE_PLACES_API_KEY.");
+            throw ExternalProviderException.unavailable(PROVIDER, "configuration is incomplete");
         }
     }
 
     private void assertSuccess(HttpResponse<String> response) {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException(
-                "Google Places API failed. status=" + response.statusCode()
-            );
+            throw ExternalProviderException.upstreamStatus(PROVIDER, response.statusCode());
         }
+    }
+
+    /**
+     * java.net.http exposes one full-response timeout rather than a separate socket-read timeout.
+     * The smaller configured read/request bound is therefore applied to the complete exchange.
+     */
+    private Duration effectiveResponseTimeout() {
+        return Duration.ofMillis(Math.min(properties.getReadTimeoutMs(), properties.getRequestTimeoutMs()));
     }
 
     private String normalizeBaseUrl(String url) {

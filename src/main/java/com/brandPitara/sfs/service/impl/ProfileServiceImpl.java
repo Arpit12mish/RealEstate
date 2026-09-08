@@ -15,10 +15,12 @@ import com.brandPitara.sfs.repository.LoginHistoryRepository;
 import com.brandPitara.sfs.repository.RefreshTokenRepository;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import com.brandPitara.sfs.service.ProfileService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.util.UUID;
 
@@ -34,6 +36,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final LoginHistoryRepository loginHistoryRepository;
     private final GuestSessionRepository guestSessionRepository;
     private final MediaStorageService mediaStorageService;
+    private final AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
 
     @Override
     @Transactional(readOnly = true)
@@ -69,6 +72,7 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public PresignProfilePhotoResponse createProfilePhotoPresign(String phoneNumber, PresignProfilePhotoRequest request) {
         User user = userRepository.findByPhoneNumber(phoneNumber)
                 .orElseThrow(() -> new IllegalArgumentException("User not found for phone: " + phoneNumber));
@@ -107,8 +111,10 @@ public class ProfileServiceImpl implements ProfileService {
 
         Long userId = user.getId();
 
-        // Important: unlink guest sessions first, otherwise FK blocks user delete
-        guestSessionRepository.unlinkUserFromGuestSessions(userId);
+        // Converted guest epochs are identity history. Account erasure removes
+        // those rows (and their cascading identity links) instead of mutating
+        // them into reusable anonymous sessions.
+        guestSessionRepository.deleteByLinkedUser_Id(userId);
 
         refreshTokenRepository.deleteAllByUserId(userId);
         favoriteRepository.deleteAllByUserId(userId);
@@ -116,6 +122,7 @@ public class ProfileServiceImpl implements ProfileService {
         loginHistoryRepository.nullifyUserById(userId);
 
         userRepository.delete(user);
+        identityCacheInvalidator.invalidateMobileAfterCommit(userId);
     }
 
     private String extFromContentType(String ct) {

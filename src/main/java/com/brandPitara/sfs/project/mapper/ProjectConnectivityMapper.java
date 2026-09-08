@@ -69,6 +69,24 @@ public class ProjectConnectivityMapper {
       ProjectEntity project,
       List<ProjectConnectivityPlaceEntity> places
   ) {
+    return toResponse(
+        connectivity,
+        project != null ? project.getId() : null,
+        project != null ? project.getLatitude() : null,
+        project != null ? project.getLongitude() : null,
+        project != null ? project.getAddressLine() : null,
+        places
+    );
+  }
+
+  public static ProjectConnectivityResponse toResponse(
+      ProjectConnectivityEntity connectivity,
+      Long projectId,
+      Double projectLatitude,
+      Double projectLongitude,
+      String projectAddress,
+      List<ProjectConnectivityPlaceEntity> places
+  ) {
     List<ProjectConnectivityPlaceResponse> placeResponses = places == null
         ? List.of()
         : places.stream()
@@ -77,14 +95,14 @@ public class ProjectConnectivityMapper {
             .toList();
 
     return ProjectConnectivityResponse.builder()
-        .projectId(project != null ? project.getId() : null)
+        .projectId(projectId)
         .title(connectivity != null ? connectivity.getTitle() : null)
         .subtitle(connectivity != null ? connectivity.getSubtitle() : null)
         .summary(connectivity != null ? connectivity.getSummary() : null)
         .mapImageUrl(connectivity != null ? connectivity.getMapImageUrl() : null)
-        .projectLatitude(project != null ? project.getLatitude() : null)
-        .projectLongitude(project != null ? project.getLongitude() : null)
-        .projectAddress(project != null ? project.getAddressLine() : null)
+        .projectLatitude(projectLatitude)
+        .projectLongitude(projectLongitude)
+        .projectAddress(projectAddress)
         .defaultRadiusMeters(connectivity != null ? connectivity.getDefaultRadiusMeters() : null)
         .searchEnabled(connectivity != null && Boolean.TRUE.equals(connectivity.getSearchEnabled()))
         .active(connectivity == null || Boolean.TRUE.equals(connectivity.getActive()))

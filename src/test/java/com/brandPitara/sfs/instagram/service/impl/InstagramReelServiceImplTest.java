@@ -84,6 +84,76 @@ class InstagramReelServiceImplTest {
     }
 
     @Test
+    void manualCreatePersistsOptionalPreviewImageUrl() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        when(repository.save(any(InstagramReelEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DashboardInstagramReelUpsertRequest request = DashboardInstagramReelUpsertRequest.builder()
+            .instagramUrl("https://www.instagram.com/reel/NEW123/")
+            .thumbnailUrl("https://cdn.example.com/thumb.jpg")
+            .previewImageUrl("  https://cdn.example.com/custom-preview.jpg  ")
+            .build();
+
+        var response = service.createManual(request);
+
+        assertThat(response.getPreviewImageUrl()).isEqualTo("https://cdn.example.com/custom-preview.jpg");
+        verify(repository).save(argThat(entity ->
+            "https://cdn.example.com/custom-preview.jpg".equals(entity.getPreviewImageUrl())
+        ));
+    }
+
+    @Test
+    void manualCreateLeavesPreviewImageUrlNullWhenNotProvided() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        when(repository.save(any(InstagramReelEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DashboardInstagramReelUpsertRequest request = DashboardInstagramReelUpsertRequest.builder()
+            .instagramUrl("https://www.instagram.com/reel/NEW456/")
+            .thumbnailUrl("https://cdn.example.com/thumb.jpg")
+            .build();
+
+        var response = service.createManual(request);
+
+        assertThat(response.getPreviewImageUrl()).isNull();
+    }
+
+    @Test
+    void updateCanClearPreviewImageUrlWithoutAffectingThumbnailUrl() {
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelServiceImpl service = new InstagramReelServiceImpl(
+            repository,
+            mapper(),
+            new InstagramMetaProperties()
+        );
+        InstagramReelEntity existing = reel(20L);
+        existing.setPreviewImageUrl("https://cdn.example.com/old-custom.jpg");
+        when(repository.findByIdAndDeletedFalse(20L)).thenReturn(java.util.Optional.of(existing));
+        when(repository.save(any(InstagramReelEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DashboardInstagramReelUpsertRequest clearRequest = DashboardInstagramReelUpsertRequest.builder()
+            .instagramUrl(existing.getInstagramUrl())
+            .thumbnailUrl(existing.getThumbnailUrl())
+            .previewImageUrl("   ")
+            .active(true)
+            .build();
+
+        var response = service.update(20L, clearRequest);
+
+        assertThat(response.getPreviewImageUrl()).isNull();
+        assertThat(response.getThumbnailUrl()).isEqualTo("https://cdn.example.com/20.webp");
+    }
+
+    @Test
     void dashboardListWithNullQueryUsesNoSearchRepositoryMethod() {
         InstagramReelRepository repository = mock(InstagramReelRepository.class);
         InstagramReelServiceImpl service = new InstagramReelServiceImpl(

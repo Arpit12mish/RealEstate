@@ -185,7 +185,6 @@ class RateLimitLoggingSafetyTest {
                 .andExpect(status().isTooManyRequests());
 
         List<String> logs = allLogMessages();
-        assertThat(logs).isNotEmpty();
         assertThat(logs).noneMatch(m -> m.contains(rawPhone));
         // Also guard the normalized/canonical form, in case a future change logs it.
         assertThat(logs).noneMatch(m -> m.contains("+91" + rawPhone));
@@ -268,7 +267,7 @@ class RateLimitLoggingSafetyTest {
     }
 
     @Test
-    void blockedLogLineOnlyContainsTheDocumentedSafeFields() throws Exception {
+    void routineRejectionDoesNotSynchronouslyEmitPerRequestWarning() throws Exception {
         mockMvc.perform(get("/api/profile")
                         .header("Authorization", "Bearer token-a")
                         .with(remoteAddr("86.86.86.86")))
@@ -283,17 +282,6 @@ class RateLimitLoggingSafetyTest {
                 .filter(m -> m.startsWith("Rate limit exceeded"))
                 .collect(Collectors.toList());
 
-        assertThat(logs).hasSize(1);
-        String logLine = logs.get(0);
-        // Only the documented safe fields: policy, method, path, keyType, keyHash, retryAfterSeconds.
-        assertThat(logLine).contains("policy=MOBILE_PROFILE_READ");
-        assertThat(logLine).contains("method=GET");
-        assertThat(logLine).contains("path=/api/profile");
-        assertThat(logLine).contains("keyType=");
-        assertThat(logLine).contains("keyHash=");
-        assertThat(logLine).contains("retryAfterSeconds=");
-        // keyHash is a short (12 hex char) non-reversible fingerprint, never the raw
-        // "user:1" or "ip:86.86.86.86" key material itself.
-        assertThat(logLine).doesNotContain("user:1").doesNotContain("ip:86.86.86.86");
+        assertThat(logs).isEmpty();
     }
 }

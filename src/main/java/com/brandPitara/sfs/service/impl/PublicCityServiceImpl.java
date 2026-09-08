@@ -1,7 +1,11 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
+import com.brandPitara.sfs.dto.PublicCityDetailResponse;
 import com.brandPitara.sfs.dto.TrendingCityCardResponse;
+import com.brandPitara.sfs.entity.CityEntity;
+import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.mapper.CityMapper;
 import com.brandPitara.sfs.repository.CityRepository;
 import com.brandPitara.sfs.service.PublicCityService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +32,13 @@ public class PublicCityServiceImpl implements PublicCityService {
                 ReviewStatus.APPROVED,
                 PageRequest.of(0, safeLimit)
         );
+    }
+
+    @Override
+    public PublicCityDetailResponse getCityBySlug(String citySlug) {
+        CityEntity city = cityRepository.findBySlugIgnoreCaseAndActiveTrue(citySlug)
+                .orElseThrow(() -> new NotFoundException("City not found: " + citySlug));
+        return CityMapper.toPublicDetailResponse(city);
     }
 
     private int normalizeLimit(Integer limit) {

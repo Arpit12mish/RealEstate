@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.project.service.impl;
 
+import com.brandPitara.sfs.builder.entity.BuilderEntity;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.exception.NotFoundException;
@@ -56,6 +58,7 @@ class ProjectFloorPlanInsightServiceImplRoomComparisonTest {
     ContentVersionService contentVersionService = mock(ContentVersionService.class);
     ProjectFloorPlanVisualAnalysisRepository visualAnalysisRepository = mock(ProjectFloorPlanVisualAnalysisRepository.class);
     TrustedMediaUrlValidator trustedMediaUrlValidator = mock(TrustedMediaUrlValidator.class);
+    ProjectPublicCacheEvictionPublisher cacheEvictionPublisher = mock(ProjectPublicCacheEvictionPublisher.class);
 
     service = new ProjectFloorPlanInsightServiceImpl(
         projectRepository,
@@ -65,7 +68,8 @@ class ProjectFloorPlanInsightServiceImplRoomComparisonTest {
         visualAnalysisRepository,
         contentVersionService,
         new ProjectPublicVisibilityPolicy(),
-        trustedMediaUrlValidator);
+        trustedMediaUrlValidator,
+        cacheEvictionPublisher);
 
     when(insightRepository.findByFloorPlanIdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(FLOOR_PLAN_ID))
         .thenReturn(List.of());
@@ -74,7 +78,18 @@ class ProjectFloorPlanInsightServiceImplRoomComparisonTest {
   private ProjectEntity approvedProject() {
     return ProjectEntity.builder()
         .id(PROJECT_ID).published(true).active(true).deleted(false)
-        .reviewStatus(ReviewStatus.APPROVED).build();
+        .reviewStatus(ReviewStatus.APPROVED)
+        .builder(publiclyAvailableBuilder())
+        .build();
+  }
+
+  private BuilderEntity publiclyAvailableBuilder() {
+    return BuilderEntity.builder()
+        .id(1L)
+        .published(true)
+        .active(true)
+        .deleted(false)
+        .build();
   }
 
   private ProjectFloorPlanEntity activeFloorPlan(ProjectEntity project) {

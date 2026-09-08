@@ -1,7 +1,10 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
 import com.brandPitara.sfs.project.connectivity.provider.dto.NearbyPlaceProviderResult;
 import com.brandPitara.sfs.project.dto.*;
@@ -17,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -34,6 +38,8 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   private final NearbyPlaceProvider nearbyPlaceProvider;
+  private final ExternalProviderTransactions externalProviderTransactions;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -90,6 +96,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     List<ProjectConnectivityPlaceEntity> places = placeRepository.findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(projectId);
     return ProjectConnectivityMapper.toResponse(entity, project, places);
@@ -138,6 +145,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -180,6 +188,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -197,6 +206,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -221,6 +231,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
   }
 
   @Override
@@ -252,15 +263,17 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   }
 
   @Override
-  @Transactional(readOnly = true)
+  @Transactional(propagation = Propagation.NOT_SUPPORTED)
   public ConnectivityProviderSearchResponse providerSearch(Long projectId, ConnectivityProviderSearchRequest request) {
-    ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
-        .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
-
-    if (project.getLatitude() == null || project.getLongitude() == null) {
-      throw new IllegalArgumentException(
-          "Project latitude/longitude is missing. Please add project location before searching nearby places.");
-    }
+    ProviderProjectPreparation project = externalProviderTransactions.read(() -> {
+      ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
+          .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+      if (entity.getLatitude() == null || entity.getLongitude() == null) {
+        throw new IllegalArgumentException(
+            "Project latitude/longitude is missing. Please add project location before searching nearby places.");
+      }
+      return new ProviderProjectPreparation(entity.getId(), entity.getLatitude(), entity.getLongitude());
+    });
 
     int maxRadius = nearbyPlaceProvider.getMaxRadiusMeters();
     int userRadius = request.getRadiusMeters() != null ? request.getRadiusMeters() : 3000;
@@ -274,8 +287,8 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     int limit = request.getLimit() != null ? Math.min(Math.max(request.getLimit(), 1), 50) : 10;
 
     List<NearbyPlaceProviderResult> providerResults = nearbyPlaceProvider.searchNearby(
-        project.getLatitude(),
-        project.getLongitude(),
+        project.latitude(),
+        project.longitude(),
         query,
         request.getCategory(),
         safeRadius
@@ -296,19 +309,22 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
         .limit(limit)
         .toList();
 
-    Set<String> savedProviderKeys = placeRepository.findAllProviderExternalIdKeysByProjectId(projectId);
-    Set<String> savedNameTypeKeys = placeRepository.findAllNameTypeKeysByProjectId(projectId);
-    Set<String> savedNameCategoryKeys = placeRepository.findAllNameCategoryKeysByProjectId(projectId);
-    results.forEach(r -> r.setAlreadySaved(isAlreadySaved(r, savedProviderKeys, savedNameTypeKeys, savedNameCategoryKeys)));
+    SavedPlaceKeys savedKeys = externalProviderTransactions.read(() -> new SavedPlaceKeys(
+        placeRepository.findAllProviderExternalIdKeysByProjectId(projectId),
+        placeRepository.findAllNameTypeKeysByProjectId(projectId),
+        placeRepository.findAllNameCategoryKeysByProjectId(projectId)
+    ));
+    results.forEach(r -> r.setAlreadySaved(isAlreadySaved(
+        r, savedKeys.providerKeys(), savedKeys.nameTypeKeys(), savedKeys.nameCategoryKeys())));
 
     return ConnectivityProviderSearchResponse.builder()
-        .projectId(project.getId())
+        .projectId(project.projectId())
         .category(request.getCategory())
         .categoryLabel(request.getCategory() != null ? request.getCategory().toLabel() : null)
         .query(query)
         .radiusMeters(safeRadius)
-        .projectLatitude(project.getLatitude())
-        .projectLongitude(project.getLongitude())
+        .projectLatitude(project.latitude())
+        .projectLongitude(project.longitude())
         .provider("GOOGLE_PLACES")
         .totalFetched(totalFetched)
         .totalWithinRadius(totalWithinRadius)
@@ -448,6 +464,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
       if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
         contentVersionService.bump(KEY_HOME);
       }
+      cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
     }
 
     return ProjectConnectivityPlaceBulkSaveResponse.builder()
@@ -461,6 +478,14 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   }
 
   // --- Private helpers ---
+
+  private record ProviderProjectPreparation(Long projectId, Double latitude, Double longitude) {}
+
+  private record SavedPlaceKeys(
+      Set<String> providerKeys,
+      Set<String> nameTypeKeys,
+      Set<String> nameCategoryKeys
+  ) {}
 
   private boolean isBulkDuplicate(ProjectConnectivityPlaceUpsertRequest req,
                                    ProjectConnectivityCategory category,

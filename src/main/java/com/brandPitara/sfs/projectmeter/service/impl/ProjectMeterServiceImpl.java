@@ -8,10 +8,11 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
-import com.brandPitara.sfs.projectmeter.dto.ProjectAmenityItemResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectAmenitiesResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectApprovalsResponse;
+import com.brandPitara.sfs.projectmeter.dto.ProjectComplianceGroupResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectComplianceItemResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectConstructionProgressResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectConstructionStageResponse;
@@ -26,7 +27,6 @@ import com.brandPitara.sfs.projectmeter.dto.ProjectPaymentMilestoneResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectPriceHistoryPointResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectPriceInsightsResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectTimelineResponse;
-import com.brandPitara.sfs.projectmeter.dto.ProjectAmenityGroupResponse;
 import com.brandPitara.sfs.projectmeter.entity.ProjectAmenityProgressEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectComplianceItemEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectConstructionStageEntity;
@@ -36,10 +36,10 @@ import com.brandPitara.sfs.projectmeter.entity.ProjectLocationScoreEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectPaymentMilestoneEntity;
 import com.brandPitara.sfs.projectmeter.entity.ProjectPriceHistoryEntity;
-import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityCategory;
-import com.brandPitara.sfs.projectmeter.enums.ProjectAmenityStatus;
 import com.brandPitara.sfs.projectmeter.enums.ProjectComplianceGroup;
 import com.brandPitara.sfs.projectmeter.mapper.ProjectMeterMapper;
+import com.brandPitara.sfs.projectmeter.mapper.ProjectMeterProjectMapper;
+import com.brandPitara.sfs.projectmeter.mapper.ProjectAmenitiesAssembler;
 import com.brandPitara.sfs.projectmeter.repository.ProjectAmenityProgressRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectComplianceItemRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectConstructionStageRepository;
@@ -50,11 +50,13 @@ import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepositor
 import com.brandPitara.sfs.projectmeter.repository.ProjectPaymentMilestoneRepository;
 import com.brandPitara.sfs.projectmeter.repository.ProjectPriceHistoryRepository;
 import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
+import com.brandPitara.sfs.projectmeter.service.reader.ProjectMeterFavoriteReader;
+import com.brandPitara.sfs.projectmeter.service.reader.ProjectMeterSupplementalReader;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -68,6 +70,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ProjectMeterServiceImpl implements ProjectMeterService {
 
     private final ProjectRepository projectRepository;
@@ -83,6 +86,69 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private final ProjectMediaRepository projectMediaRepository;
     private final BuilderCredibilityService builderCredibilityService;
     private final ProjectFavoriteService projectFavoriteService;
+    private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+    private final ProjectMeterSupplementalReader projectMeterSupplementalReader;
+    private final ProjectMeterFavoriteReader projectMeterFavoriteReader;
+    private final ProjectAmenitiesAssembler projectAmenitiesAssembler;
+
+    private record ComplianceSections(
+        List<ProjectComplianceItemEntity> landLicenseItems,
+        List<ProjectComplianceItemEntity> approvalItems,
+        List<ProjectComplianceGroupResponse> allGroups
+    ) {
+    }
+
+    private ComplianceSections loadComplianceSections(Long projectId) {
+        List<ProjectComplianceItemEntity> complianceItems =
+            projectComplianceItemRepository
+                .findByProjectIdOrderByItemGroupAscDisplayOrderAscIdAsc(projectId);
+
+        Map<ProjectComplianceGroup, List<ProjectComplianceItemEntity>>
+            itemsByGroup = complianceItems.stream()
+                .collect(Collectors.groupingBy(
+                    ProjectComplianceItemEntity::getItemGroup,
+                    () -> new java.util.EnumMap<>(ProjectComplianceGroup.class),
+                    Collectors.toList()
+                ));
+
+        // EnumMap iterates in the enum's declaration order, so every group
+        // below (not just LAND_LICENSE/APPROVAL_NOC) reaches the public API
+        // — items tagged with any other group used to be silently dropped.
+        List<ProjectComplianceGroupResponse> allGroups = itemsByGroup.entrySet().stream()
+            .map(entry -> ProjectComplianceGroupResponse.builder()
+                .group(entry.getKey().name())
+                .groupLabel(complianceGroupLabel(entry.getKey()))
+                .items(entry.getValue().stream().map(this::toComplianceItemResponse).toList())
+                .build())
+            .toList();
+
+        return new ComplianceSections(
+            itemsByGroup.getOrDefault(
+                ProjectComplianceGroup.LAND_LICENSE,
+                List.of()
+            ),
+            itemsByGroup.getOrDefault(
+                ProjectComplianceGroup.APPROVAL_NOC,
+                List.of()
+            ),
+            allGroups
+        );
+    }
+
+    private static String complianceGroupLabel(ProjectComplianceGroup group) {
+        return switch (group) {
+            case RERA -> "RERA";
+            case ENVIRONMENTAL -> "Environmental";
+            case FIRE_SAFETY -> "Fire Safety";
+            case STRUCTURAL -> "Structural";
+            case LEGAL_TITLE -> "Legal Title";
+            case UTILITY -> "Utility";
+            case OCCUPANCY -> "Occupancy";
+            case OTHER -> "Other";
+            case LAND_LICENSE -> "Land License";
+            case APPROVAL_NOC -> "Approval / NOC";
+        };
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -137,9 +203,15 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(readOnly = true)
     public ProjectMeterDetailResponse publicGetMeterDetail(Long projectId) {
-        ProjectEntity project = getPublicProject(projectId);
+        ProjectEntity project = projectRepository.findDetailByIdAndDeletedFalse(projectId)
+            .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+        projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);
+
+        ProjectMeterSupplementalReader.SupplementalSections supplemental =
+            projectMeterSupplementalReader.read(project);
+        ProjectMeterFavoriteReader.FavoriteState favorite = projectMeterFavoriteReader.read(projectId);
 
         ProjectMeterSnapshotEntity snapshot = projectMeterSnapshotRepository.findByProjectId(projectId).orElse(null);
         List<ProjectConstructionStageEntity> stages =
@@ -147,7 +219,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
 
         ProjectMeterSummaryResponse summary = (snapshot != null)
             ? ProjectMeterMapper.toSummaryResponse(snapshot)
-            : buildFallbackSummary(project);
+            : buildFallbackSummary(project, stages);
 
         int overallProgress = snapshot != null && snapshot.getConstructionProgressPercent() != null
             ? safePercent(snapshot.getConstructionProgressPercent())
@@ -165,22 +237,24 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .stages(stages.stream().map(ProjectMeterMapper::toStageResponse).toList())
             .build();
 
-        List<ProjectComplianceItemEntity> landLicenseItems =
-            projectComplianceItemRepository.findByProjectIdAndItemGroupOrderByDisplayOrderAscIdAsc(
-                projectId, ProjectComplianceGroup.LAND_LICENSE
-            );
-
-        List<ProjectComplianceItemEntity> approvalItems =
-            projectComplianceItemRepository.findByProjectIdAndItemGroupOrderByDisplayOrderAscIdAsc(
-                projectId, ProjectComplianceGroup.APPROVAL_NOC
-            );
+        ComplianceSections compliance = loadComplianceSections(projectId);
 
         ProjectLandLicenseResponse landLicense = ProjectLandLicenseResponse.builder()
-            .items(landLicenseItems.stream().map(this::toComplianceItemResponse).toList())
+            .items(
+                compliance.landLicenseItems()
+                    .stream()
+                    .map(this::toComplianceItemResponse)
+                    .toList()
+            )
             .build();
 
         ProjectApprovalsResponse approvals = ProjectApprovalsResponse.builder()
-            .items(approvalItems.stream().map(this::toComplianceItemResponse).toList())
+            .items(
+                compliance.approvalItems()
+                    .stream()
+                    .map(this::toComplianceItemResponse)
+                    .toList()
+            )
             .build();
 
         ProjectPriceInsightsResponse priceInsights = ProjectPriceInsightsResponse.builder()
@@ -231,33 +305,26 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             projectAmenityProgressRepository
                 .findByProjectIdAndActiveTrueAndPublicVisibleTrueOrderByCategoryDisplayOrderAscDisplayOrderAscIdAsc(projectId);
 
-        List<ProjectAmenityItemResponse> flatItems = publicAmenities.stream()
-            .map(this::toAmenityItemResponse)
-            .toList();
+        ProjectAmenitiesResponse amenities = projectAmenitiesAssembler.assemble(
+            publicAmenities,
+            snapshot != null ? snapshot.getAmenityScore() : null
+        );
 
-        List<ProjectAmenityGroupResponse> groups = buildAmenityGroups(publicAmenities);
-
-        ProjectAmenitiesResponse amenities = ProjectAmenitiesResponse.builder()
-            .completionPercent(
-                snapshot != null && snapshot.getAmenityScore() != null
-                    ? safePercent(snapshot.getAmenityScore())
-                    : calculateAmenityCompletionPercent(publicAmenities)
-            )
-            .groups(groups)
-            .items(flatItems)
-            .build();
-
-        BuilderCredibilitySummaryResponse builderCredibility = null;
-        try {
-            builderCredibility = builderCredibilityService.publicGetCredibilitySummary(project.getBuilder().getId());
-        } catch (Exception ignored) {
-        }
+        BuilderCredibilitySummaryResponse builderCredibility = safeBuilderCredibility(project);
 
         return ProjectMeterDetailResponse.builder()
+            .project(ProjectMeterProjectMapper.toResponse(
+                project,
+                supplemental.brochureUrl(),
+                favorite.favorite(),
+                favorite.count()
+            ))
+            .media(supplemental.media())
             .summary(summary)
             .construction(construction)
             .landLicense(landLicense)
             .approvals(approvals)
+            .complianceGroups(compliance.allGroups())
             .priceInsights(priceInsights)
             .propertyRates(propertyRates)
             .paymentPlan(paymentPlan)
@@ -266,11 +333,14 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .locationRadar(locationRadar)
             .amenities(amenities)
             .builderCredibility(builderCredibility)
+            .masterPlan(supplemental.masterPlan())
+            .floorPlanGroups(supplemental.floorPlanGroups())
+            .connectivity(supplemental.connectivity())
             .build();
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(readOnly = true)
     public ProjectMeterDetailResponse dashboardGetMeterDetail(Long projectId) {
         ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
             .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
@@ -281,7 +351,7 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
 
         ProjectMeterSummaryResponse summary = (snapshot != null)
             ? ProjectMeterMapper.toSummaryResponse(snapshot)
-            : buildFallbackSummary(project);
+            : buildFallbackSummary(project, stages);
 
         int overallProgress = snapshot != null && snapshot.getConstructionProgressPercent() != null
             ? safePercent(snapshot.getConstructionProgressPercent())
@@ -299,22 +369,24 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .stages(stages.stream().map(ProjectMeterMapper::toStageResponse).toList())
             .build();
 
-        List<ProjectComplianceItemEntity> landLicenseItems =
-            projectComplianceItemRepository.findByProjectIdAndItemGroupOrderByDisplayOrderAscIdAsc(
-                projectId, ProjectComplianceGroup.LAND_LICENSE
-            );
-
-        List<ProjectComplianceItemEntity> approvalItems =
-            projectComplianceItemRepository.findByProjectIdAndItemGroupOrderByDisplayOrderAscIdAsc(
-                projectId, ProjectComplianceGroup.APPROVAL_NOC
-            );
+        ComplianceSections compliance = loadComplianceSections(projectId);
 
         ProjectLandLicenseResponse landLicense = ProjectLandLicenseResponse.builder()
-            .items(landLicenseItems.stream().map(this::toComplianceItemResponse).toList())
+            .items(
+                compliance.landLicenseItems()
+                    .stream()
+                    .map(this::toComplianceItemResponse)
+                    .toList()
+            )
             .build();
 
         ProjectApprovalsResponse approvals = ProjectApprovalsResponse.builder()
-            .items(approvalItems.stream().map(this::toComplianceItemResponse).toList())
+            .items(
+                compliance.approvalItems()
+                    .stream()
+                    .map(this::toComplianceItemResponse)
+                    .toList()
+            )
             .build();
 
         ProjectPriceInsightsResponse priceInsights = ProjectPriceInsightsResponse.builder()
@@ -365,33 +437,19 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             projectAmenityProgressRepository
                 .findByProjectIdAndActiveTrueAndPublicVisibleTrueOrderByCategoryDisplayOrderAscDisplayOrderAscIdAsc(projectId);
 
-        List<ProjectAmenityItemResponse> flatItems = publicAmenities.stream()
-            .map(this::toAmenityItemResponse)
-            .toList();
+        ProjectAmenitiesResponse amenities = projectAmenitiesAssembler.assemble(
+            publicAmenities,
+            snapshot != null ? snapshot.getAmenityScore() : null
+        );
 
-        List<ProjectAmenityGroupResponse> groups = buildAmenityGroups(publicAmenities);
-
-        ProjectAmenitiesResponse amenities = ProjectAmenitiesResponse.builder()
-            .completionPercent(
-                snapshot != null && snapshot.getAmenityScore() != null
-                    ? safePercent(snapshot.getAmenityScore())
-                    : calculateAmenityCompletionPercent(publicAmenities)
-            )
-            .groups(groups)
-            .items(flatItems)
-            .build();
-
-        BuilderCredibilitySummaryResponse builderCredibility = null;
-        try {
-            builderCredibility = builderCredibilityService.publicGetCredibilitySummary(project.getBuilder().getId());
-        } catch (Exception ignored) {
-        }
+        BuilderCredibilitySummaryResponse builderCredibility = safeBuilderCredibility(project);
 
         return ProjectMeterDetailResponse.builder()
             .summary(summary)
             .construction(construction)
             .landLicense(landLicense)
             .approvals(approvals)
+            .complianceGroups(compliance.allGroups())
             .priceInsights(priceInsights)
             .propertyRates(propertyRates)
             .paymentPlan(paymentPlan)
@@ -406,20 +464,21 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
     private ProjectEntity getPublicProject(Long projectId) {
         ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
             .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
-
-        if (!Boolean.TRUE.equals(entity.getPublished())
-                || !Boolean.TRUE.equals(entity.getActive())
-                || Boolean.TRUE.equals(entity.getDeleted())
-                || entity.getReviewStatus() != ReviewStatus.APPROVED) {
-            throw new NotFoundException("Project not found: " + projectId);
-        }
-
+        projectPublicVisibilityPolicy.assertPubliclyVisible(entity, projectId);
         return entity;
     }
 
     private ProjectMeterSummaryResponse buildFallbackSummary(ProjectEntity project) {
         List<ProjectConstructionStageEntity> stages =
             projectConstructionStageRepository.findByProjectIdOrderByDisplayOrderAscIdAsc(project.getId());
+
+        return buildFallbackSummary(project, stages);
+    }
+
+    private ProjectMeterSummaryResponse buildFallbackSummary(
+            ProjectEntity project,
+            List<ProjectConstructionStageEntity> stages
+    ) {
 
         int overallProgress = calculateOverallProgress(stages);
         ProjectTimelineResponse timeline = resolveTimeline(project, null);
@@ -517,71 +576,6 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .build();
     }
 
-    private int calculateAmenityCompletionPercent(List<ProjectAmenityProgressEntity> amenities) {
-        if (amenities == null || amenities.isEmpty()) {
-            return 0;
-        }
-
-        int weightedSum = 0;
-        int totalWeight = 0;
-        int countIncluded = 0;
-        int simpleSum = 0;
-
-        for (ProjectAmenityProgressEntity amenity : amenities) {
-            if (!Boolean.TRUE.equals(amenity.getAvailable())
-                    || amenity.getStatus() == ProjectAmenityStatus.NOT_AVAILABLE) {
-                continue;
-            }
-
-            int progress = safePercent(amenity.getProgressPercent());
-            int weight = amenity.getWeightPercent() == null ? 0 : Math.max(amenity.getWeightPercent(), 0);
-
-            weightedSum += (progress * weight);
-            totalWeight += weight;
-            simpleSum += progress;
-            countIncluded++;
-        }
-
-        if (totalWeight > 0) {
-            return Math.round((float) weightedSum / totalWeight);
-        }
-
-        return countIncluded > 0 ? Math.round((float) simpleSum / countIncluded) : 0;
-    }
-
-    private List<ProjectAmenityGroupResponse> buildAmenityGroups(List<ProjectAmenityProgressEntity> amenities) {
-        Map<ProjectAmenityCategory, List<ProjectAmenityProgressEntity>> grouped = amenities.stream()
-            .collect(Collectors.groupingBy(
-                a -> a.getCategory() != null ? a.getCategory() : ProjectAmenityCategory.OTHER,
-                LinkedHashMap::new,
-                Collectors.toList()
-            ));
-
-        return grouped.entrySet().stream()
-            .map(entry -> {
-                ProjectAmenityCategory cat = entry.getKey();
-                List<ProjectAmenityProgressEntity> items = entry.getValue();
-                int catDisplayOrder = items.stream()
-                    .mapToInt(a -> a.getCategoryDisplayOrder() != null ? a.getCategoryDisplayOrder() : 0)
-                    .min()
-                    .orElse(0);
-                String catLabel = items.stream()
-                    .map(ProjectAmenityProgressEntity::getCategoryLabel)
-                    .filter(l -> l != null && !l.isBlank())
-                    .findFirst()
-                    .orElse(cat.toLabel());
-                return ProjectAmenityGroupResponse.builder()
-                    .category(cat)
-                    .categoryLabel(catLabel)
-                    .displayOrder(catDisplayOrder)
-                    .items(items.stream().map(this::toAmenityItemResponse).toList())
-                    .build();
-            })
-            .sorted(Comparator.comparingInt(ProjectAmenityGroupResponse::getDisplayOrder)
-                .thenComparing(g -> g.getCategory().name()))
-            .toList();
-    }
-
     private ProjectComplianceItemResponse toComplianceItemResponse(ProjectComplianceItemEntity entity) {
         return ProjectComplianceItemResponse.builder()
             .id(entity.getId())
@@ -663,36 +657,26 @@ public class ProjectMeterServiceImpl implements ProjectMeterService {
             .build();
     }
 
-    private ProjectAmenityItemResponse toAmenityItemResponse(ProjectAmenityProgressEntity entity) {
-        ProjectAmenityCategory cat = entity.getCategory();
-        String catLabel = entity.getCategoryLabel();
-        if (catLabel == null || catLabel.isBlank()) {
-            catLabel = cat != null ? cat.toLabel() : ProjectAmenityCategory.OTHER.toLabel();
-        }
-        return ProjectAmenityItemResponse.builder()
-            .id(entity.getId())
-            .amenityCode(entity.getAmenityCode())
-            .amenityLabel(entity.getAmenityLabel())
-            .category(cat)
-            .categoryLabel(catLabel)
-            .iconKey(entity.getIconKey())
-            .rare(entity.getRare())
-            .available(entity.getAvailable())
-            .status(entity.getStatus())
-            .progressPercent(entity.getProgressPercent())
-            .weightPercent(entity.getWeightPercent())
-            .displayOrder(entity.getDisplayOrder())
-            .categoryDisplayOrder(entity.getCategoryDisplayOrder())
-            .remarks(entity.getRemarks())
-            .verified(entity.getVerified())
-            .publicVisible(entity.getPublicVisible())
-            .active(entity.getActive())
-            .build();
-    }
-
     private int safePercent(Integer value) {
         if (value == null) return 0;
         return Math.max(0, Math.min(100, value));
+    }
+
+    /**
+     * Credibility is optional for dashboard preview. Check the already-loaded
+     * builder before crossing the transactional credibility-service proxy: a
+     * runtime exception escaping that proxy would mark the shared read
+     * transaction rollback-only even if caught here afterwards.
+     */
+    private BuilderCredibilitySummaryResponse safeBuilderCredibility(ProjectEntity project) {
+        if (!projectPublicVisibilityPolicy.isBuilderPubliclyAvailable(project.getBuilder())) {
+            log.info(
+                "No builder credibility available for projectId={}: builder is not public-ready",
+                project.getId()
+            );
+            return null;
+        }
+        return builderCredibilityService.publicGetCredibilitySummaryForLoadedBuilder(project.getBuilder());
     }
 
     @Override

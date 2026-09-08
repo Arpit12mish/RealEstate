@@ -24,7 +24,7 @@ public class ProjectMeterPublicController {
         return projectMeterService.publicGetConstructionProgress(projectId);
     }
 
-    @GetMapping("/{projectId}/meter")
+    @GetMapping("/{projectId}/meter") //using this
     public ProjectMeterDetailResponse meter(@PathVariable Long projectId) {
         return projectMeterService.publicGetMeterDetail(projectId);
     }

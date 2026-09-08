@@ -1,19 +1,26 @@
 package com.brandPitara.sfs.project.connectivity.provider.impl;
 
+import com.brandPitara.sfs.integration.ExternalProviderException;
 import com.brandPitara.sfs.project.connectivity.provider.GooglePlacesProperties;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
 import com.brandPitara.sfs.project.connectivity.provider.dto.NearbyPlaceProviderResult;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityType;
 import com.brandPitara.sfs.project.mapper.ProjectConnectivityCategoryMapper;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
 
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 
@@ -21,6 +28,7 @@ import java.util.*;
 public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
 
   private static final String PROVIDER = "GOOGLE_PLACES";
+  private static final String PROVIDER_LABEL = "Google Places";
 
   private static final String FIELD_MASK = String.join(",",
       "places.id",
@@ -33,14 +41,16 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
   );
 
   private final GooglePlacesProperties properties;
-  private final RestClient restClient;
+  private final ObjectMapper objectMapper;
+  private final HttpClient httpClient;
 
-  public GoogleNearbyPlaceProvider(GooglePlacesProperties properties) {
+  @Autowired
+  public GoogleNearbyPlaceProvider(GooglePlacesProperties properties, ObjectMapper objectMapper) {
     this.properties = properties;
-    SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-    factory.setConnectTimeout(Duration.ofMillis(properties.getTimeoutMs()));
-    factory.setReadTimeout(Duration.ofMillis(properties.getTimeoutMs()));
-    this.restClient = RestClient.builder().requestFactory(factory).build();
+    this.objectMapper = objectMapper;
+    this.httpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofMillis(properties.getConnectTimeoutMs()))
+        .build();
   }
 
   @Override
@@ -52,10 +62,10 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
       Integer radiusMeters
   ) {
     if (!properties.isEnabled()) {
-      throw new IllegalStateException("Google Places provider is disabled");
+      throw ExternalProviderException.unavailable(PROVIDER_LABEL, "provider is disabled");
     }
     if (!StringUtils.hasText(properties.getApiKey())) {
-      throw new IllegalStateException("Google Places API key is missing");
+      throw ExternalProviderException.unavailable(PROVIDER_LABEL, "configuration is incomplete");
     }
     if (latitude == null || longitude == null) {
       throw new IllegalArgumentException("Project latitude/longitude is required for provider search");
@@ -66,18 +76,36 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
 
     Map<String, Object> body = buildTextSearchBody(latitude, longitude, cleanedQuery, safeRadius);
 
-    GooglePlacesResponse response;
+    HttpRequest request;
     try {
-      response = restClient.post()
-          .uri(properties.getTextSearchUrl())
+      request = HttpRequest.newBuilder(URI.create(properties.getTextSearchUrl()))
+          .timeout(effectiveResponseTimeout())
           .header("X-Goog-Api-Key", properties.getApiKey())
           .header("X-Goog-FieldMask", FIELD_MASK)
-          .header(HttpHeaders.CONTENT_TYPE, "application/json")
-          .body(body)
-          .retrieve()
-          .body(GooglePlacesResponse.class);
-    } catch (RestClientException ex) {
-      throw new IllegalStateException("Google Places search failed. Check API key, billing, quota, and Places API access.", ex);
+          .header("Content-Type", "application/json")
+          .POST(HttpRequest.BodyPublishers.ofString(
+              objectMapper.writeValueAsString(body), StandardCharsets.UTF_8))
+          .build();
+    } catch (JsonProcessingException ex) {
+      throw ExternalProviderException.upstreamFailure(PROVIDER_LABEL, ex);
+    } catch (IllegalArgumentException | NullPointerException ex) {
+      throw ExternalProviderException.unavailable(PROVIDER_LABEL, "configuration is invalid");
+    }
+
+    GooglePlacesResponse response;
+    try {
+      HttpResponse<String> httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+      if (httpResponse.statusCode() < 200 || httpResponse.statusCode() >= 300) {
+        throw ExternalProviderException.upstreamStatus(PROVIDER_LABEL, httpResponse.statusCode());
+      }
+      response = objectMapper.readValue(httpResponse.body(), GooglePlacesResponse.class);
+    } catch (HttpTimeoutException ex) {
+      throw ExternalProviderException.timeout(PROVIDER_LABEL, ex);
+    } catch (IOException ex) {
+      throw ExternalProviderException.upstreamFailure(PROVIDER_LABEL, ex);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+      throw ExternalProviderException.unavailable(PROVIDER_LABEL, "request interrupted");
     }
 
     if (response == null || response.places() == null) {
@@ -102,6 +130,11 @@ public class GoogleNearbyPlaceProvider implements NearbyPlaceProvider {
   @Override
   public int getMaxRadiusMeters() {
     return properties.getMaxRadiusMeters() > 0 ? properties.getMaxRadiusMeters() : 10000;
+  }
+
+  /** See GooglePlacesClient: the smaller read/request bound limits the full response exchange. */
+  private Duration effectiveResponseTimeout() {
+    return Duration.ofMillis(Math.min(properties.getReadTimeoutMs(), properties.getRequestTimeoutMs()));
   }
 
   // Package-private so the shape can be verified in unit tests without invoking Google.

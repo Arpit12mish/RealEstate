@@ -80,6 +80,7 @@ public class InstagramReelServiceImpl implements InstagramReelService {
             .thumbnailUrl(thumbnailUrl)
             .cachedThumbnailUrl(thumbnailUrl)
             .previewVideoUrl(clean(request.getPreviewVideoUrl()))
+            .previewImageUrl(clean(request.getPreviewImageUrl()))
             .categoryOverride(request.getCategoryOverride() != null ? request.getCategoryOverride() : InstagramReelCategory.MANUAL)
             .displayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0)
             .active(request.getActive() != null ? request.getActive() : true)
@@ -108,6 +109,7 @@ public class InstagramReelServiceImpl implements InstagramReelService {
             entity.setCachedThumbnailUrl(thumbnailUrl);
         }
         entity.setPreviewVideoUrl(clean(request.getPreviewVideoUrl()));
+        entity.setPreviewImageUrl(clean(request.getPreviewImageUrl()));
         entity.setCategoryOverride(request.getCategoryOverride());
         entity.setDisplayOrder(request.getDisplayOrder() != null ? request.getDisplayOrder() : 0);
         if (request.getActive() != null) {

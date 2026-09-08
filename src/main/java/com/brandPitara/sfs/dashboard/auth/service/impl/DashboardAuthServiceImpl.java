@@ -32,7 +32,7 @@ public class DashboardAuthServiceImpl implements DashboardAuthService {
     private final DashboardLoginAuditService loginAuditService;
 
     @Override
-    @Transactional
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public DashboardAuthResponse login(DashboardLoginRequest request, HttpServletRequest httpRequest) {
         String email = normalizeEmail(request.getEmail());
 

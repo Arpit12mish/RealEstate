@@ -8,7 +8,9 @@ import com.brandPitara.sfs.instagram.entity.InstagramReelEntity;
 import com.brandPitara.sfs.instagram.repository.InstagramReelRepository;
 import com.brandPitara.sfs.instagram.service.InstagramAssetCacheService;
 import com.brandPitara.sfs.instagram.service.InstagramReelMapper;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -24,6 +26,14 @@ class InstagramReelSyncServiceImplTest {
     private static final String FALLBACK_THUMBNAIL_URL =
         "https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/banner/Hero/M3M-Jacob-%26-Co-1.webp";
 
+    /** A real ExternalProviderTransactions wrapping an unstubbed mock PlatformTransactionManager
+     * - getTransaction()/commit() on the mock are no-ops, which is all these tests need since
+     * they exercise the sync logic, not transactional behavior itself (see
+     * ExternalProviderTransactionsTest for that). */
+    private static ExternalProviderTransactions externalProviderTransactions() {
+        return new ExternalProviderTransactions(mock(PlatformTransactionManager.class));
+    }
+
     @Test
     void missingConfigReturnsClearError() {
         InstagramReelSyncServiceImpl service = new InstagramReelSyncServiceImpl(
@@ -32,7 +42,10 @@ class InstagramReelSyncServiceImplTest {
             mock(InstagramMetaClient.class),
             mock(InstagramAssetCacheService.class),
             mock(InstagramReelRepository.class),
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         assertThatThrownBy(service::syncLatestReels)
@@ -71,7 +84,10 @@ class InstagramReelSyncServiceImplTest {
             client,
             assetCacheService,
             repository,
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         var result = service.syncLatestReels();
@@ -115,7 +131,10 @@ class InstagramReelSyncServiceImplTest {
             client,
             assetCacheService,
             repository,
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         var result = service.syncLatestReels();
@@ -153,7 +172,10 @@ class InstagramReelSyncServiceImplTest {
             client,
             assetCacheService,
             repository,
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         var result = service.syncLatestReels();
@@ -196,7 +218,10 @@ class InstagramReelSyncServiceImplTest {
             client,
             assetCacheService,
             repository,
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         var result = service.syncLatestReels();
@@ -205,6 +230,48 @@ class InstagramReelSyncServiceImplTest {
         assertThat(existing.getCachedThumbnailUrl())
             .isEqualTo("https://cdn.squarefootstory.com/instagram/reels/media-4/thumb.jpg");
         assertThat(existing.getLastSyncStatus()).isEqualTo("THUMBNAIL_CACHE_FAILED");
+    }
+
+    @Test
+    void syncDoesNotOverwriteExistingPreviewImageUrl() {
+        InstagramMetaClient client = mock(InstagramMetaClient.class);
+        InstagramAssetCacheService assetCacheService = mock(InstagramAssetCacheService.class);
+        InstagramReelRepository repository = mock(InstagramReelRepository.class);
+        InstagramReelEntity existing = InstagramReelEntity.builder()
+            .id(60L)
+            .instagramMediaId("media-6")
+            .instagramUrl("https://www.instagram.com/reel/OLD/")
+            .sourceThumbnailUrl("https://cdn.example.com/thumb.jpg")
+            .cachedThumbnailUrl("https://cdn.squarefootstory.com/instagram/reels/media-6/thumb.jpg")
+            .cachedThumbnailStorageKey("instagram/reels/media-6/thumb.jpg")
+            .thumbnailCachedAt(OffsetDateTime.now())
+            .previewImageUrl("https://cdn.squarefootstory.com/dashboard/instagram-reels/custom-preview.jpg")
+            .active(true)
+            .deleted(false)
+            .build();
+
+        when(client.fetchMedia()).thenReturn(List.of(reelMedia("media-6")));
+        when(client.fetchInsights("media-6")).thenReturn(InstagramMetaInsights.builder().build());
+        when(repository.findByInstagramMediaIdAndDeletedFalse("media-6")).thenReturn(Optional.of(existing));
+        when(repository.findByDeletedFalse()).thenReturn(List.of(existing));
+        when(repository.save(any(InstagramReelEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        InstagramReelSyncServiceImpl service = new InstagramReelSyncServiceImpl(
+            configuredProperties(),
+            appProperties(),
+            client,
+            assetCacheService,
+            repository,
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
+        );
+
+        service.syncLatestReels();
+
+        assertThat(existing.getPreviewImageUrl())
+            .isEqualTo("https://cdn.squarefootstory.com/dashboard/instagram-reels/custom-preview.jpg");
     }
 
     @Test
@@ -236,7 +303,10 @@ class InstagramReelSyncServiceImplTest {
             client,
             assetCacheService,
             repository,
-            mapper()
+            mapper(),
+            new InstagramTrendingScoreCalculator(),
+            mock(InstagramTrendingScoreRecalculator.class),
+            externalProviderTransactions()
         );
 
         var result = service.recacheMissingThumbnails();

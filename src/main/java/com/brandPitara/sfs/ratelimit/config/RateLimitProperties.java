@@ -2,14 +2,23 @@ package com.brandPitara.sfs.ratelimit.config;
 
 import com.brandPitara.sfs.ratelimit.enums.RateLimitKeyType;
 import com.brandPitara.sfs.ratelimit.enums.RateLimitPolicy;
+import com.brandPitara.sfs.ratelimit.enums.RateLimitFailureMode;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumSet;
+import java.util.Set;
 
 /**
  * Binds {@code sfs.rate-limit.*} from application.yml. All limits are
@@ -18,6 +27,7 @@ import java.util.Map;
 @Getter
 @Setter
 @ConfigurationProperties(prefix = "sfs.rate-limit")
+@Validated
 public class RateLimitProperties {
 
     /** Master switch. When false, the filter allows every request unconditionally. */
@@ -38,42 +48,94 @@ public class RateLimitProperties {
     private List<String> trustedProxies = new ArrayList<>(List.of("127.0.0.1", "0:0:0:0:0:0:0:1", "::1"));
 
     /**
-     * Maximum size, in bytes, of a request body RateLimitingFilter will buffer
-     * to extract key material (phone number, refresh token, installationId,
-     * deviceId) for the body-based policies. Requests whose body exceeds this
-     * are rejected with 413 before the real controller ever runs.
+     * Maximum size, in bytes, of a request body RateLimitingFilter will buffer for any
+     * BODY_AWARE_POLICIES policy - both to extract narrowly allowed body-derived
+     * material (OTP phone, calculator-body fingerprint) and, for PUBLIC_ANALYTICS_INGEST,
+     * purely as a size bound with nothing extracted. Refresh tokens, installation IDs
+     * and device IDs are deliberately excluded from cache identity. Requests whose body
+     * exceeds this are rejected with 413 before the real controller runs.
+     * <p>
+     * Sized for the largest body-aware policy's legitimate worst case: a 50-event
+     * analytics batch (AnalyticsEventBatchRequest's own cap) with every event near its
+     * own field limits (~2.6KB/event incl. the 2000-char properties JSON cap) is
+     * ~130KB; 256KB leaves headroom for UTF-8 multi-byte expansion. OTP/calculator
+     * bodies are a few hundred bytes at most, so this shared ceiling doesn't meaningfully
+     * change their exposure - their own DTO-level @Size validation already bounds them
+     * far below either the old or new value.
      */
-    private long maxCachedBodyBytes = 32 * 1024;
+    @Min(1024)
+    @Max(1024 * 1024)
+    private long maxCachedBodyBytes = 256 * 1024;
 
+    /** Capacity multiplier for the independent per-policy IP abuse bucket. */
+    @Min(2)
+    @Max(100)
+    private int abuseCapacityMultiplier = 10;
+
+    /** Policies that return 503 rather than bypassing protection on limiter failure. */
+    private Set<RateLimitPolicy> failClosedPolicies = EnumSet.noneOf(RateLimitPolicy.class);
+
+    @Valid
     private BucketCacheProperties bucketCache = new BucketCacheProperties();
 
+    @Valid
     private Map<RateLimitPolicy, PolicyConfig> policies = new EnumMap<>(RateLimitPolicy.class);
 
     @Getter
     @Setter
     public static class PolicyConfig {
         private Boolean enabled;
+        private RateLimitFailureMode failureMode = RateLimitFailureMode.FAIL_OPEN;
+        @Valid
         private List<LimitConfig> limits = new ArrayList<>();
     }
 
     @Getter
     @Setter
     public static class LimitConfig {
+        @NotNull
         private RateLimitKeyType keyType;
+        @Positive
         private long capacity;
+        @Positive
         private long refillTokens;
+        @Positive
         private long refillPeriodSeconds;
     }
 
     /**
-     * Bounds for the local Bucket4j bucket cache, so distinct rate-limit keys
-     * (random phone numbers, search queries, installation ids, IPs, hashed
-     * tokens, etc.) cannot grow the process's memory footprint without limit.
+     * Independent bounds for principal/body and trusted-IP abuse buckets.
+     * Keeping them separate prevents churn in the primary namespace from
+     * evicting the IP-level protection.
      */
     @Getter
     @Setter
     public static class BucketCacheProperties {
-        private long maximumSize = 200_000;
-        private long expireAfterAccessMinutes = 120;
+        @Min(16)
+        @Max(100_000)
+        private long primaryMaximumSize = 10_000;
+
+        @Min(16)
+        @Max(100_000)
+        private long abuseMaximumSize = 10_000;
+
+        @Min(1)
+        @Max(1440)
+        private long expireAfterAccessMinutes = 30;
+
+        @Min(1)
+        @Max(1440)
+        private long abuseExpireAfterAccessMinutes = 60;
+
+        /** Compatibility alias for older programmatic tests/configuration. */
+        public long getMaximumSize() {
+            return primaryMaximumSize;
+        }
+
+        /** Compatibility alias; applies the same bound to both isolated caches. */
+        public void setMaximumSize(long maximumSize) {
+            this.primaryMaximumSize = maximumSize;
+            this.abuseMaximumSize = maximumSize;
+        }
     }
 }

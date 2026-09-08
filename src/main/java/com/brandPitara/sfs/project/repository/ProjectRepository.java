@@ -19,97 +19,212 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
 
   Optional<ProjectEntity> findByIdAndDeletedFalse(Long id);
 
+  /** Public eligibility lookup that keeps builder validation in the same bounded query. */
+  @EntityGraph(attributePaths = {"builder"})
+  Optional<ProjectEntity> findWithBuilderByIdAndDeletedFalse(Long id);
+
+  /** Batch counterpart of findByIdAndDeletedFalse, for resolving names across a list without N+1 queries. */
+  List<ProjectEntity> findByIdInAndDeletedFalse(Collection<Long> ids);
+
+  @EntityGraph(attributePaths = {"builder", "builder.city", "city", "propertyTypes"})
+  @Query("select p from ProjectEntity p where p.id = :id and p.deleted = false")
+  Optional<ProjectEntity> findDetailByIdAndDeletedFalse(@Param("id") Long id);
+
+  // Case-sensitive, matching this repository's existing findBySlug/
+  // findBySlugAndIdNot convention (no IgnoreCase variant exists here or on
+  // BrandRepository's own equivalent public-lookup method) - mirrors
+  // findByIdAndDeletedFalse above for the public-slug-lookup path (GAP-001).
+  @EntityGraph(attributePaths = {"builder", "city", "propertyTypes"})
+  Optional<ProjectEntity> findBySlugAndDeletedFalse(String slug);
+
   Optional<ProjectEntity> findBySlug(String slug);
 
   Optional<ProjectEntity> findBySlugAndIdNot(String slug, Long id);
 
+  @EntityGraph(attributePaths = {"builder", "city"})
   Page<ProjectEntity> findByDeletedFalse(Pageable pageable);
 
+  @EntityGraph(attributePaths = {"builder", "city"})
   Page<ProjectEntity> findByBuilderIdAndDeletedFalse(Long builderId, Pageable pageable);
 
+  @Query("select p.id from ProjectEntity p where p.builder.id = :builderId and p.deleted = false")
+  List<Long> findIdsByBuilderIdAndDeletedFalse(@Param("builderId") Long builderId);
+
+  long countByBuilderIdAndPublishedTrueAndDeletedFalse(Long builderId);
+
+  @Query("select p.id from ProjectEntity p where p.city.id = :cityId and p.deleted = false")
+  List<Long> findIdsByCityIdAndDeletedFalse(@Param("cityId") Long cityId);
+
   // Existing method kept for backward compatibility.
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.builder.id = :builderId
+        and p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalse(
-      Long builderId,
+      @Param("builderId") Long builderId,
       Pageable pageable
   );
 
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.builder.id = :builderId
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      Long builderId,
-      ReviewStatus reviewStatus,
+      @Param("builderId") Long builderId,
+      @Param("reviewStatus") ReviewStatus reviewStatus,
       Pageable pageable
   );
 
   // Existing method kept for backward compatibility.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.builder.id = :builderId
+        and p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      order by p.priority asc, p.id desc
+      """)
   List<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
-      Long builderId
+      @Param("builderId") Long builderId
   );
 
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.builder.id in :builderIds
+        and p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      order by p.priority asc, p.id desc
+      """)
   List<ProjectEntity> findByBuilderIdInAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(
-      Collection<Long> builderIds
+      @Param("builderIds") Collection<Long> builderIds
   );
 
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.builder.id = :builderId
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      order by p.priority asc, p.id desc
+      """)
   List<ProjectEntity> findByBuilderIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatusOrderByPriorityAscIdDesc(
-      Long builderId,
-      ReviewStatus reviewStatus
+      @Param("builderId") Long builderId,
+      @Param("reviewStatus") ReviewStatus reviewStatus
   );
 
   // Existing method kept for backward compatibility.
   @EntityGraph(attributePaths = {"builder"})
-  List<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(Collection<Long> ids);
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.id in :ids
+        and p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      """)
+  List<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalse(
+      @Param("ids") Collection<Long> ids);
 
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.id in :ids
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   List<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      Collection<Long> ids,
-      ReviewStatus reviewStatus
+      @Param("ids") Collection<Long> ids,
+      @Param("reviewStatus") ReviewStatus reviewStatus
   );
 
   // Paginated ID-IN browse (used for unit configuration filter).
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.id in :ids
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      Collection<Long> ids,
-      ReviewStatus reviewStatus,
+      @Param("ids") Collection<Long> ids,
+      @Param("reviewStatus") ReviewStatus reviewStatus,
       Pageable pageable
   );
 
   // Paginated ID-IN browse filtered by city.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.id in :ids and p.city.id = :cityId
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByIdInAndCityIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      Collection<Long> ids,
-      Long cityId,
-      ReviewStatus reviewStatus,
+      @Param("ids") Collection<Long> ids,
+      @Param("cityId") Long cityId,
+      @Param("reviewStatus") ReviewStatus reviewStatus,
       Pageable pageable
   );
 
   // Existing method kept for backward compatibility.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByPublishedTrueAndActiveTrueAndDeletedFalse(Pageable pageable);
 
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      ReviewStatus reviewStatus,
+      @Param("reviewStatus") ReviewStatus reviewStatus,
       Pageable pageable
   );
 
   // Existing method kept for backward compatibility.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.city.id = :cityId
+        and p.published = true and p.active = true and p.deleted = false
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalse(
-      Long cityId,
+      @Param("cityId") Long cityId,
       Pageable pageable
   );
 
   // New approved-only public method.
   @EntityGraph(attributePaths = {"builder", "city"})
+  @Query("""
+      select p from ProjectEntity p join p.builder b
+      where p.city.id = :cityId
+        and p.published = true and p.active = true and p.deleted = false
+        and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
+      """)
   Page<ProjectEntity> findByCityIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(
-      Long cityId,
-      ReviewStatus reviewStatus,
+      @Param("cityId") Long cityId,
+      @Param("reviewStatus") ReviewStatus reviewStatus,
       Pageable pageable
   );
 
@@ -123,6 +238,9 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
         and p.published = true
         and p.deleted = false
         and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
+        and b.active = true
+        and b.published = true
+        and b.deleted = false
         and (:cityId is null or c.id = :cityId)
         and (
               lower(p.name) like lower(concat(:query, '%'))
@@ -160,6 +278,9 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
             and p.published = true
             and p.deleted = false
             and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
+            and b.active = true
+            and b.published = true
+            and b.deleted = false
             and (:cityId is null or c.id = :cityId)
             and (
                   lower(p.name) like lower(concat(:query, '%'))
@@ -189,6 +310,9 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
             and p.published = true
             and p.deleted = false
             and p.reviewStatus = com.brandPitara.sfs.dashboard.common.enums.ReviewStatus.APPROVED
+            and b.active = true
+            and b.published = true
+            and b.deleted = false
             and (:cityId is null or c.id = :cityId)
             and (
                   lower(p.name) like lower(concat(:query, '%'))
@@ -228,16 +352,26 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
       """)
   long countPublicProjectsByCityWithPublicBuilder(@Param("cityId") Long cityId);
 
+  @EntityGraph(attributePaths = {"builder", "city"})
   Page<ProjectEntity> findByDeletedFalseAndReviewStatus(
     ReviewStatus reviewStatus,
     Pageable pageable
   );
 
+  @EntityGraph(attributePaths = {"builder", "city"})
   Page<ProjectEntity> findByBuilderIdAndDeletedFalseAndReviewStatus(
       Long builderId,
       ReviewStatus reviewStatus,
       Pageable pageable
   );
+
+  @Query("""
+      select distinct p
+      from ProjectEntity p
+      left join fetch p.propertyTypes
+      where p.id in :ids
+      """)
+  List<ProjectEntity> findAllWithPropertyTypesByIdIn(@Param("ids") Collection<Long> ids);
 
   long countByDeletedFalse();
 
@@ -247,9 +381,10 @@ public interface ProjectRepository extends JpaRepository<ProjectEntity, Long> {
 
   @EntityGraph(attributePaths = {"builder", "city"})
   @Query("""
-      select p from ProjectEntity p
+      select p from ProjectEntity p join p.builder b
       where p.published = true and p.active = true and p.deleted = false
         and p.reviewStatus = :reviewStatus
+        and b.published = true and b.active = true and b.deleted = false
         and (:cityId is null or p.city.id = :cityId)
         and exists (
           select 1 from ProjectFloorPlanEntity fp

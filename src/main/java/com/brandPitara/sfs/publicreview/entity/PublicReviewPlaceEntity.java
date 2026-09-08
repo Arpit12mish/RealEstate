@@ -86,6 +86,10 @@ public class PublicReviewPlaceEntity extends BaseEntity {
     @Builder.Default
     private GoogleReviewFetchStatus fetchStatus = GoogleReviewFetchStatus.NOT_FETCHED;
 
+    /** Non-null only while fetchStatus == FETCHING; see V147 for why this is a dedicated column. */
+    @Column(name = "fetch_started_at")
+    private OffsetDateTime fetchStartedAt;
+
     @Column(name = "content_expires_at")
     private OffsetDateTime contentExpiresAt;
 

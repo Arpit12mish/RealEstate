@@ -28,6 +28,31 @@ sudo systemctl start sfs
 sudo systemctl status sfs --no-pager
 ```
 
+## Single-number production review OTP
+
+Production must not activate the broad local `FakeOtpService`. To bypass
+Twilio for one approved test/review number, configure the existing
+single-number review path in `/etc/sfs-app.env`:
+
+```bash
+APP_REVIEW_ENABLED=true
+APP_REVIEW_PHONE_NUMBER=<E.164 phone number>
+APP_REVIEW_FIXED_OTP=<six-digit OTP>
+APP_REVIEW_RESEND_AFTER_SECONDS=30
+```
+
+Keep `/etc/sfs-app.env` owned by `root:root` with mode `600`, then restart
+`sfs`. Verify presence without printing either secret:
+
+```bash
+sudo awk -F= '
+  $1=="APP_REVIEW_ENABLED" { enabled=$2 }
+  $1=="APP_REVIEW_PHONE_NUMBER" { phone=length($2) }
+  $1=="APP_REVIEW_FIXED_OTP" { otp=length($2) }
+  END { printf "enabled=%s phone_configured=%s otp_configured=%s\n", enabled, (phone>0?"yes":"no"), (otp==6?"yes":"no") }
+' /etc/sfs-app.env
+```
+
 ## Instagram Reels Meta Sync Environment
 
 Instagram Reels sync is configured through a server-only environment file. Do not commit Meta secrets to `application.yml` or any Git-tracked file.

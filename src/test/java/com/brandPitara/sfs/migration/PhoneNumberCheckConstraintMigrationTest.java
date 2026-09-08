@@ -44,9 +44,12 @@ class PhoneNumberCheckConstraintMigrationTest {
     private String migrationSql;
 
     @BeforeEach
-    void loadMigration() throws IOException {
+    void loadMigration() throws IOException, SQLException {
         ClassPathResource resource = new ClassPathResource("db/migration/V110__enforce_canonical_phone_number_format.sql");
         migrationSql = Files.readString(resource.getFile().toPath(), StandardCharsets.UTF_8);
+        try (Connection connection = openConnection()) {
+            execute(connection, "DROP TABLE IF EXISTS users");
+        }
     }
 
     @Test

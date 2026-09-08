@@ -72,7 +72,7 @@ Created by `V84__floor_plan_intelligence_v1.sql`; patched by `V85__floor_plan_in
 | `created_at` | `TIMESTAMPTZ` | Yes | Audit timestamp |
 | `updated_at` | `TIMESTAMPTZ` | Yes | Audit timestamp |
 
-**Space Comparison columns** — added by `V135__add_room_dimension_space_comparison.sql` (extracted from the dirty worktree's own `V138`, which bundled this ALTER TABLE together with the unrelated visual-analysis tables, stabilized separately):
+**Space Comparison columns** — added by `V145__add_room_dimension_space_comparison.sql` (extracted from the dirty worktree's own `V138`, which bundled this ALTER TABLE together with the unrelated visual-analysis tables, stabilized separately):
 
 | Column | Type | Required | Notes |
 |---|---:|---:|---|
@@ -438,7 +438,7 @@ Shape:
 
 ### Visual Floor-Plan Analysis (stabilized — closes GAP-027/GAP-028)
 
-Table: `project_floor_plan_visual_analysis` (one row per floor plan, unique on `floor_plan_id`) + `project_floor_plan_visual_analysis_tag` (child rows). Migration: `V135__create_project_floor_plan_visual_analysis.sql`.
+Table: `project_floor_plan_visual_analysis` (one row per floor plan, unique on `floor_plan_id`) + `project_floor_plan_visual_analysis_tag` (child rows). Migration: `V142__create_project_floor_plan_visual_analysis.sql`.
 
 Entity/DTO: `ProjectFloorPlanVisualAnalysisEntity`/`ProjectFloorPlanVisualAnalysisResponse`. Full public shape (nested on `ProjectFloorPlanInsightDetailResponse.visualAnalysis`, `null` when none authored):
 
