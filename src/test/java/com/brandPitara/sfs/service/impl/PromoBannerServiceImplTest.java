@@ -3,14 +3,15 @@ package com.brandPitara.sfs.service.impl;
 import com.brandPitara.sfs.dto.PromoBannerResponse;
 import com.brandPitara.sfs.entity.CategoryEntity;
 import com.brandPitara.sfs.entity.PromoBannerEntity;
+import com.brandPitara.sfs.enums.PromoBannerMediaType;
 import com.brandPitara.sfs.repository.CategoryRepository;
 import com.brandPitara.sfs.repository.PromoBannerRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.springframework.data.domain.PageRequest;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,7 +45,7 @@ class PromoBannerServiceImplTest {
                 .category(category())
                 .title("Top Projects")
                 .imageUrl(IMAGE_URL)
-                .mediaType("IMAGE")
+                .mediaType(PromoBannerMediaType.IMAGE)
                 .targetUrl("/projects")
                 .priority(1)
                 .active(true)
@@ -59,7 +60,7 @@ class PromoBannerServiceImplTest {
                 .title("Compare Smarter")
                 .subtitle("Compare projects side by side")
                 .imageUrl(null)
-                .mediaType("LOTTIE_JSON")
+                .mediaType(PromoBannerMediaType.LOTTIE_JSON)
                 .mediaUrl(LOTTIE_URL)
                 .displayDurationMs(12000)
                 .targetUrl("/compare-projects/select")
@@ -73,7 +74,7 @@ class PromoBannerServiceImplTest {
     @Test
     void heroBannersIncludeImageBanners() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
@@ -88,7 +89,7 @@ class PromoBannerServiceImplTest {
     @Test
     void heroBannersIncludeLottieItem() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner(), lottieBanner()));
 
@@ -105,7 +106,7 @@ class PromoBannerServiceImplTest {
     @Test
     void imageBanner_mediaTypeIsImage() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
@@ -118,7 +119,7 @@ class PromoBannerServiceImplTest {
     @Test
     void imageBanner_mediaUrlEqualsImageUrl() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner()));
 
@@ -131,7 +132,7 @@ class PromoBannerServiceImplTest {
     @Test
     void lottieBanner_mediaUrlMatchesCdnUrl() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(lottieBanner()));
 
@@ -145,7 +146,7 @@ class PromoBannerServiceImplTest {
     @Test
     void lottieBanner_targetUrlIsCompareSelection() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(lottieBanner()));
 
@@ -168,7 +169,7 @@ class PromoBannerServiceImplTest {
                 .build();
 
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(b));
 
@@ -182,7 +183,7 @@ class PromoBannerServiceImplTest {
     @Test
     void mixedBanners_eachHasCorrectMediaType() {
         when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
-        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                 CAT_ID, "HERO", PageRequest.of(0, 10)))
                 .thenReturn(List.of(imageBanner(), lottieBanner()));
 
@@ -197,5 +198,29 @@ class PromoBannerServiceImplTest {
         assertThat(lottieResult.getImageUrl()).isNull();
         assertThat(lottieResult.getMediaUrl()).isEqualTo(LOTTIE_URL);
         assertThat(lottieResult.getDisplayDurationMs()).isEqualTo(12000);
+    }
+
+    @Test
+    void videoBannerReturnsVideoTypeAndPermanentMediaUrl() {
+        String videoUrl = "https://cdn.example.com/home/hero.mp4";
+        PromoBannerEntity video = PromoBannerEntity.builder()
+                .id(10L)
+                .category(category())
+                .title("Hero video")
+                .mediaType(PromoBannerMediaType.VIDEO)
+                .mediaUrl(videoUrl)
+                .active(true)
+                .deleted(false)
+                .slotKey("HERO")
+                .build();
+        when(categoryRepository.findById(CAT_ID)).thenReturn(Optional.of(category()));
+        when(bannerRepository.findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
+                CAT_ID, "HERO", PageRequest.of(0, 10)))
+                .thenReturn(List.of(video));
+
+        PromoBannerResponse response = service.getBannersForCategoryAndSlot(CAT_ID, "HERO", 10).get(0);
+
+        assertThat(response.getMediaType()).isEqualTo("VIDEO");
+        assertThat(response.getMediaUrl()).isEqualTo(videoUrl);
     }
 }

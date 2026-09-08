@@ -7,9 +7,9 @@ import com.brandPitara.sfs.repository.CategoryRepository;
 import com.brandPitara.sfs.repository.PromoBannerRepository;
 import com.brandPitara.sfs.service.PromoBannerService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
@@ -28,7 +28,7 @@ public class PromoBannerServiceImpl implements PromoBannerService {
                 .orElseThrow(() -> new NotFoundException("Category not found: " + categoryId));
 
         return promoBannerRepository
-                .findByCategory_IdAndActiveTrueOrderByPriorityAsc(categoryId)
+                .findByCategory_IdAndActiveTrueAndDeletedFalseOrderByPriorityAsc(categoryId)
                 .stream()
                 .map(b -> toResponse(b, category.getName(), category.getSlug()))
                 .toList();
@@ -44,7 +44,7 @@ public class PromoBannerServiceImpl implements PromoBannerService {
         int limit = (maxItems == null || maxItems < 1) ? 10 : Math.min(maxItems, 25);
 
         List<PromoBannerEntity> list = promoBannerRepository
-                .findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                .findByCategory_IdAndSlotKeyAndActiveTrueAndDeletedFalseOrderByPriorityAscIdAsc(
                         categoryId, safeSlot, PageRequest.of(0, limit));
 
         return list.stream()
@@ -55,7 +55,7 @@ public class PromoBannerServiceImpl implements PromoBannerService {
     private PromoBannerResponse toResponse(PromoBannerEntity b,
                                           String categoryName,
                                           String categorySlug) {
-        String mediaType = b.getMediaType() != null ? b.getMediaType() : "IMAGE";
+        String mediaType = b.getMediaType() != null ? b.getMediaType().name() : "IMAGE";
         String mediaUrl  = "IMAGE".equals(mediaType) ? b.getImageUrl() : b.getMediaUrl();
         return PromoBannerResponse.builder()
                 .id(b.getId())

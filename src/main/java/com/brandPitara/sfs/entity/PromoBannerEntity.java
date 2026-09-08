@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.entity;
 
+import com.brandPitara.sfs.enums.PromoBannerMediaType;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -37,9 +38,10 @@ public class PromoBannerEntity extends BaseEntity {
     @Column(name = "image_url", length = 500)
     private String imageUrl;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "media_type", nullable = false, length = 30)
     @Builder.Default
-    private String mediaType = "IMAGE";
+    private PromoBannerMediaType mediaType = PromoBannerMediaType.IMAGE;
 
     @Column(name = "media_url", columnDefinition = "TEXT")
     private String mediaUrl;
@@ -57,6 +59,10 @@ public class PromoBannerEntity extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean active = true;
+
+    @Column(name = "is_deleted", nullable = false)
+    @Builder.Default
+    private Boolean deleted = false;
 
     // ✅ NEW: used for placements (HERO/MID/BOTTOM/SEARCH_TOP etc.)
     @Column(name = "slot_key", nullable = false, length = 20)
