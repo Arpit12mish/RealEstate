@@ -75,6 +75,7 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
         return SecurityRequestBypass.shouldBypass(request)
+                || DeterministicPublicRequestMatcher.matches(request)
                 || (path != null && (path.startsWith("/api/dashboard/") || path.startsWith("/api/admin/")));
     }
 

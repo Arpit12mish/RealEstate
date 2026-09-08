@@ -29,6 +29,11 @@ public class LogSanitizer {
                     + "(\\s*[=:]\\s*|\\s+)([^\\s,;]+)"
     );
     private static final Pattern PHONE_PATTERN = Pattern.compile("(?<!\\d)\\+?\\d{10,15}(?!\\d)");
+    // No nested/overlapping quantifiers - single linear pass, safe against ReDoS on
+    // adversarial input (this now also runs over public, unauthenticated analytics
+    // search-query text - see AnalyticsEventValidator).
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b");
 
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
             "authorization", "accesstoken", "refreshtoken", "token", "jwt",
@@ -105,6 +110,7 @@ public class LogSanitizer {
         sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("****");
         sanitized = SENSITIVE_MESSAGE_VALUE_PATTERN.matcher(sanitized).replaceAll("$1$2****");
         sanitized = PHONE_PATTERN.matcher(sanitized).replaceAll("****");
+        sanitized = EMAIL_PATTERN.matcher(sanitized).replaceAll("****");
         return truncate(sanitized, MAX_MESSAGE_LENGTH);
     }
 

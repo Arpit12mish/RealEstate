@@ -32,22 +32,20 @@ public class ProjectFloorPlanInsightDetailResponse {
   private String towerName;
   private String floorRange;
   private String keyPlanImageUrl;
+
+  // rooms[] already carries Space Comparison data per room (see
+  // FloorPlanRoomDimensionResponse#averageAreaSqft/differencePercent/summary/
+  // hasComparisonData) - no separate spaceComparison wrapper is needed since
+  // that would just duplicate the same rows in a second shape.
   private List<FloorPlanRoomDimensionResponse> rooms;
   private List<FloorPlanInsightResponse> insights;
 
-  // Visual Analysis block (GAP-027 stabilization) - null when no dashboard
-  // user has authored one yet for this floor plan, or when a legacy
-  // mediaUrl fails TrustedMediaUrlValidator's read-side check (its mediaUrl
-  // is nulled out rather than the whole object being hidden - see
-  // ProjectFloorPlanInsightServiceImpl#publicGetDetail).
+  // Visual Analysis block - null when no dashboard user has authored one yet.
   private ProjectFloorPlanVisualAnalysisResponse visualAnalysis;
 
-  // True when this floor plan has no authored visualAnalysis yet - purely
-  // computed metadata, never a signal that any OTHER field on this response
-  // might be synthetic (nothing on this response is ever synthetic; see
-  // this field's own javadoc on ProjectFloorPlanVisualAnalysisResponse for
-  // the full reasoning). Scoped only to visualAnalysis in this composer -
-  // does not consider rooms[]/insights[] richness.
+  // True when neither visualAnalysis nor any room in rooms[] has real authored
+  // content yet, so the client can label content as sample/demo instead of
+  // silently rendering an unconditional local fallback.
   private boolean demo;
   private String sourceLabel;
 }

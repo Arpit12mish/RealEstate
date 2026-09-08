@@ -95,6 +95,16 @@ class LogSanitizerTest {
     }
 
     @Test
+    void sanitizeMessageRedactsEmailAddresses() {
+        // Added for analytics search-query PII masking (AnalyticsEventValidator reuses
+        // this method) - a user pasting their email into free text must not have it
+        // survive verbatim.
+        String sanitized = sanitizer.sanitizeMessage("contact buyer at jane.doe+realestate@example.co.in please");
+
+        assertThat(sanitized).contains("****").doesNotContain("jane.doe+realestate@example.co.in");
+    }
+
+    @Test
     void sanitizeMapMasksSensitiveFormParamsTheSameWayAsQueryStrings() {
         String masked = sanitizer.sanitizeMap(
                 java.util.Map.of("password", new String[]{"hunter2"}, "cityId", new String[]{"1"})

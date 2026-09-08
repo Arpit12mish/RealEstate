@@ -23,6 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class JwtRequestFilterRateLimitIdentityTest {
 
@@ -48,6 +49,28 @@ class JwtRequestFilterRateLimitIdentityTest {
         assertThat(request.getAttribute(RateLimitAuthenticationAttributes.GUEST_SESSION_ID)).isNull();
         verify(chain).doFilter(any(), any());
         verify(jwt, times(1)).parseAndValidate("raw-user-token");
+    }
+
+    @Test
+    void installationMetadataCannotImpersonateAnotherUser() throws Exception {
+        JwtTokenUtil jwt = mock(JwtTokenUtil.class);
+        UserDetails details = new MobileAuthenticationUserSnapshot(
+                42L, "user@example.test", Role.CUSTOMER, true);
+        UserDetailsService users = username -> details;
+        when(jwt.parseAndValidate("raw-user-token")).thenReturn(new ValidatedJwtClaims(
+                "user@example.test", "USER", 42L, null, "installation-claiming-user-99",
+                Instant.now().plusSeconds(60)));
+        MockHttpServletRequest request = request("Bearer raw-user-token");
+
+        new JwtRequestFilter(users, jwt, new LogSanitizer())
+                .doFilter(request, new MockHttpServletResponse(), mock(FilterChain.class));
+
+        assertThat(request.getAttribute(RateLimitAuthenticationAttributes.AUTH_STATE))
+                .isEqualTo(RateLimitAuthenticationAttributes.STATE_USER);
+        assertThat(request.getAttribute(RateLimitAuthenticationAttributes.USER_ID)).isEqualTo(42L);
+        assertThat(request.getAttribute(RateLimitAuthenticationAttributes.GUEST_SESSION_ID)).isNull();
+        assertThat(SecurityContextHolder.getContext().getAuthentication().getPrincipal())
+                .isSameAs(details);
     }
 
     @Test
@@ -96,6 +119,47 @@ class JwtRequestFilterRateLimitIdentityTest {
 
         assertThat(request.getAttribute(RateLimitAuthenticationAttributes.AUTH_STATE))
                 .isEqualTo(RateLimitAuthenticationAttributes.STATE_INVALID);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    void deterministicPublicV2IgnoresMalformedAuthorizationWithoutJwtParsing() throws Exception {
+        JwtTokenUtil jwt = mock(JwtTokenUtil.class);
+        JwtRequestFilter filter = new JwtRequestFilter(
+                username -> { throw new AssertionError("no user lookup"); },
+                jwt,
+                new LogSanitizer()
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/v2/public/projects/27");
+        request.addHeader("Authorization", "definitely-not-a-bearer-token");
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        verify(chain).doFilter(any(), any());
+        verifyNoInteractions(jwt);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(request.getAttribute(RateLimitAuthenticationAttributes.AUTH_STATE)).isNull();
+    }
+
+    @Test
+    void deterministicPublicV2HeadAlsoIgnoresAuthorizationWithoutJwtParsing() throws Exception {
+        JwtTokenUtil jwt = mock(JwtTokenUtil.class);
+        JwtRequestFilter filter = new JwtRequestFilter(
+                username -> { throw new AssertionError("no user lookup"); },
+                jwt,
+                new LogSanitizer()
+        );
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "HEAD", "/api/v2/public/projects/27");
+        request.addHeader("Authorization", "malformed");
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        verify(chain).doFilter(any(), any());
+        verifyNoInteractions(jwt);
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 

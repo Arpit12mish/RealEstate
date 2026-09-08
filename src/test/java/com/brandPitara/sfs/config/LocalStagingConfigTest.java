@@ -6,6 +6,7 @@ import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +50,41 @@ class LocalStagingConfigTest {
         assertThat(config.getProperty("app.review.enabled")).isEqualTo(false);
         assertThat(config.getProperty("sfs.local-staging.fake-otp.enabled"))
                 .isEqualTo("${SFS_LOCAL_STAGING_FAKE_OTP_ENABLED:false}");
+    }
+
+    @Test
+    void definesExactlyTwentyCanonicalLocalFakeOtpNumbers() throws IOException {
+        PropertySource<?> config = config();
+
+        assertThat(config.getProperty("sfs.local-staging.fake-otp.fixed-otp"))
+                .isEqualTo("123456");
+        assertThat(IntStream.rangeClosed(1, 20)
+                .mapToObj(index -> config.getProperty(
+                        "sfs.local-staging.fake-otp.phone-numbers[" + (index - 1) + "]"))
+                .toList())
+                .containsExactly(
+                        "+919900000001",
+                        "+919900000002",
+                        "+919900000003",
+                        "+919900000004",
+                        "+919900000005",
+                        "+919900000006",
+                        "+919900000007",
+                        "+919900000008",
+                        "+919900000009",
+                        "+919900000010",
+                        "+919900000011",
+                        "+919900000012",
+                        "+919900000013",
+                        "+919900000014",
+                        "+919900000015",
+                        "+919900000016",
+                        "+919900000017",
+                        "+919900000018",
+                        "+919900000019",
+                        "+919900000020"
+                );
+        assertThat(config.getProperty("sfs.local-staging.fake-otp.phone-numbers[20]")).isNull();
     }
 
     @Test

@@ -51,7 +51,13 @@ import java.util.Set;
 @Slf4j
 public class RateLimitingFilter extends OncePerRequestFilter {
 
-    /** Policies whose key material requires reading the JSON request body. */
+    /**
+     * Policies whose key material requires reading the JSON request body, PLUS
+     * (PUBLIC_ANALYTICS_INGEST) policies that need the shared body-size bound for its
+     * own sake even though nothing is extracted from the body for keying. Without this,
+     * a public/permitAll JSON endpoint has no cap on request body size before Jackson's
+     * @RequestBody binding fully parses and allocates it - see CachedBodyHttpServletRequest.
+     */
     private static final Set<RateLimitPolicy> BODY_AWARE_POLICIES = EnumSet.of(
             RateLimitPolicy.MOBILE_OTP_REQUEST,
             RateLimitPolicy.MOBILE_OTP_VERIFY,
@@ -61,7 +67,9 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             // Only the calculator write policy needs a body fingerprint. Auth bodies
             // are wrapped to obtain the OTP phone where applicable, but refresh token,
             // installation ID and device ID are never used as cache identities.
-            RateLimitPolicy.PUBLIC_CALCULATOR_WRITE
+            RateLimitPolicy.PUBLIC_CALCULATOR_WRITE,
+            // Body-size bound only - no field is extracted from an analytics batch body.
+            RateLimitPolicy.PUBLIC_ANALYTICS_INGEST
     );
 
     private final RateLimitPolicyResolver policyResolver;

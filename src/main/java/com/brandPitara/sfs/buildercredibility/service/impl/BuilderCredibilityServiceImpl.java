@@ -84,6 +84,19 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
 
     @Override
     @Transactional(readOnly = true)
+    public BuilderCredibilitySummaryResponse publicGetCredibilitySummaryForLoadedBuilder(BuilderEntity builder) {
+        if (builder == null
+            || !Boolean.TRUE.equals(builder.getPublished())
+            || !Boolean.TRUE.equals(builder.getActive())
+            || Boolean.TRUE.equals(builder.getDeleted())) {
+            Long builderId = builder != null ? builder.getId() : null;
+            throw new NotFoundException("Builder not found: " + builderId);
+        }
+        return toSummary(builder, computeCredibility(builder));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Map<Long, BuilderCredibilitySummaryResponse> publicGetCredibilitySummaries(Collection<Long> builderIds) {
         if (builderIds == null || builderIds.isEmpty()) {
             return Map.of();

@@ -4,7 +4,13 @@ public enum DashboardRole {
 
     ADMIN,
     REVIEWER,
-    DATA_ENTRY;
+    DATA_ENTRY,
+
+    /**
+     * Least-privilege dashboard identity for CMS staff. Actual CMS capability
+     * is assigned with DashboardPermission rather than additional role names.
+     */
+    CONTENT_STAFF;
 
     public boolean isAdmin() {
         return this == ADMIN;

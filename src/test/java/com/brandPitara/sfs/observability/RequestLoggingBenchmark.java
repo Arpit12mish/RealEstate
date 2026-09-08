@@ -6,6 +6,8 @@ import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.Appender;
 import ch.qos.logback.core.FileAppender;
+import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
+import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.servlet.FilterChain;
@@ -94,7 +96,8 @@ class RequestLoggingBenchmark {
 
         LogSanitizer sanitizer = new LogSanitizer();
         CorrelationIdFilter correlationFilter = new CorrelationIdFilter(sanitizer);
-        ApiRequestLoggingFilter requestFilter = new ApiRequestLoggingFilter(sanitizer);
+        ApiRequestLoggingFilter requestFilter =
+                new ApiRequestLoggingFilter(sanitizer, new ClientIpResolver(new RateLimitProperties()));
         ReflectionTestUtils.setField(requestFilter, "slowApiThresholdMs", Long.MAX_VALUE);
 
         long[] latencyNanos = new long[REQUESTS];

@@ -18,7 +18,6 @@ spring:
       max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}
       keepalive-time: ${SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME:0}
       leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
-      register-mbeans: ${SPRING_DATASOURCE_HIKARI_REGISTER_MBEANS:true}
   jpa:
     open-in-view: false
     properties:
@@ -48,7 +47,37 @@ spring:
           starttls:
             enable: ${SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE:true}
 
+# No hardcoded default - the AWS SDK's DefaultCredentialsProvider (see
+# AwsS3Config) already reads AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY from the
+# environment on its own, or falls through to the EC2/ECS instance role when
+# neither is set. These two keys are not bound by any @ConfigurationProperties
+# class; they exist purely so a config audit of this file finds an explicit,
+# blank-by-default entry rather than an absence that could be mistaken for
+# "not yet considered."
+aws:
+  credentials:
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
+
 app:
+  cms:
+    media:
+      # Must identify a private bucket, or a bucket whose cms/** prefix is denied public reads.
+      bucket: ${CMS_MEDIA_S3_BUCKET:}
+      max-image-bytes: ${CMS_MEDIA_MAX_IMAGE_BYTES:15728640}
+      max-video-bytes: ${CMS_MEDIA_MAX_VIDEO_BYTES:262144000}
+      validation-prefix-bytes: ${CMS_MEDIA_VALIDATION_PREFIX_BYTES:262144}
+      pending-retention-hours: ${CMS_MEDIA_PENDING_RETENTION_HOURS:24}
+      failed-retention-days: ${CMS_MEDIA_FAILED_RETENTION_DAYS:7}
+      public-delivery:
+        # Required in production. Must be the HTTPS CloudFront/custom media origin.
+        base-url: ${CMS_MEDIA_PUBLIC_BASE_URL:}
+      cleanup-batch-size: ${CMS_MEDIA_CLEANUP_BATCH_SIZE:100}
+  review:
+    enabled: ${APP_REVIEW_ENABLED:false}
+    phone-number: ${APP_REVIEW_PHONE_NUMBER:}
+    fixed-otp: ${APP_REVIEW_FIXED_OTP:}
+    resend-after-seconds: ${APP_REVIEW_RESEND_AFTER_SECONDS:30}
   instagram:
     fallback-thumbnail-url: ${APP_INSTAGRAM_FALLBACK_THUMBNAIL_URL:https://sfs-s3bucket.s3.ap-south-1.amazonaws.com/banner/Hero/M3M-Jacob-%26-Co-1.webp}
     thumbnail-cache-ttl-hours: ${APP_INSTAGRAM_THUMBNAIL_CACHE_TTL_HOURS:24}
@@ -64,6 +93,7 @@ app:
       region: ${AWS_S3_REGION:ap-south-1}
       publicBaseUrl: ${AWS_S3_PUBLIC_BASE_URL:}
       presignExpirySeconds: ${AWS_S3_PRESIGN_EXPIRY_SECONDS:300}
+      maxPromoBannerVideoBytes: ${APP_MEDIA_MAX_PROMO_BANNER_VIDEO_BYTES:26214400}
 
 springdoc:
   api-docs:
@@ -153,6 +183,8 @@ twilio:
   authToken: ${TWILIO_AUTH_TOKEN}
   verifyServiceSid: ${TWILIO_VERIFY_SERVICE_SID}
   phoneNumber: ${TWILIO_PHONE_NUMBER:}
+  connect-timeout-ms: ${TWILIO_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${TWILIO_READ_TIMEOUT_MS:8000}
 
 # ============================================================
 # Elasticsearch stays DISABLED. sfs.search.enabled=false already
@@ -198,17 +230,10 @@ google:
       max-radius-meters: ${GOOGLE_PLACES_MAX_RADIUS_METERS:5000}
 
 # ============================================================
-# AWS credentials. Leave both blank in production - AwsS3Config
-# already falls back to DefaultCredentialsProvider (supports an
-# EC2 IAM instance role) whenever aws.credentials.access-key is
-# blank. Only set these env vars if IAM role access is genuinely
-# unavailable.
-# ============================================================
-aws:
-  credentials:
-    access-key: ${AWS_ACCESS_KEY_ID:}
-    secret-key: ${AWS_SECRET_ACCESS_KEY:}
-
+# AWS credentials are resolved entirely by AwsS3Config's
+# DefaultCredentialsProvider (env vars incl. AWS_SESSION_TOKEN,
+# ~/.aws profiles, container credentials, EC2 IAM instance role).
+# No app-specific property is bound here on purpose.
 # ============================================================
 # Meta/Instagram - LIVE feature, must keep working. sfs.search
 # lives under the same top-level "sfs" key as sfs.instagram - do
@@ -216,8 +241,30 @@ aws:
 # would silently last-value-win clobber one of them under SnakeYAML.
 # ============================================================
 sfs:
+  log:
+    dir: ${SFS_LOG_DIR:/var/log/sfs/app}
   search:
     enabled: ${SFS_SEARCH_ENABLED:false}
+  # Production-hardening pass: this contract used to exist only in the gitignored
+  # base application.yml, which a clean production build does not have on the
+  # classpath - every value below fell back silently to its Java-level default
+  # (AnalyticsIngestionProperties), with no tracked, reviewable, or env-tunable
+  # surface. None of these are secrets and every one has a safe default, so nothing
+  # here was ever a startup-failure risk; the risk was invisibility and non-
+  # tunability. See docs/PRODUCTION_ENV_TEMPLATE.md for the env var list.
+  analytics:
+    ingestion:
+      enabled: ${SFS_ANALYTICS_ENABLED:true}
+      queue-capacity: ${SFS_ANALYTICS_QUEUE_CAPACITY:10000}
+      drain-batch-size: ${SFS_ANALYTICS_DRAIN_BATCH_SIZE:300}
+      drain-interval-ms: ${SFS_ANALYTICS_DRAIN_INTERVAL_MS:2000}
+      max-properties-json-length: ${SFS_ANALYTICS_MAX_PROPERTIES_JSON_LENGTH:2000}
+      raw-retention-days: ${SFS_ANALYTICS_RAW_RETENTION_DAYS:120}
+      partition-lookahead-months: ${SFS_ANALYTICS_PARTITION_LOOKAHEAD_MONTHS:3}
+    aggregation:
+      schedule: ${SFS_ANALYTICS_AGGREGATION_SCHEDULE:0 30 2 * * *}
+    partition-maintenance:
+      schedule: ${SFS_ANALYTICS_PARTITION_MAINTENANCE_SCHEDULE:0 0 3 * * *}
   logging:
     request:
       async:
@@ -243,6 +290,19 @@ sfs:
       batch-size: ${SFS_REFRESH_TOKEN_CLEANUP_BATCH_SIZE:1000}
       maximum-batches-per-run: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_BATCHES_PER_RUN:20}
       maximum-execution-duration: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_EXECUTION_DURATION:30s}
+  # OTP send/verify abuse limits for TwilioOtpServiceImpl (shared by /request-otp and
+  # /otp/resend - see RateLimitPolicyResolver for why both routes share one policy too).
+  # expires-in-seconds is informational only: Twilio Verify's code TTL is a fixed ~10
+  # minutes and is not configurable via the Verify API, so this only drives the
+  # frontend countdown display and must be updated by hand if that default changes.
+  otp:
+    resend-cooldown-seconds: ${SFS_OTP_RESEND_COOLDOWN_SECONDS:30}
+    max-sends-per-window: ${SFS_OTP_MAX_SENDS_PER_WINDOW:5}
+    send-window-minutes: ${SFS_OTP_SEND_WINDOW_MINUTES:15}
+    max-verify-failures-per-window: ${SFS_OTP_MAX_VERIFY_FAILURES_PER_WINDOW:5}
+    verify-window-minutes: ${SFS_OTP_VERIFY_WINDOW_MINUTES:10}
+    block-minutes: ${SFS_OTP_BLOCK_MINUTES:15}
+    expires-in-seconds: ${SFS_OTP_EXPIRES_IN_SECONDS:600}
   instagram:
     meta:
       graph-api-version: ${META_GRAPH_API_VERSION:v25.0}

@@ -118,6 +118,22 @@ class RateLimitIdentityResolverTest {
                 .doesNotContain("attacker-installation-id");
     }
 
+    @Test
+    void deterministicPublicV2IsAnonymousEvenWhenAuthorizationAndAuthAttributesArePresent() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/v2/public/projects/27");
+        request.setRemoteAddr("192.0.2.28");
+        request.addHeader("Authorization", "Bearer any-token");
+        request.setAttribute(RateLimitAuthenticationAttributes.AUTH_STATE,
+                RateLimitAuthenticationAttributes.STATE_USER);
+        request.setAttribute(RateLimitAuthenticationAttributes.USER_ID, 42L);
+
+        RateLimitIdentity identity = resolver.resolve(request);
+
+        assertThat(identity.type()).isEqualTo(RateLimitIdentityType.ANONYMOUS);
+        assertThat(identity.primaryKey()).isEqualTo("anonymous:192.0.2.28");
+    }
+
     private MockHttpServletRequest request(String remoteAddress) {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/home");
         request.setRemoteAddr(remoteAddress);

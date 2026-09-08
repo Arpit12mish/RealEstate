@@ -93,6 +93,31 @@ class RateLimitKeyResolverTest {
         assertThat(keys).doesNotContainKey(RateLimitKeyType.IP_AND_TOKEN);
     }
 
+    @Test
+    void missingPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        // A shared literal like "missing-phone" would let one attacker exhaust a
+        // single global bucket and block every other client that also omits the
+        // phone field. Omitting the dimension instead means only the co-configured
+        // PRIMARY_IDENTITY/IP dimension protects this request - never nothing.
+        RateLimitRequestContext context = RateLimitRequestContext.builder().ip("9.9.9.9").build();
+
+        Map<RateLimitKeyType, String> keys = resolver.resolveKeys(List.of(RateLimitKeyType.PHONE), context);
+
+        assertThat(keys).doesNotContainKey(RateLimitKeyType.PHONE);
+    }
+
+    @Test
+    void malformedPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        RateLimitRequestContext context = RateLimitRequestContext.builder()
+                .ip("9.9.9.9")
+                .phoneNumber("not-a-real-phone-number")
+                .build();
+
+        Map<RateLimitKeyType, String> keys = resolver.resolveKeys(List.of(RateLimitKeyType.PHONE), context);
+
+        assertThat(keys).doesNotContainKey(RateLimitKeyType.PHONE);
+    }
+
     // ── Phase 2: mobile action APIs ──────────────────────────────────────────────
 
     @Test
@@ -143,6 +168,21 @@ class RateLimitKeyResolverTest {
         String keyB = resolver.resolveKeys(List.of(RateLimitKeyType.BODY_FINGERPRINT), contextB).get(RateLimitKeyType.BODY_FINGERPRINT);
 
         assertThat(keyA).isNotEqualTo(keyB);
+    }
+
+    @Test
+    void missingOrBlankBodyFingerprintIsOmittedRatherThanSharingAGlobalBucketIdentity() {
+        // Same contract as PHONE (malformedPhoneIsOmittedRatherThanSharingAGlobalBucketIdentity):
+        // a request with no usable body must not collapse onto one shared "_none_" bucket with
+        // every other client whose body is also missing/blank/unparsable - that would let one
+        // attacker exhaust the shared bucket and 429 unrelated legitimate requests.
+        RateLimitRequestContext missing = RateLimitRequestContext.builder().build();
+        RateLimitRequestContext blank = RateLimitRequestContext.builder().bodyFingerprint("   ").build();
+
+        assertThat(resolver.resolveKeys(List.of(RateLimitKeyType.BODY_FINGERPRINT), missing))
+                .doesNotContainKey(RateLimitKeyType.BODY_FINGERPRINT);
+        assertThat(resolver.resolveKeys(List.of(RateLimitKeyType.BODY_FINGERPRINT), blank))
+                .doesNotContainKey(RateLimitKeyType.BODY_FINGERPRINT);
     }
 
     @Test

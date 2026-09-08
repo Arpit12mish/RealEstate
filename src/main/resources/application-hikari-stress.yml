@@ -1,0 +1,25 @@
+spring:
+  config:
+    activate:
+      on-profile: "hikari-stress & !prod"
+  datasource:
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 5000
+      leak-detection-threshold: 5000
+
+server:
+  tomcat:
+    mbeanregistry:
+      enabled: true
+
+sfs:
+  rate-limit:
+    policies:
+      PUBLIC_PROJECT_READ:
+        limits:
+          - keyType: PRIMARY_IDENTITY
+            capacity: 60000
+            refillTokens: 60000
+            refillPeriodSeconds: 60

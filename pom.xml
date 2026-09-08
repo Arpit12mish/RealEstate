@@ -97,6 +97,12 @@
       <artifactId>s3</artifactId>
     </dependency>
 
+    <!-- CloudFront is instantiated only when sfs.cdn.enabled=true. -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>cloudfront</artifactId>
+    </dependency>
+
     <!-- Optional (IAM role / assume-role scenarios) -->
     <dependency>
       <groupId>software.amazon.awssdk</groupId>

@@ -3,6 +3,9 @@ package com.brandPitara.sfs.dashboard.common.exception;
 import com.brandPitara.sfs.dashboard.common.response.DashboardApiErrorResponse;
 import com.brandPitara.sfs.dashboard.common.response.DashboardFieldErrorResponse;
 import com.brandPitara.sfs.exception.NotFoundException;
+import com.brandPitara.sfs.cms.content.exception.CmsContentApiException;
+import com.brandPitara.sfs.cms.media.exception.CmsMediaApiException;
+import com.brandPitara.sfs.project.exception.PublicationConflictException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.brandPitara.sfs.observability.LogEvents;
@@ -19,6 +22,8 @@ import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -39,13 +44,34 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@RestControllerAdvice(basePackages = "com.brandPitara.sfs.dashboard")
+@RestControllerAdvice(basePackages = {"com.brandPitara.sfs.dashboard", "com.brandPitara.sfs.cms"})
 @RequiredArgsConstructor
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class DashboardExceptionHandler {
 
     private static final Logger ERROR_LOG = LoggerFactory.getLogger(DashboardExceptionHandler.class);
 
     private final LogSanitizer logSanitizer;
+
+    @ExceptionHandler(CmsContentApiException.class)
+    public ResponseEntity<DashboardApiErrorResponse> handleCmsContentApiException(
+            CmsContentApiException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(ex.getStatus()).body(
+                build(ex.getStatus(), ex.getCode(), ex.getMessage(), request)
+        );
+    }
+
+    @ExceptionHandler(CmsMediaApiException.class)
+    public ResponseEntity<DashboardApiErrorResponse> handleCmsMediaApiException(
+            CmsMediaApiException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(ex.getStatus()).body(
+                build(ex.getStatus(), ex.getCode(), ex.getMessage(), request)
+        );
+    }
 
     // ── 400 Validation ───────────────────────────────────────────────────────
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -81,7 +107,9 @@ public class DashboardExceptionHandler {
                 .stream()
                 .map(v -> DashboardFieldErrorResponse.builder()
                         .field(v.getPropertyPath() != null ? v.getPropertyPath().toString() : null)
-                        .rejectedValue(v.getInvalidValue())
+                        .rejectedValue(isPasswordField(
+                                v.getPropertyPath() != null ? v.getPropertyPath().toString() : null
+                        ) ? "[REDACTED]" : v.getInvalidValue())
                         .message(v.getMessage())
                         .build())
                 .toList();
@@ -161,6 +189,17 @@ public class DashboardExceptionHandler {
     }
 
     // ── 409 Conflict ─────────────────────────────────────────────────────────
+    @ExceptionHandler(PublicationConflictException.class)
+    public ResponseEntity<DashboardApiErrorResponse> handlePublicationConflict(
+            PublicationConflictException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                build(HttpStatus.CONFLICT, ex.getCode(),
+                        cleanMessage(ex.getMessage(), "Publication state conflict."), request)
+        );
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<DashboardApiErrorResponse> handleDataIntegrity(
             DataIntegrityViolationException ex,
@@ -207,9 +246,17 @@ public class DashboardExceptionHandler {
             HttpMessageNotReadableException ex,
             HttpServletRequest request
     ) {
+        boolean contentDocumentRequest = request.getRequestURI() != null
+                && request.getRequestURI().matches("/api/dashboard/cms/content/[^/]+/document/?");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                build(HttpStatus.BAD_REQUEST, "DASHBOARD_INVALID_JSON",
-                        resolveUnreadableBodyMessage(ex), request)
+                build(
+                        HttpStatus.BAD_REQUEST,
+                        contentDocumentRequest ? "CONTENT_DOCUMENT_INVALID" : "DASHBOARD_INVALID_JSON",
+                        contentDocumentRequest
+                                ? "Content document does not match the supported structured schema."
+                                : resolveUnreadableBodyMessage(ex),
+                        request
+                )
         );
     }
 
@@ -325,6 +372,9 @@ public class DashboardExceptionHandler {
 
     private DashboardFieldErrorResponse toFieldError(FieldError error) {
         Object rejectedValue = error.getRejectedValue();
+        if (isPasswordField(error.getField())) {
+            rejectedValue = "[REDACTED]";
+        }
         if (rejectedValue instanceof String value && value.length() > 120) {
             rejectedValue = value.substring(0, 120) + "...";
         }
@@ -333,6 +383,10 @@ public class DashboardExceptionHandler {
                 .rejectedValue(rejectedValue)
                 .message(error.getDefaultMessage())
                 .build();
+    }
+
+    private boolean isPasswordField(String field) {
+        return field != null && field.toLowerCase().contains("password");
     }
 
     private String cleanMessage(String message, String fallback) {

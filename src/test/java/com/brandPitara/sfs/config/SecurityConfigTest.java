@@ -14,6 +14,7 @@ class SecurityConfigTest {
 
         assertThat(publicEndpoints).containsExactlyInAnyOrder(
                 "/api/auth/request-otp",
+                "/api/auth/otp/resend",
                 "/api/auth/verify-otp",
                 "/api/auth/refresh",
                 "/api/auth/logout",

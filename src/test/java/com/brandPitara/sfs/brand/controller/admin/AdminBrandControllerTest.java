@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,6 +48,91 @@ class AdminBrandControllerTest {
         .setValidator(validator)
         .build();
     objectMapper = new ObjectMapper().findAndRegisterModules();
+  }
+
+  @Test
+  void create_withMinimumPayload_succeeds() throws Exception {
+    when(brandService.create(org.mockito.ArgumentMatchers.any(BrandUpsertRequest.class)))
+        .thenReturn(BrandResponse.builder()
+            .id(42L)
+            .name("Test Brand Create")
+            .slug("test-brand-create")
+            .categoryIds(List.of())
+            .active(true)
+            .published(false)
+            .priority(0)
+            .build());
+
+    mockMvc.perform(post("/api/admin/brands")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "name": "Test Brand Create"
+                }
+                """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id", is(42)))
+        .andExpect(jsonPath("$.slug", is("test-brand-create")))
+        .andExpect(jsonPath("$.published", is(false)));
+
+    ArgumentCaptor<BrandUpsertRequest> requestCaptor = ArgumentCaptor.forClass(BrandUpsertRequest.class);
+    verify(brandService).create(requestCaptor.capture());
+    assertThat(requestCaptor.getValue().getName()).isEqualTo("Test Brand Create");
+    assertThat(requestCaptor.getValue().getSlug()).isNull();
+  }
+
+  @Test
+  void create_rejectsBlankName() throws Exception {
+    mockMvc.perform(post("/api/admin/brands")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "name": ""
+                }
+                """))
+        .andExpect(status().isBadRequest());
+
+    verifyNoInteractions(brandService);
+  }
+
+  @Test
+  void create_rejectsInvalidPublicStatsValues() throws Exception {
+    assertCreateInvalid("""
+        {"name":"Incor","foundedYear":1799}
+        """);
+    assertCreateInvalid("""
+        {"name":"Incor","foundedYear":%d}
+        """.formatted(Year.now().getValue() + 1));
+    assertCreateInvalid("""
+        {"name":"Incor","customerRating":5.1}
+        """);
+    assertCreateInvalid("""
+        {"name":"Incor","customerRatingCount":-1}
+        """);
+
+    verifyNoInteractions(brandService);
+  }
+
+  @Test
+  void create_rejectsUnsupportedPromoMediaType() throws Exception {
+    mockMvc.perform(post("/api/admin/brands")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("""
+                {
+                  "name": "Incor",
+                  "promoMediaType": "VIDEO"
+                }
+                """))
+        .andExpect(status().isBadRequest());
+
+    verifyNoInteractions(brandService);
+  }
+
+  private void assertCreateInvalid(String body) throws Exception {
+    mockMvc.perform(post("/api/admin/brands")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body))
+        .andExpect(status().isBadRequest());
   }
 
   @Test

@@ -46,8 +46,13 @@ class BrandConnectedPublicServiceImplTest {
   }
 
   private ProjectEntity approvedProject(Long id) {
+    BuilderEntity publicBuilder = BuilderEntity.builder()
+        .id(5L).name("Public Builder")
+        .published(true).active(true).deleted(false)
+        .build();
     return ProjectEntity.builder()
         .id(id).name("Skyline Residency")
+        .builder(publicBuilder)
         .published(true).active(true).deleted(false)
         .reviewStatus(ReviewStatus.APPROVED)
         .build();

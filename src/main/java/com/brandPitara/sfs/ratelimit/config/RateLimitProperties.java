@@ -48,15 +48,24 @@ public class RateLimitProperties {
     private List<String> trustedProxies = new ArrayList<>(List.of("127.0.0.1", "0:0:0:0:0:0:0:1", "::1"));
 
     /**
-     * Maximum size, in bytes, of a request body RateLimitingFilter will buffer
-     * to extract narrowly allowed body-derived material (OTP phone and
-     * calculator-body fingerprint). Refresh tokens, installation IDs and
-     * device IDs are deliberately excluded from cache identity. Requests whose
-     * body exceeds this are rejected with 413 before the real controller runs.
+     * Maximum size, in bytes, of a request body RateLimitingFilter will buffer for any
+     * BODY_AWARE_POLICIES policy - both to extract narrowly allowed body-derived
+     * material (OTP phone, calculator-body fingerprint) and, for PUBLIC_ANALYTICS_INGEST,
+     * purely as a size bound with nothing extracted. Refresh tokens, installation IDs
+     * and device IDs are deliberately excluded from cache identity. Requests whose body
+     * exceeds this are rejected with 413 before the real controller runs.
+     * <p>
+     * Sized for the largest body-aware policy's legitimate worst case: a 50-event
+     * analytics batch (AnalyticsEventBatchRequest's own cap) with every event near its
+     * own field limits (~2.6KB/event incl. the 2000-char properties JSON cap) is
+     * ~130KB; 256KB leaves headroom for UTF-8 multi-byte expansion. OTP/calculator
+     * bodies are a few hundred bytes at most, so this shared ceiling doesn't meaningfully
+     * change their exposure - their own DTO-level @Size validation already bounds them
+     * far below either the old or new value.
      */
     @Min(1024)
     @Max(1024 * 1024)
-    private long maxCachedBodyBytes = 32 * 1024;
+    private long maxCachedBodyBytes = 256 * 1024;
 
     /** Capacity multiplier for the independent per-policy IP abuse bucket. */
     @Min(2)

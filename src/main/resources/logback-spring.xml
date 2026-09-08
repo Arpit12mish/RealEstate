@@ -13,7 +13,22 @@
     <springProperty scope="context" name="APP_ENV"   source="spring.profiles.active"  defaultValue="unknown"/>
 
     <!-- local → ./logs  |  prod → /var/log/sfs/app  (set via app.logging.path) -->
-    <springProperty scope="context" name="LOG_DIR" source="app.logging.path" defaultValue="./logs"/>
+    <!-- <springProperty scope="context" name="LOG_DIR" source="app.logging.path" defaultValue="./logs"/> -->
+     <!--
+        Log directory resolution:
+        Environment variable SFS_LOG_DIR maps to Spring property sfs.log.dir.
+
+        Local default:
+        ./logs
+
+        Production example:
+        SFS_LOG_DIR=/var/log/sfs/app
+    -->
+    <springProperty
+            scope="context"
+            name="LOG_DIR"
+            source="sfs.log.dir"
+            defaultValue="./logs"/>
 
     <!-- Bounded, non-blocking low-priority request-log queue. -->
     <springProperty scope="context" name="REQUEST_LOG_QUEUE_SIZE"
