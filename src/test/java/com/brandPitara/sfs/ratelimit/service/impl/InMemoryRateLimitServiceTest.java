@@ -114,6 +114,63 @@ class InMemoryRateLimitServiceTest {
     }
 
     @Test
+    void unresolvedPhoneDimensionSkipsOnlyThatDimensionAndStillEnforcesPrimaryIdentity() {
+        // Mirrors MOBILE_OTP_REQUEST's real configuration: PHONE + PRIMARY_IDENTITY.
+        // A request whose PHONE dimension could not be resolved (RateLimitKeyResolver
+        // omits it, e.g. missing/malformed phoneNumber) must not bypass rate limiting
+        // entirely - PRIMARY_IDENTITY must still be enforced.
+        RateLimitProperties properties = propertiesWithOtpRequestAndPrimaryIdentityPolicy();
+        InMemoryRateLimitService service = new InMemoryRateLimitService(properties);
+
+        // No PHONE key at all - exactly what RateLimitKeyResolver now produces for a
+        // request with a missing/malformed phone number.
+        Map<RateLimitKeyType, String> keysWithoutPhone = Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "ip:1.2.3.4");
+
+        for (int i = 0; i < 2; i++) {
+            assertThat(service.checkAndConsume(RateLimitPolicy.MOBILE_OTP_REQUEST, keysWithoutPhone).allowed())
+                    .as("attempt %d should be allowed", i + 1)
+                    .isTrue();
+        }
+
+        RateLimitDecision third = service.checkAndConsume(RateLimitPolicy.MOBILE_OTP_REQUEST, keysWithoutPhone);
+        assertThat(third.allowed()).isFalse();
+        assertThat(third.blockedOnKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
+    }
+
+    @Test
+    void unresolvedPhoneDimensionDoesNotShareABucketAcrossDifferentPrimaryIdentities() {
+        RateLimitProperties properties = propertiesWithOtpRequestAndPrimaryIdentityPolicy();
+        InMemoryRateLimitService service = new InMemoryRateLimitService(properties);
+
+        Map<RateLimitKeyType, String> identityA = Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "ip:1.1.1.1");
+        Map<RateLimitKeyType, String> identityB = Map.of(RateLimitKeyType.PRIMARY_IDENTITY, "ip:2.2.2.2");
+
+        for (int i = 0; i < 2; i++) {
+            assertThat(service.checkAndConsume(RateLimitPolicy.MOBILE_OTP_REQUEST, identityA).allowed()).isTrue();
+        }
+        assertThat(service.checkAndConsume(RateLimitPolicy.MOBILE_OTP_REQUEST, identityA).allowed()).isFalse();
+
+        // A different caller whose PHONE dimension is also unresolved must not
+        // inherit identityA's exhausted bucket - proving there is no shared
+        // "missing-phone" identity anymore.
+        assertThat(service.checkAndConsume(RateLimitPolicy.MOBILE_OTP_REQUEST, identityB).allowed()).isTrue();
+    }
+
+    private RateLimitProperties propertiesWithOtpRequestAndPrimaryIdentityPolicy() {
+        RateLimitProperties properties = propertiesWithOtpRequestPolicy();
+
+        LimitConfig primaryIdentityLimit = new LimitConfig();
+        primaryIdentityLimit.setKeyType(RateLimitKeyType.PRIMARY_IDENTITY);
+        primaryIdentityLimit.setCapacity(2);
+        primaryIdentityLimit.setRefillTokens(2);
+        primaryIdentityLimit.setRefillPeriodSeconds(3600);
+
+        PolicyConfig policyConfig = properties.getPolicies().get(RateLimitPolicy.MOBILE_OTP_REQUEST);
+        policyConfig.setLimits(List.of(policyConfig.getLimits().get(0), primaryIdentityLimit));
+        return properties;
+    }
+
+    @Test
     void missingPolicyConfigurationDoesNotSilentlyBypass() {
         RateLimitProperties properties = new RateLimitProperties();
         // MOBILE_OTP_VERIFY intentionally left unconfigured.

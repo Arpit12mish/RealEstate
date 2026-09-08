@@ -45,8 +45,7 @@ public class RateLimitKeyResolver {
         return switch (keyType) {
             case PRIMARY_IDENTITY -> java.util.Optional.ofNullable(ctx.getPrimaryIdentity());
             case IP_ABUSE -> java.util.Optional.ofNullable(ctx.getAbuseIp());
-            case PHONE -> java.util.Optional.ofNullable(normalizedPhoneOrRaw(ctx.getPhoneNumber()))
-                    .or(() -> java.util.Optional.of("missing-phone"));
+            case PHONE -> java.util.Optional.ofNullable(normalizedPhoneOrRaw(ctx.getPhoneNumber()));
             case IP -> java.util.Optional.ofNullable(ctx.getIp());
             case IP_AND_TOKEN, IP_AND_INSTALLATION, IP_AND_DEVICE, IP_AND_QUERY -> primary(ctx);
             case IP_OR_USER -> ctx.getPrimaryIdentity() != null
@@ -54,8 +53,13 @@ public class RateLimitKeyResolver {
                     : ctx.getUserId() != null
                             ? java.util.Optional.of("user:" + ctx.getUserId())
                             : java.util.Optional.ofNullable(ctx.getIp()).map(ip -> "ip:" + ip);
+            // A request with no usable body must not share one global bucket with every other
+            // such request (same reasoning as PHONE above, and the same real incident class:
+            // one attacker sending empty-body requests would otherwise exhaust a bucket every
+            // other client with a blank/unparsable body also draws from). Omit the dimension
+            // instead - every other configured dimension (e.g. PRIMARY_IDENTITY) still applies.
             case BODY_FINGERPRINT -> ctx.getBodyFingerprint() == null || ctx.getBodyFingerprint().isBlank()
-                    ? java.util.Optional.of(MISSING_MARKER)
+                    ? java.util.Optional.empty()
                     : java.util.Optional.of(fingerprint(ctx.getBodyFingerprint()));
         };
     }
@@ -67,9 +71,14 @@ public class RateLimitKeyResolver {
         try {
             return PhoneNumberNormalizer.normalize(rawPhone);
         } catch (ResponseStatusException ex) {
-            // Let the real controller validation reject a malformed phone number;
-            // the rate limiter still needs a stable-ish key for the attempt itself.
-            return "invalid-phone";
+            // Malformed phone: let the real controller validation reject it. Return
+            // null rather than a shared literal so this dimension is simply omitted
+            // (per this class's documented contract) - a request with no usable
+            // phone must not share one global bucket with every other such request,
+            // which would let one attacker exhaust it and block unrelated clients.
+            // The PRIMARY_IDENTITY dimension configured alongside PHONE on every
+            // OTP policy still applies.
+            return null;
         }
     }
 

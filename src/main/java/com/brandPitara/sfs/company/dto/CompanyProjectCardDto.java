@@ -18,6 +18,7 @@ public class CompanyProjectCardDto {
   private Long cityId;
   private String cityName;
   private String addressLine;
+  private String locationLabel;
   private Double projectCityLatitude;
   private Double projectCityLongitude;
 
@@ -25,6 +26,15 @@ public class CompanyProjectCardDto {
   private String projectArea;
   private String detail3;
   private List<String> tags;
+
+  // Additive, card-ready editorial fields for company profile portfolios.
+  private String shortDescription;
+  private String description;
+  private String projectTypeLabel;
+  private String areaLabel;
+  private String budgetLabel;
+  private List<CompanyProjectStatDto> stats;
+  private CompanyProjectBudgetDto budget;
 
   private String coverMediaUrl;
   private String coverMediaType;

@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
 import lombok.RequiredArgsConstructor;
 import net.logstash.logback.argument.StructuredArguments;
 import org.slf4j.Logger;
@@ -54,7 +55,15 @@ import java.util.Map;
  *  • Request bodies
  *  • Authorization / Cookie headers
  *  • Sensitive query params (masked by LogSanitizer)
- *  • /actuator/health when status < 400
+ *  • /api/health and /actuator/health when status < 400 (a FAILING health
+ *    check - e.g. the readiness probe's `db` indicator going down during a
+ *    Hikari-pool-exhaustion-class incident - is always logged; suppressing
+ *    that too would remove the exact signal an on-call engineer needs to
+ *    correlate probe failures with incident timing). This can only be
+ *    decided after the response exists, so - unlike the other exclusions
+ *    below - it is NOT implemented in shouldNotFilter (which runs before
+ *    the response exists and would have to exclude unconditionally); see
+ *    isSuccessfulHealthCheck's use in logRequest.
  *  • OPTIONS pre-flight requests
  *  • DispatcherType.ERROR re-dispatches (prevents duplicate entry when Tomcat
  *    internally forwards the original 4xx/5xx response to /error)
@@ -69,6 +78,12 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             LoggerFactory.getLogger(LoggingConstants.LOGGER_API_RELIABLE);
 
     private final LogSanitizer sanitizer;
+    // Reused rather than re-implementing X-Forwarded-For parsing here: only trusts XFF from a
+    // configured trusted proxy, exactly like the rate-limit filters - a separate, blind
+    // xff.split(",")[0] here would let any client spoof the clientIp recorded in this log,
+    // independently of (and inconsistently with) what the rate limiter resolves for the same
+    // request.
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${sfs.logging.slow-api-threshold-ms:1500}")
     private long slowApiThresholdMs;
@@ -79,7 +94,10 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
                 || request.getDispatcherType() == DispatcherType.ASYNC)     return true;
         if ("OPTIONS".equalsIgnoreCase(request.getMethod()))                return true;
         if (LoggingConstants.PATH_FAVICON.equals(request.getRequestURI())) return true;
-        String path = request.getRequestURI();
+        return false;
+    }
+
+    private boolean isHealthCheckPath(String path) {
         return "/api/health".equals(path)
                 || (path != null && path.startsWith("/api/health/"))
                 || LoggingConstants.PATH_ACTUATOR_HEALTH.equals(path)
@@ -113,9 +131,17 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
             long durationMs,
             Throwable exception
     ) {
-        String path   = sanitizer.sanitizePath(request.getRequestURI());
+        String rawPath = request.getRequestURI();
+        int    status  = resolveStatus(response, exception);
+        // Only a SUCCESSFUL health check is noise-suppressed - a failing one (e.g. the
+        // readiness probe's `db` indicator during a pool-exhaustion incident) is always logged,
+        // restoring the visibility the class doc comment already promises.
+        if (isHealthCheckPath(rawPath) && exception == null && status < 400) {
+            return;
+        }
+
+        String path   = sanitizer.sanitizePath(rawPath);
         String method = request.getMethod();
-        int    status = resolveStatus(response, exception);
 
         String clientIp  = sanitizer.maskIp(resolveClientIp(request));
         String userAgent = sanitizer.simplifyUserAgent(request.getHeader("User-Agent"));
@@ -198,11 +224,7 @@ public class ApiRequestLoggingFilter extends OncePerRequestFilter {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            return xff.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
+        return clientIpResolver.resolve(request);
     }
 
     private long resolveResponseSize(HttpServletResponse response) {

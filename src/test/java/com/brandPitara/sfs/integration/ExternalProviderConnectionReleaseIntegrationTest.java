@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.integration;
 
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.company.repository.CompanyRepository;
@@ -99,6 +100,8 @@ class ExternalProviderConnectionReleaseIntegrationTest {
             .thenReturn(Optional.of(ProjectEntity.builder().id(21L).build()));
         when(placeRepository.findByIdAndTargetTypeAndTargetIdAndDeletedFalse(
             11L, PublicReviewTargetType.PROJECT, 21L)).thenReturn(Optional.of(place));
+        when(placeRepository.findByIdAndTargetTypeAndTargetIdAndDeletedFalseForUpdate(
+            11L, PublicReviewTargetType.PROJECT, 21L)).thenReturn(Optional.of(place));
         when(summaryRepository.findByReviewPlaceId(11L)).thenReturn(Optional.empty());
         when(placeRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -125,7 +128,8 @@ class ExternalProviderConnectionReleaseIntegrationTest {
             mock(ProjectPublicVisibilityPolicy.class),
             provider,
             contentVersionService,
-            transactions
+            transactions,
+            new com.brandPitara.sfs.publicreview.config.GooglePlacesProperties()
         );
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -178,7 +182,8 @@ class ExternalProviderConnectionReleaseIntegrationTest {
             mock(ContentVersionService.class),
             mock(ProjectPublicVisibilityPolicy.class),
             provider,
-            transactions
+            transactions,
+            mock(ProjectPublicCacheEvictionPublisher.class)
         );
         ConnectivityProviderSearchRequest request = ConnectivityProviderSearchRequest.builder()
             .category(ProjectConnectivityCategory.TRANSIT)

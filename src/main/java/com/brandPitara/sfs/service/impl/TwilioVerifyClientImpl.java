@@ -1,18 +1,25 @@
 package com.brandPitara.sfs.service.impl;
 
+import com.brandPitara.sfs.config.TwilioOtpProviderCondition;
 import com.brandPitara.sfs.config.TwilioProperties;
 import com.brandPitara.sfs.service.TwilioVerifyClient;
 import com.twilio.Twilio;
+import com.twilio.http.NetworkHttpClient;
+import com.twilio.http.TwilioRestClient;
 import com.twilio.rest.verify.v2.service.Verification;
 import com.twilio.rest.verify.v2.service.VerificationCheck;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Profile;
+import org.apache.http.client.config.RequestConfig;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.stereotype.Component;
 
+/** Must share TwilioOtpServiceImpl's exact wiring condition: it is TwilioOtpServiceImpl's
+ * only constructor dependency, so if these two ever diverge, whichever profile the
+ * condition disagrees on fails to start with a NoSuchBeanDefinitionException. */
 @Component
-@Profile({"dev", "prod", "staging"})
+@Conditional(TwilioOtpProviderCondition.class)
 @RequiredArgsConstructor
 @Slf4j
 public class TwilioVerifyClientImpl implements TwilioVerifyClient {
@@ -22,12 +29,31 @@ public class TwilioVerifyClientImpl implements TwilioVerifyClient {
     @PostConstruct
     public void initialize() {
         log.info(
-                "Initializing Twilio. accountSid={}, verifyServiceSid={}, authTokenPresent={}",
+                "Initializing Twilio. accountSid={}, verifyServiceSid={}, authTokenPresent={}, " +
+                        "connectTimeoutMs={}, readTimeoutMs={}",
                 mask(properties.getAccountSid()),
                 safeTrim(properties.getVerifyServiceSid()),
-                properties.getAuthToken() != null && !properties.getAuthToken().isBlank()
+                properties.getAuthToken() != null && !properties.getAuthToken().isBlank(),
+                properties.getConnectTimeoutMs(),
+                properties.getReadTimeoutMs()
         );
-        Twilio.init(safeTrim(properties.getAccountSid()), safeTrim(properties.getAuthToken()));
+
+        // The SDK's default NetworkHttpClient has no read timeout, so a Twilio-side
+        // hang would otherwise block the calling Tomcat thread indefinitely. This
+        // call happens outside any DB transaction, but an unbounded wait here can
+        // still exhaust the servlet thread pool during a provider outage.
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(properties.getConnectTimeoutMs())
+                .setConnectionRequestTimeout(properties.getConnectTimeoutMs())
+                .setSocketTimeout(properties.getReadTimeoutMs())
+                .build();
+
+        TwilioRestClient restClient = new TwilioRestClient.Builder(
+                safeTrim(properties.getAccountSid()),
+                safeTrim(properties.getAuthToken())
+        ).httpClient(new NetworkHttpClient(requestConfig)).build();
+
+        Twilio.setRestClient(restClient);
     }
 
     @Override

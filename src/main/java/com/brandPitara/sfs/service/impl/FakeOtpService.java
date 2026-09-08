@@ -1,7 +1,7 @@
 package com.brandPitara.sfs.service.impl;
 
+import com.brandPitara.sfs.config.LocalFakeOtpProperties;
 import com.brandPitara.sfs.service.OtpService;
-import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.service.model.OtpSendResult;
 import com.brandPitara.sfs.service.model.OtpVerificationResult;
 import com.brandPitara.sfs.util.PhoneNumberNormalizer;
@@ -20,29 +20,36 @@ import org.springframework.stereotype.Service;
 )
 public class FakeOtpService implements OtpService {
 
-    private final LogSanitizer logSanitizer;
+    /** Mirrors TwilioOtpServiceImpl's real-provider default (Twilio Verify's fixed code TTL); purely informational here since no OTP is actually sent. */
+    private static final long FAKE_EXPIRES_IN_SECONDS = 600;
 
-    public FakeOtpService(LogSanitizer logSanitizer) {
-        this.logSanitizer = logSanitizer;
+    private final LocalFakeOtpProperties properties;
+
+    public FakeOtpService(LocalFakeOtpProperties properties) {
+        this.properties = properties;
     }
 
     @Override
     public OtpSendResult sendOtp(String phoneNumber) {
-        log.info("FAKE OTP send accepted (no real SMS sent)");
+        String normalizedPhone = PhoneNumberNormalizer.normalize(phoneNumber);
+        log.info("Local OTP request handled without external SMS delivery");
 
         return OtpSendResult.builder()
                 .status("OTP_SENT")
                 .message("OTP sent successfully")
-                .resendAfterSeconds(30)
+                .resendAfterSeconds(properties.getResendAfterSeconds())
+                .expiresInSeconds(FAKE_EXPIRES_IN_SECONDS)
+                .normalizedPhoneNumber(normalizedPhone)
                 .build();
     }
 
     @Override
     public OtpVerificationResult verifyOtp(String phoneNumber, String code) {
         log.info("FAKE OTP verification attempted");
+        String normalizedPhone = PhoneNumberNormalizer.normalize(phoneNumber);
         return OtpVerificationResult.builder()
-                .approved("123456".equals(code))
-                .normalizedPhoneNumber(PhoneNumberNormalizer.normalize(phoneNumber))
+                .approved(properties.matches(normalizedPhone, code))
+                .normalizedPhoneNumber(normalizedPhone)
                 .build();
     }
 }

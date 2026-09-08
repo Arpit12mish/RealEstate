@@ -11,6 +11,9 @@ import com.brandPitara.sfs.distributor.entity.DistributorEntity;
 import com.brandPitara.sfs.entity.CategoryEntity;
 import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.entity.PromoBannerEntity;
+import com.brandPitara.sfs.enums.Role;
+import com.brandPitara.sfs.feed.enums.FeedScreen;
+import com.brandPitara.sfs.feed.service.FeedService;
 import com.brandPitara.sfs.home.dto.HomeFeedRequest;
 import com.brandPitara.sfs.home.entity.*;
 import com.brandPitara.sfs.home.enums.HomeSectionItemType;
@@ -26,7 +29,14 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.enums.ProjectMediaType;
 import com.brandPitara.sfs.project.enums.PropertyType;
+import com.brandPitara.sfs.project.service.ProjectFloorPlanService;
+import com.brandPitara.sfs.project.service.ProjectMediaService;
+import com.brandPitara.sfs.project.service.ProjectService;
+import com.brandPitara.sfs.project.service.ProjectPublicCoreService;
+import com.brandPitara.sfs.project.mapper.ProjectPublicV2Mapper;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationUserSnapshot;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
+import com.brandPitara.sfs.projectmeter.service.ProjectMeterService;
 import com.brandPitara.sfs.projectcompare.dto.request.ProjectComparisonRequest;
 import com.brandPitara.sfs.projectcompare.service.ProjectComparisonService;
 import com.brandPitara.sfs.buildercredibility.service.BuilderCredibilityService;
@@ -41,6 +51,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -93,7 +105,7 @@ import static org.mockito.Mockito.doAnswer;
         "aws.credentials.secret-key=release-2-test",
         "logging.level.org.hibernate.SQL=OFF",
         "logging.level.org.springframework.jdbc=OFF",
-        "app.logging.path=target/test-logs"
+        "sfs.log.dir=target/test-logs"
     }
 )
 @ActiveProfiles({"test", "local-fake-otp"})
@@ -138,6 +150,12 @@ class HomeFeedPerformanceIntegrationTest {
     }
 
     @Autowired private HomeFeedService homeFeedService;
+    @Autowired private FeedService feedService;
+    @Autowired private ProjectService projectService;
+    @Autowired private ProjectPublicCoreService projectPublicCoreService;
+    @Autowired private ProjectMediaService projectMediaService;
+    @Autowired private ProjectMeterService projectMeterService;
+    @Autowired private ProjectFloorPlanService projectFloorPlanService;
     @Autowired private ProjectComparisonService projectComparisonService;
     @Autowired private BuilderCredibilityService builderCredibilityService;
     @Autowired private HomeSectionConfigRepository configRepository;
@@ -153,6 +171,7 @@ class HomeFeedPerformanceIntegrationTest {
 
     private Long cityId;
     private Long builderId;
+    private Long projectId;
 
     @BeforeEach
     void seedFullyConfiguredHome() {
@@ -160,6 +179,7 @@ class HomeFeedPerformanceIntegrationTest {
             "select exists(select 1 from category where id = 0)", Boolean.class))) {
             cityId = jdbcTemplate.queryForObject("select id from city order by id limit 1", Long.class);
             builderId = jdbcTemplate.queryForObject("select id from builder order by priority, id limit 1", Long.class);
+            projectId = jdbcTemplate.queryForObject("select id from project order by priority, id limit 1", Long.class);
             return;
         }
         jdbcTemplate.update("""
@@ -198,6 +218,7 @@ class HomeFeedPerformanceIntegrationTest {
                     .active(true).published(true).deleted(false).priority(i).reviewStatus(ReviewStatus.APPROVED).build();
                 entityManager.persist(project);
                 projects.add(project);
+                if (i == 0) projectId = project.getId();
                 entityManager.persist(ProjectMediaEntity.builder()
                     .project(project).mediaType(ProjectMediaType.IMAGE).url("https://img/project-" + i + ".jpg")
                     .sortOrder(0).active(true).deleted(false).build());
@@ -315,6 +336,154 @@ class HomeFeedPerformanceIntegrationTest {
             .containsAll(PRODUCTION_SECTIONS);
         assertThat(statements).isLessThanOrEqualTo(54);
         assertThat(perSection.get(HomeSectionType.BUILDER_CREDIBILITY_CARDS)).isLessThanOrEqualTo(6);
+        assertThat(poolAfter().active()).isZero();
+        assertThat(poolAfter().pending()).isZero();
+    }
+
+    @Test
+    void realisticProjectUserFlowReportsPerRouteSqlAndPayloadBaseline() throws Exception {
+        Map<String, RouteSample> samples = new LinkedHashMap<>();
+        samples.put("home", measureRoute(() -> homeFeedService.getHome(request())));
+        samples.put("featured", measureRoute(() -> projectService.publicFeatured(null, PageRequest.of(0, 20))));
+        samples.put("detail", measureRoute(() -> projectService.publicGet(projectId)));
+        samples.put("media", measureRoute(() -> projectMediaService.publicList(projectId)));
+        samples.put("meter", measureRoute(() -> projectMeterService.publicGetMeterDetail(projectId)));
+        samples.put("floorPlans", measureRoute(() -> projectFloorPlanService.publicList(projectId)));
+
+        long totalSql = samples.values().stream().mapToLong(RouteSample::statements).sum();
+        int totalPayloadBytes = samples.values().stream().mapToInt(RouteSample::payloadBytes).sum();
+        System.out.printf("project-user-flow totalSql=%d payloadBytes=%d routes=%s%n",
+            totalSql, totalPayloadBytes, samples);
+
+        assertThat(samples.get("home").statements()).isLessThanOrEqualTo(54);
+        assertThat(samples.get("featured").statements()).isLessThanOrEqualTo(5);
+        assertThat(samples.get("detail").statements()).isLessThanOrEqualTo(12);
+        assertThat(samples.get("media").statements()).isLessThanOrEqualTo(2);
+        assertThat(samples.get("meter").statements()).isLessThanOrEqualTo(20);
+        assertThat(samples.get("floorPlans").statements()).isLessThanOrEqualTo(2);
+        assertThat(poolAfter().active()).isZero();
+        assertThat(poolAfter().pending()).isZero();
+    }
+
+    @Test
+    void projectDetailReportsAnonymousAndAuthenticatedSqlDifference() throws Exception {
+        RouteSample anonymous = measureRoute(() -> projectService.publicGet(projectId));
+
+        MobileAuthenticationUserSnapshot snapshot = new MobileAuthenticationUserSnapshot(
+            999_999L,
+            "+919999999999",
+            Role.CUSTOMER,
+            true
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken(snapshot, null, snapshot.getAuthorities())
+        );
+        RouteSample authenticated;
+        try {
+            authenticated = measureRoute(() -> projectService.publicGet(projectId));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        System.out.printf("project-detail-auth anonymous=%s authenticated=%s%n", anonymous, authenticated);
+        assertThat(anonymous.statements()).isLessThanOrEqualTo(12);
+        assertThat(authenticated.statements()).isEqualTo(anonymous.statements() + 1);
+        assertThat(authenticated.payloadBytes()).isEqualTo(anonymous.payloadBytes());
+    }
+
+    @Test
+    void projectDetailV2HasNoAuthenticatedQueryOrPayloadVariation() throws Exception {
+        RouteSample anonymous = measureRoute(() -> ProjectPublicV2Mapper.toResponse(
+            projectPublicCoreService.getById(projectId)));
+
+        MobileAuthenticationUserSnapshot snapshot = new MobileAuthenticationUserSnapshot(
+            999_999L,
+            "+919999999999",
+            Role.CUSTOMER,
+            true
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+            new UsernamePasswordAuthenticationToken(snapshot, null, snapshot.getAuthorities())
+        );
+        RouteSample authenticated;
+        try {
+            authenticated = measureRoute(() -> ProjectPublicV2Mapper.toResponse(
+                projectPublicCoreService.getById(projectId)));
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        System.out.printf("project-detail-v2 anonymous=%s authenticated=%s%n", anonymous, authenticated);
+        assertThat(anonymous.statements()).isLessThanOrEqualTo(12);
+        assertThat(authenticated.statements()).isEqualTo(anonymous.statements());
+        assertThat(authenticated.payloadBytes()).isEqualTo(anonymous.payloadBytes());
+    }
+
+
+
+    @Test
+    void legacyHomeFeedRouteDelegatesToCanonicalHomeAggregation() throws Exception {
+        Statistics statistics = statistics();
+        statistics.clear();
+        var canonical = homeFeedService.getHome(request());
+        long canonicalStatements = statistics.getPrepareStatementCount();
+
+        statistics.clear();
+        var compatibility = feedService.getFeed(FeedScreen.HOME, null, cityId, 0L, null);
+        long compatibilityStatements = statistics.getPrepareStatementCount();
+
+        assertThat(objectMapper.writeValueAsString(compatibility))
+            .isEqualTo(objectMapper.writeValueAsString(canonical));
+        assertThat(canonicalStatements).isLessThanOrEqualTo(54);
+        assertThat(compatibilityStatements).isLessThanOrEqualTo(54);
+        assertThat(Math.abs(compatibilityStatements - canonicalStatements)).isLessThanOrEqualTo(1);
+    }
+
+    @Test
+    void sixRealisticFlowsCompleteWithPoolSizeThreeAndReturnAllConnections() throws Exception {
+        int clientCount = 6;
+        ExecutorService executor = Executors.newFixedThreadPool(clientCount);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<?>> futures = new ArrayList<>();
+        ConcurrentLinkedQueue<Long> durationsMillis = new ConcurrentLinkedQueue<>();
+        HikariDataSource hikari = dataSource.unwrap(HikariDataSource.class);
+        AtomicBoolean sampling = new AtomicBoolean(true);
+        AtomicInteger peakActive = new AtomicInteger();
+        AtomicInteger peakPending = new AtomicInteger();
+        Thread sampler = new Thread(() -> {
+            while (sampling.get()) {
+                peakActive.accumulateAndGet(hikari.getHikariPoolMXBean().getActiveConnections(), Math::max);
+                peakPending.accumulateAndGet(hikari.getHikariPoolMXBean().getThreadsAwaitingConnection(), Math::max);
+                Thread.onSpinWait();
+            }
+        }, "project-flow-pool-sampler");
+        sampler.start();
+        try {
+            for (int i = 0; i < clientCount; i++) {
+                futures.add(executor.submit(() -> {
+                    start.await();
+                    long started = System.nanoTime();
+                    executeProjectUserFlow();
+                    durationsMillis.add(Duration.ofNanos(System.nanoTime() - started).toMillis());
+                    return null;
+                }));
+            }
+            start.countDown();
+            for (Future<?> future : futures) {
+                future.get(30, TimeUnit.SECONDS);
+            }
+        } finally {
+            sampling.set(false);
+            sampler.join(2000);
+            executor.shutdownNow();
+        }
+
+        long maxDurationMillis = durationsMillis.stream().mapToLong(Long::longValue).max().orElseThrow();
+        System.out.printf(
+            "project-flow-concurrency clients=%d pool=3 peakActive=%d peakPending=%d maxDurationMs=%d timeouts=0%n",
+            clientCount, peakActive.get(), peakPending.get(), maxDurationMillis);
+        assertThat(durationsMillis).hasSize(clientCount);
+        assertThat(peakActive).hasValueLessThanOrEqualTo(3);
         assertThat(poolAfter().active()).isZero();
         assertThat(poolAfter().pending()).isZero();
     }
@@ -477,6 +646,32 @@ class HomeFeedPerformanceIntegrationTest {
         return counts;
     }
 
+    private RouteSample measureRoute(Callable<?> action) throws Exception {
+        Statistics statistics = statistics();
+        statistics.clear();
+        long started = System.nanoTime();
+        Object response = action.call();
+        long durationMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
+        return new RouteSample(
+            statistics.getPrepareStatementCount(),
+            statistics.getTransactionCount(),
+            statistics.getConnectCount(),
+            durationMillis,
+            objectMapper.writeValueAsBytes(response).length
+        );
+    }
+
+
+
+    private void executeProjectUserFlow() {
+        homeFeedService.getHome(request());
+        projectService.publicFeatured(null, PageRequest.of(0, 20));
+        projectService.publicGet(projectId);
+        projectMediaService.publicList(projectId);
+        projectMeterService.publicGetMeterDetail(projectId);
+        projectFloorPlanService.publicList(projectId);
+    }
+
     private PoolSample samplePool(Callable<com.brandPitara.sfs.home.dto.HomeFeedResponse> action) throws Exception {
         HikariDataSource hikari = dataSource.unwrap(HikariDataSource.class);
         AtomicBoolean running = new AtomicBoolean(true);
@@ -548,4 +743,14 @@ class HomeFeedPerformanceIntegrationTest {
     ) {}
 
     private record PoolState(int active, int pending) {}
+
+    private record RouteSample(
+        long statements,
+        long transactions,
+        long connectionAcquisitions,
+        long durationMillis,
+        int payloadBytes
+    ) {}
+
+
 }

@@ -125,8 +125,17 @@ public class InMemoryRateLimitService implements RateLimitService {
             RateLimitKeyType keyType = entry.getKey();
             String rawKey = resolvedKeys.get(keyType);
             if (rawKey == null || rawKey.isBlank()) {
-                throw new RateLimitConfigurationException(
-                        "Missing mandatory key " + keyType + " for policy " + policy);
+                // This dimension could not be resolved for this request (e.g. PHONE
+                // on a request with no/malformed phone number) - skip just this
+                // dimension rather than failing the whole multi-dimension check.
+                // RateLimitKeyResolver's contract is to omit an unresolvable
+                // dimension, not to fail the request; every other configured
+                // dimension (e.g. PRIMARY_IDENTITY, IP) still applies below.
+                log.debug(
+                        "Skipping unresolved rate-limit dimension: policy={} keyType={}",
+                        policy, keyType
+                );
+                continue;
             }
 
             String bucketKey = policy.name() + ':' + keyType.name() + ':' + rawKey;

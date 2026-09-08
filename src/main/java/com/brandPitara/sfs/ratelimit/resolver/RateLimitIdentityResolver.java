@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.ratelimit.resolver;
 
+import com.brandPitara.sfs.config.DeterministicPublicRequestMatcher;
 import com.brandPitara.sfs.ratelimit.enums.RateLimitIdentityType;
 import com.brandPitara.sfs.ratelimit.identity.RateLimitAuthenticationAttributes;
 import com.brandPitara.sfs.ratelimit.model.RateLimitIdentity;
@@ -22,6 +23,9 @@ public class RateLimitIdentityResolver {
 
     public RateLimitIdentity resolve(HttpServletRequest request) {
         String ip = clientIpResolver.resolve(request);
+        if (DeterministicPublicRequestMatcher.matches(request)) {
+            return new RateLimitIdentity("anonymous:" + ip, ip, RateLimitIdentityType.ANONYMOUS, false);
+        }
         Object state = request.getAttribute(RateLimitAuthenticationAttributes.AUTH_STATE);
 
         if (RateLimitAuthenticationAttributes.STATE_USER.equals(state)) {

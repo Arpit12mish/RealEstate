@@ -20,7 +20,8 @@ class DashboardUserDetailsSnapshotTest {
 
         assertThat(details.getPassword()).isEmpty();
         assertThat(details.getId()).isEqualTo(4L);
-        assertThat(details.getAuthorities()).extracting("authority").containsExactly("ROLE_ADMIN");
+        assertThat(details.getAuthorities()).extracting("authority")
+                .contains("ROLE_ADMIN", "CMS_CONTENT_CREATE", "CMS_CONTENT_PUBLISH", "CMS_USER_MANAGE");
         assertThat(details.getUser().getPasswordHash()).isNull();
     }
 }

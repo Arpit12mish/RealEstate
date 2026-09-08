@@ -12,7 +12,9 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Component
 public class DashboardAuthenticationIdentityCache {
@@ -92,8 +94,22 @@ public class DashboardAuthenticationIdentityCache {
     }
 
     private DashboardAuthenticationUserSnapshot load(Long userId) {
-        DashboardAuthenticationUserSnapshot snapshot = userRepository.findAuthenticationSnapshotById(userId)
-                .orElseThrow(() -> new UsernameNotFoundException("Dashboard user not found"));
+        List<DashboardAuthenticationUserRow> rows = userRepository.findAuthenticationRowsById(userId);
+        if (rows.isEmpty()) {
+            throw new UsernameNotFoundException("Dashboard user not found");
+        }
+        DashboardAuthenticationUserRow base = rows.get(0);
+        DashboardAuthenticationUserSnapshot snapshot = new DashboardAuthenticationUserSnapshot(
+                base.userId(),
+                base.email(),
+                base.name(),
+                base.role(),
+                base.active(),
+                rows.stream()
+                        .map(DashboardAuthenticationUserRow::permission)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toUnmodifiableSet())
+        );
         if (!snapshot.active()) {
             throw new DisabledException("Dashboard user is disabled");
         }

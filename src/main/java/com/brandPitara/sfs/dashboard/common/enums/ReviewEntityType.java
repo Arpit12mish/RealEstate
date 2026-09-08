@@ -25,7 +25,13 @@ public enum ReviewEntityType {
     PROMO_BANNER,
     APP_CONTENT,
     CITY,
-    CATEGORY;
+    CATEGORY,
+    DASHBOARD_USER,
+    CONTENT_POST,
+    CMS_MEDIA_ASSET,
+    CMS_PUBLIC_AUTHOR,
+    CMS_CONTENT_CATEGORY,
+    CMS_CONTENT_TAG;
 
     public boolean isProjectRelated() {
         return this == PROJECT

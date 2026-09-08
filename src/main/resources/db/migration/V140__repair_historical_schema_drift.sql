@@ -3,6 +3,11 @@
 -- migration. This migration never invents fixed-ID business data and never
 -- deletes application rows.
 
+-- B134 is generated from a PostgreSQL schema dump and intentionally clears
+-- search_path. Restore an explicit application schema before executing
+-- unqualified DDL in this reconciliation migration.
+SET search_path TO public, pg_catalog;
+
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
     email VARCHAR(255) UNIQUE,

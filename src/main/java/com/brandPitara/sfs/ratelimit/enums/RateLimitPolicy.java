@@ -61,5 +61,19 @@ public enum RateLimitPolicy {
     PUBLIC_DISTRIBUTOR_READ,
     PUBLIC_CATEGORY_READ,
     PUBLIC_CONTENT_VERSION_READ,
-    MOBILE_SESSION_READ
+    PUBLIC_CMS_CONTENT_READ,
+    MOBILE_SESSION_READ,
+    PUBLIC_MOBILE_UPDATE_POLICY_READ,
+
+    /**
+     * Analytics Phase 1 backend-hardening pass: the batch ingestion endpoint is
+     * permitAll (guests must be able to submit analytics before any guest session
+     * exists) and previously matched no route here at all, so it ran completely
+     * unprotected - no rate limit and, since only BODY_AWARE_POLICIES get body
+     * caching, no bound on request body size either. Keyed like every other public
+     * write endpoint (PRIMARY_IDENTITY: authenticated user, else validated guest
+     * identity, else IP), generously sized since a well-behaved client batches and
+     * flushes only every ~15s.
+     */
+    PUBLIC_ANALYTICS_INGEST
 }

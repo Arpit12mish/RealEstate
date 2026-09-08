@@ -10,6 +10,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.service.ProjectDetailComposer;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterDetailResponse;
@@ -35,11 +36,12 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
     private final ProjectMeterSnapshotRepository projectMeterSnapshotRepository;
     private final ProjectMeterService projectMeterService;
     private final ProjectDetailComposer projectDetailComposer;
+    private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
     @Override
     @Transactional(readOnly = true)
     public DashboardMobilePreviewResponse getPreview(Long projectId) {
-        ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+        ProjectEntity project = projectRepository.findDetailByIdAndDeletedFalse(projectId)
             .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
         List<ProjectMediaEntity> media = projectMediaRepository
@@ -48,7 +50,7 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
         ProjectMeterSnapshotEntity snapshot = projectMeterSnapshotRepository
             .findByProjectId(projectId).orElse(null);
 
-        ProjectMeterDetailResponse meterDetail = safeGetMeterDetail(projectId);
+        ProjectMeterDetailResponse meterDetail = projectMeterService.dashboardGetMeterDetail(projectId);
 
         ProjectMeterCardResponse card = ProjectMeterMapper.toCardResponse(project, snapshot, media);
 
@@ -77,14 +79,6 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
             .build();
     }
 
-    private ProjectMeterDetailResponse safeGetMeterDetail(Long projectId) {
-        try {
-            return projectMeterService.dashboardGetMeterDetail(projectId);
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     private List<String> buildWarnings(ProjectEntity project, ProjectMeterCardResponse card,
                                        ProjectResponse detail, ProjectMeterDetailResponse meter) {
         List<String> warnings = new ArrayList<>();
@@ -99,6 +93,7 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
         if (!Boolean.TRUE.equals(project.getActive())) {
             warnings.add("Project is inactive");
         }
+        addBuilderWarnings(project, warnings);
         if (card.getCoverImageUrl() == null) {
             warnings.add("Project has no cover image");
         }
@@ -120,6 +115,7 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
 
         if (meter == null) {
             warnings.add("Project meter data could not be loaded");
+            warnings.add("Builder credibility data is not available");
         } else {
             if (isStagesEmpty(meter)) {
                 warnings.add("Project has no construction stages");
@@ -151,6 +147,22 @@ public class DashboardMobilePreviewServiceImpl implements DashboardMobilePreview
         }
 
         return warnings;
+    }
+
+    private void addBuilderWarnings(ProjectEntity project, List<String> warnings) {
+        if (projectPublicVisibilityPolicy.isBuilderPubliclyAvailable(project.getBuilder())) {
+            return;
+        }
+        if (project.getBuilder() == null || Boolean.TRUE.equals(project.getBuilder().getDeleted())) {
+            warnings.add("Builder is unavailable");
+            warnings.add("Project cannot be publicly visible until an available builder is assigned");
+        } else if (!Boolean.TRUE.equals(project.getBuilder().getActive())) {
+            warnings.add("Builder is inactive");
+            warnings.add("Project cannot be publicly visible until the builder is active");
+        } else if (!Boolean.TRUE.equals(project.getBuilder().getPublished())) {
+            warnings.add("Builder is not published");
+            warnings.add("Project cannot be publicly visible until the builder is published");
+        }
     }
 
     private List<String> buildMissingSections(ProjectEntity project, ProjectMeterCardResponse card,

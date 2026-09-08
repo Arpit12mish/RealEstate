@@ -32,6 +32,20 @@ public class ProjectFloorPlanInsightDetailResponse {
   private String towerName;
   private String floorRange;
   private String keyPlanImageUrl;
+
+  // rooms[] already carries Space Comparison data per room (see
+  // FloorPlanRoomDimensionResponse#averageAreaSqft/differencePercent/summary/
+  // hasComparisonData) - no separate spaceComparison wrapper is needed since
+  // that would just duplicate the same rows in a second shape.
   private List<FloorPlanRoomDimensionResponse> rooms;
   private List<FloorPlanInsightResponse> insights;
+
+  // Visual Analysis block - null when no dashboard user has authored one yet.
+  private ProjectFloorPlanVisualAnalysisResponse visualAnalysis;
+
+  // True when neither visualAnalysis nor any room in rooms[] has real authored
+  // content yet, so the client can label content as sample/demo instead of
+  // silently rendering an unconditional local fallback.
+  private boolean demo;
+  private String sourceLabel;
 }

@@ -24,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class ArchitectDesignerPublicServiceImplTest {
@@ -62,6 +63,23 @@ class ArchitectDesignerPublicServiceImplTest {
     when(companyConnectedBrandPublicService.getConnectedBrands(1L)).thenReturn(List.of());
   }
 
+  private void stubEmptyDetailDependencies() {
+    stubCommonEmptyLists();
+    when(companyStatRepository
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(companyCertificateRepository
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderByDisplayOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(companyMediaRepository
+        .findByCompany_IdAndUsageTypeAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L, "HERO"))
+        .thenReturn(List.of());
+    when(companyPricingPlanRepository
+        .findByCompany_IdAndPublicVisibleTrueAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(1L))
+        .thenReturn(List.of());
+    when(publicReviewService.getPublicSignal(PublicReviewTargetType.COMPANY, 1L)).thenReturn(emptySignal());
+  }
+
   private PublicReviewSignalResponse emptySignal() {
     return PublicReviewSignalResponse.builder()
         .targetType(PublicReviewTargetType.COMPANY)
@@ -83,6 +101,148 @@ class ArchitectDesignerPublicServiceImplTest {
         .reviewText("Great work")
         .relativePublishTime("2 months ago")
         .build();
+  }
+
+  private ArchitectDesignerDetailResponse getDetailWithProject(CompanyProjectEntity project) {
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company()));
+    stubEmptyDetailDependencies();
+    when(companyProjectRepository
+        .findTop10ByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(1L))
+        .thenReturn(List.of(project));
+    return service().getDetail(1L);
+  }
+
+  @Test
+  void getDetail_topProjectsIncludesAdditiveFeaturedCardFieldsAndKeepsLegacyFields() {
+    CompanyProjectEntity project = CompanyProjectEntity.builder()
+        .id(11L)
+        .company(company())
+        .name("Amazon Corporate Office")
+        .shortDescription("Premium office interiors and turnkey execution.")
+        .locationLabel("Sector 26, Gurugram")
+        .clientName("Amazon")
+        .projectArea("legacy area")
+        .detail3("Legacy detail")
+        .tags("Commercial,Turnkey")
+        .coverMediaUrl("cover.jpg")
+        .coverMediaType("IMAGE")
+        .stats(List.of(
+            CompanyProjectStatDto.builder().label("Property Type").value("Workspace").sortOrder(0).build(),
+            CompanyProjectStatDto.builder().label("Built-up Area").value("336000").sortOrder(1).build()
+        ))
+        .budget(CompanyProjectBudgetDto.builder()
+            .totalBudget(new BigDecimal("1800000000"))
+            .currency("INR")
+            .budgetLabel("Total Project Budget")
+            .build())
+        .active(true).published(true).deleted(false)
+        .build();
+
+    CompanyProjectCardDto card = getDetailWithProject(project).getTopProjects().get(0);
+
+    assertThat(card.getShortDescription()).isEqualTo("Premium office interiors and turnkey execution.");
+    assertThat(card.getLocationLabel()).isEqualTo("Sector 26, Gurugram");
+    assertThat(card.getProjectTypeLabel()).isEqualTo("Workspace");
+    assertThat(card.getAreaLabel()).isEqualTo("3,36,000 sqft");
+    assertThat(card.getBudgetLabel()).isEqualTo("₹180Cr");
+    assertThat(card.getStats()).hasSize(2);
+    assertThat(card.getBudget().getTotalBudget()).isEqualByComparingTo("1800000000");
+    assertThat(card.getClientName()).isEqualTo("Amazon");
+    assertThat(card.getProjectArea()).isEqualTo("legacy area");
+    assertThat(card.getDetail3()).isEqualTo("Legacy detail");
+    assertThat(card.getTags()).containsExactly("Commercial", "Turnkey");
+    assertThat(card.getCoverMediaUrl()).isEqualTo("cover.jpg");
+  }
+
+  @Test
+  void getDetail_topProjectCardUsesDocumentedFallbacksAndKeepsMoneyBudgetLabel() {
+    CompanyProjectEntity project = CompanyProjectEntity.builder()
+        .id(12L)
+        .company(company())
+        .name("Legacy Project")
+        .description("Fallback project description")
+        .projectArea("4200 sq ft")
+        .tags("Residential,Luxury")
+        .stats(List.of())
+        .budget(CompanyProjectBudgetDto.builder().budgetLabel("₹95L").build())
+        .active(true).published(true).deleted(false)
+        .build();
+
+    CompanyProjectCardDto card = getDetailWithProject(project).getTopProjects().get(0);
+
+    assertThat(card.getShortDescription()).isEqualTo("Fallback project description");
+    assertThat(card.getProjectTypeLabel()).isEqualTo("Residential");
+    assertThat(card.getAreaLabel()).isEqualTo("4200 sq ft");
+    assertThat(card.getBudgetLabel()).isEqualTo("₹95L");
+  }
+
+  @Test
+  void getDetail_topProjectCardFallsBackToAddressForLocationLabel() {
+    CompanyProjectEntity project = CompanyProjectEntity.builder()
+        .id(13L)
+        .company(company())
+        .name("Address Fallback Project")
+        .addressLine("Sector 65, Gurugram")
+        .stats(List.of())
+        .active(true).published(true).deleted(false)
+        .build();
+
+    CompanyProjectCardDto card = getDetailWithProject(project).getTopProjects().get(0);
+
+    assertThat(card.getLocationLabel()).isEqualTo("Sector 65, Gurugram");
+  }
+
+  @Test
+  void getDetail_topProjectsStillUsesPublishedActiveNonDeletedRepositoryFilter() {
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company()));
+    stubEmptyDetailDependencies();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getTopProjects()).isEmpty();
+    verify(companyProjectRepository)
+        .findTop10ByCompany_IdAndPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(1L);
+  }
+
+  @Test
+  void getDetail_includesServicesOfferedPreservingSpacesAndSavedOrder() {
+    CompanyEntity company = company();
+    company.setServicesOffered(" House Interior,Modular Kitchen, Bedroom Design ");
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company));
+    stubEmptyDetailDependencies();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered())
+        .containsExactly("House Interior", "Modular Kitchen", "Bedroom Design");
+  }
+
+  @Test
+  void getDetail_filtersBlankServicesWithoutConcatenatingNames() {
+    CompanyEntity company = company();
+    company.setServicesOffered("House Interior, ,Modular Kitchen,");
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company));
+    stubEmptyDetailDependencies();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered())
+        .containsExactly("House Interior", "Modular Kitchen");
+  }
+
+  @Test
+  void getDetail_returnsEmptyServicesWhenStoredValueIsNull() {
+    when(companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(1L))
+        .thenReturn(Optional.of(company()));
+    stubEmptyDetailDependencies();
+
+    ArchitectDesignerDetailResponse response = service().getDetail(1L);
+
+    assertThat(response.getServicesOffered()).isEmpty();
   }
 
   @Test

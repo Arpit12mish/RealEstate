@@ -1,0 +1,17 @@
+{
+  "samples": 751,
+  "maximumTotalSessions": 3,
+  "maximumActiveSessions": 1,
+  "maximumIdleSessions": 3,
+  "maximumIdleInTransaction": 2,
+  "maximumLockWaits": 0,
+  "longestTransactionSeconds": 0.067815,
+  "longestQuerySeconds": 0.000967,
+  "deadlocksDelta": 0,
+  "xactCommitDelta": 17169,
+  "xactRollbackDelta": 0,
+  "tempFilesDelta": 0,
+  "tempBytesDelta": 0,
+  "blocksReadDelta": 0,
+  "blocksHitDelta": 758651
+}

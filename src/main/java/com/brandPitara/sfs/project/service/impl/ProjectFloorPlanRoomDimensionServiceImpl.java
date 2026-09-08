@@ -40,6 +40,11 @@ public class ProjectFloorPlanRoomDimensionServiceImpl implements ProjectFloorPla
         .dimensionText(clean(request.getDimensionText()))
         .iconKey(clean(request.getIconKey()))
         .notes(clean(request.getNotes()))
+        .averageAreaSqft(request.getAverageAreaSqft())
+        .comparisonContextLabel(clean(request.getComparisonContextLabel()))
+        .differencePercent(request.getDifferencePercent())
+        .comparisonSummary(clean(request.getComparisonSummary()))
+        .comparisonVerified(request.getComparisonVerified() != null ? request.getComparisonVerified() : false)
         .sortOrder(request.getSortOrder() != null ? request.getSortOrder() : 0)
         .active(request.getActive() != null ? request.getActive() : true)
         .deleted(false)
@@ -67,6 +72,11 @@ public class ProjectFloorPlanRoomDimensionServiceImpl implements ProjectFloorPla
     if (request.getDimensionText() != null) entity.setDimensionText(clean(request.getDimensionText()));
     if (request.getIconKey() != null) entity.setIconKey(clean(request.getIconKey()));
     if (request.getNotes() != null) entity.setNotes(clean(request.getNotes()));
+    if (request.getAverageAreaSqft() != null) entity.setAverageAreaSqft(request.getAverageAreaSqft());
+    if (request.getComparisonContextLabel() != null) entity.setComparisonContextLabel(clean(request.getComparisonContextLabel()));
+    if (request.getDifferencePercent() != null) entity.setDifferencePercent(request.getDifferencePercent());
+    if (request.getComparisonSummary() != null) entity.setComparisonSummary(clean(request.getComparisonSummary()));
+    if (request.getComparisonVerified() != null) entity.setComparisonVerified(request.getComparisonVerified());
     if (request.getSortOrder() != null) entity.setSortOrder(request.getSortOrder());
     if (request.getActive() != null) entity.setActive(request.getActive());
 

@@ -53,6 +53,7 @@
    - [Profile](#513-profile)
    - [Project Favorites](#514-project-favorites)
    - [Calculators (Public)](#515-calculators-public)
+   - [Public Content — Articles/Blogs/Interviews](#516-public-content--articlesblogsinterviews)
 6. [Review System — Complete Guide](#6-review-system--complete-guide)
 7. [Connectivity Provider Guide](#7-connectivity-provider-guide)
 8. [Error Handling](#8-error-handling)
@@ -123,7 +124,7 @@ Refresh token TTL: **1 day**.
 #### POST `/api/auth/request-otp`
 
 **Access:** Public  
-**Description:** Sends an OTP to the given phone number.
+**Description:** Sends an OTP to the given phone number via Twilio Verify.
 
 **Request Body:**
 ```json
@@ -135,15 +136,95 @@ Refresh token TTL: **1 day**.
 **Response `200`:**
 ```json
 {
+  "success": true,
   "status": "OTP_SENT",
   "message": "OTP sent successfully",
-  "resendAfterSeconds": 30
+  "resendAfterSeconds": 30,
+  "expiresInSeconds": 600,
+  "maskedDestination": "+9******10"
 }
 ```
 
 **Notes:**
 - Phone format: international with country code, e.g., `+91XXXXXXXXXX`
-- Rate-limited per phone/IP (to be enforced at infra level)
+- Rate-limited per phone AND per IP by `RateLimitingFilter` (`MOBILE_OTP_REQUEST` policy), plus a
+  per-phone cooldown/window/block layer in `TwilioOtpServiceImpl` (see error contract below).
+  `resend-otp` shares this exact same policy and per-phone state - see below.
+- `expiresInSeconds` reflects Twilio Verify's own fixed ~10 minute code lifetime; it does not
+  change or configure anything on our side.
+
+---
+
+#### POST `/api/auth/otp/resend`
+
+**Access:** Public  
+**Description:** Resends an OTP to the given phone number. Functionally identical to
+`request-otp` - both call the exact same `OtpService.sendOtp()` and share one
+per-phone cooldown/window/block state plus one rate-limit bucket
+(`MOBILE_OTP_REQUEST`). A dedicated route exists only for a clearer client-side
+contract (explicit "resend" semantics for the timer/button UX). There is no
+separate resend counter: every send, whether from this route or `request-otp`,
+counts toward the same abuse budget.
+
+**Request Body:** identical to `request-otp`.
+```json
+{
+  "phoneNumber": "+919876543210"
+}
+```
+
+**Response `200`:** identical shape to `request-otp`.
+
+**Error responses** (both `request-otp` and `otp/resend`):
+
+`429` - cooldown not yet elapsed:
+```json
+{
+  "success": false,
+  "code": "OTP_RESEND_TOO_SOON",
+  "message": "Please wait before requesting another OTP.",
+  "retryAfterSeconds": 18
+}
+```
+
+`429` - per-phone send window exhausted, or phone temporarily blocked after repeated abuse:
+```json
+{
+  "success": false,
+  "code": "OTP_REQUEST_LIMIT_EXCEEDED",
+  "message": "Too many OTP requests. Please try again later.",
+  "retryAfterSeconds": 900
+}
+```
+
+`503` - Twilio unreachable (the in-flight OTP, if any, is left untouched - the failed send does
+not invalidate anything, it just consumes this attempt's cooldown/window slot):
+```json
+{
+  "success": false,
+  "code": "OTP_PROVIDER_UNAVAILABLE",
+  "message": "OTP provider temporarily unavailable, please try again shortly"
+}
+```
+
+`400` - Twilio rejected the request (e.g. invalid destination):
+```json
+{
+  "success": false,
+  "code": "OTP_PROVIDER_ERROR",
+  "message": "Twilio error: ..."
+}
+```
+
+A request rejected before reaching the controller at all (the `RateLimitingFilter` layer, keyed
+by phone + IP) returns a differently-shaped but similarly structured 429/503 body - see
+`RateLimitErrorResponse` - which also carries `retryAfterSeconds`.
+
+**Notes on old-code invalidation:** Twilio Verify, not this service, owns code lifecycle. Per
+Twilio's documented behavior, a resend requested while the previous code is still within its
+validity window returns/resends **the same code**, not a new one - there is no "old code fails,
+new code succeeds" transition to implement or test for on our side. Twilio only issues a new code
+once the previous one has actually expired.
 
 ---
 
@@ -2490,6 +2571,207 @@ Expected behavior: the favorited PROJECT item has `isFavorite=true`, and `favori
 
 ---
 
+### 5.16 Public Content — Articles/Blogs/Interviews
+
+Powers the website's editorial/SEO content section (blog posts, articles, interviews authored via the CMS dashboard: `/api/dashboard/cms/content/**`, auth-required). Every endpoint below is `@RestController`-mapped under `/api/public/content`, fully public/unauthenticated, and returns **only `PUBLISHED` content** — draft, in-review, approved-not-yet-published, unpublished, and archived posts are never returned here regardless of query.
+
+**Response caching:** every endpoint in this section sets `Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=60, stale-if-error=300` — safe to cache at a CDN/edge layer; the frontend does not need its own additional caching layer for correctness, only for reducing round-trips.
+
+**Error shape — different from the rest of this API.** This section's errors do **not** use the standard `ApiError` shape documented in [§8 Error Handling](#8-error-handling) (which has a top-level `error` field and `requestId`). Instead:
+
+```json
+{
+  "timestamp": "2026-08-20T06:09:05.182Z",
+  "status": 404,
+  "code": "CONTENT_NOT_FOUND",
+  "message": "Published content was not found.",
+  "path": "/api/public/content/unknown-slug"
+}
+```
+
+| `code` | `status` | When |
+|---|---|---|
+| `CONTENT_NOT_FOUND` | 404 | Unknown slug, or a real post that isn't `PUBLISHED` |
+| `CONTENT_TEMPORARILY_UNAVAILABLE` | 503 | The post's document/media couldn't be resolved (e.g. a referenced media asset failed validation) — retry-safe, not a permanent failure |
+| `CONTENT_INVALID_REQUEST` | 400 | A query parameter is malformed (see the slug-format rule below) or of the wrong type |
+
+If your API client has a single shared error-body parser tuned to the standard `ApiError`/simple-error-code shapes, make sure it also recognizes this one (`code` + `message`, no `error` field) — otherwise these responses fall through to a generic "request failed" message and lose the actual reason.
+
+#### GET `/api/public/content`
+
+**Access:** Public
+**Description:** Paginated list of published content, newest-first by default.
+
+**Query Params:**
+
+| Param | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `contentType` | `ARTICLE` \| `BLOG` \| `INTERVIEW` | No | — | |
+| `categorySlug` | string | No | — | |
+| `author` | string | No | — | the author's own slug |
+| `tag` | string | No | — | |
+| `q` | string | No | — | free-text search over title/excerpt, max 100 chars, returns `400` if longer |
+| `page` | int | No | 0 | |
+| `size` | int | No | 20 | Max 50, returns `400` above that |
+
+`categorySlug`/`author`/`tag` are matched case-insensitively but must already be lowercase-kebab (`[a-z0-9]+(-[a-z0-9]+)*`) — `"Gurgaon"` or `"gurgaon_ncr"` are rejected with `400 CONTENT_INVALID_REQUEST`; lowercase and trim on the client before sending, e.g. `"Gurgaon"` → `"gurgaon"`.
+
+**Response `200`:** `PublicContentPageResponse` — **note this does NOT follow the site-wide `Page<T>` convention** documented in [§1 Pagination Format](#pagination-format) (which uses `number`/`first`). This endpoint's page field is named `page` (still 0-indexed) and has no `first` field at all — a hand-built response record, not the framework's own `Page<T>` serialized directly. Handle this shape specifically; do not reuse a generic Spring-`Page<T>` parser here unmodified.
+
+```json
+{
+  "content": [
+    {
+      "id": 101,
+      "slug": "gurgaon-market-guide-2026",
+      "contentType": "ARTICLE",
+      "title": "Gurgaon Real Estate Market Guide 2026",
+      "excerpt": "Everything buyers need to know about the Gurgaon market this year.",
+      "readingTimeMinutes": 6,
+      "author": {
+        "id": 3,
+        "displayName": "Priya Sharma",
+        "slug": "priya-sharma",
+        "designation": "Senior Analyst",
+        "profileMediaAssetId": 55
+      },
+      "category": { "id": 7, "name": "Market Trends", "slug": "market-trends" },
+      "cover": {
+        "mediaAssetId": 88,
+        "altText": "Gurgaon skyline at sunset",
+        "deliveryUrl": "https://cdn.sfs.com/cms/images/88.webp",
+        "contentType": "image/webp",
+        "width": 1600,
+        "height": 900
+      },
+      "publishedAt": "2026-08-20T06:09:05.182Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 42,
+  "totalPages": 3,
+  "last": false
+}
+```
+
+**Notes:**
+- `author`/`category` are effectively always present for `PUBLISHED` content — the dashboard's own submit-for-review validation requires both to be set before a post can leave `DRAFT`, so a null one here would indicate a legacy/edge-case row, not the normal state.
+- `cover.deliveryUrl` (like every `deliveryUrl` in this section) comes from a **separately configured CDN/CloudFront host** (`CMS_MEDIA_PUBLIC_BASE_URL`), not necessarily the same S3/CDN host other SFS media (project photos, builder logos) resolves to. If your frontend allowlists trusted image hosts (e.g. `next/image` `remotePatterns`), this host needs its own entry — confirm the actual production value with the backend/infra team before wiring image rendering.
+
+---
+
+#### GET `/api/public/content/{slug}`
+
+**Access:** Public
+**Description:** Full detail for one published post — metadata, SEO fields, the rich-text body, and every media asset it references, already resolved to a deliverable URL.
+
+**Headers:**
+- Request `If-None-Match` (optional): send back a previously-received `ETag` for a conditional request.
+- Response `ETag`: always present. A `304 Not Modified` (empty body) is returned when the sent `If-None-Match` still matches the post's current revision.
+
+**Response `200`:** `PublicContentDetailResponse`
+
+```json
+{
+  "id": 101,
+  "slug": "gurgaon-market-guide-2026",
+  "contentType": "ARTICLE",
+  "title": "Gurgaon Real Estate Market Guide 2026",
+  "excerpt": "Everything buyers need to know about the Gurgaon market this year.",
+  "readingTimeMinutes": 6,
+  "author": { "id": 3, "displayName": "Priya Sharma", "slug": "priya-sharma", "designation": "Senior Analyst", "profileMediaAssetId": 55 },
+  "category": { "id": 7, "name": "Market Trends", "slug": "market-trends" },
+  "tags": [
+    { "id": 12, "name": "Gurgaon", "slug": "gurgaon" },
+    { "id": 19, "name": "Buying Guide", "slug": "buying-guide" }
+  ],
+  "cover": {
+    "mediaAssetId": 88,
+    "altText": "Gurgaon skyline at sunset",
+    "deliveryUrl": "https://cdn.sfs.com/cms/images/88.webp",
+    "contentType": "image/webp",
+    "width": 1600,
+    "height": 900
+  },
+  "seo": {
+    "title": "Gurgaon Market Guide 2026 — Prices, Trends & Outlook",
+    "description": "A data-backed look at Gurgaon's residential market in 2026: price trends, top localities, and what to expect.",
+    "canonicalUrl": null,
+    "robotsIndex": true,
+    "robotsFollow": true
+  },
+  "document": {
+    "schemaVersion": 3,
+    "blocks": []
+  },
+  "publishedAt": "2026-08-20T06:09:05.182Z",
+  "revisionCreatedAt": "2026-08-20T06:09:05.182Z",
+  "media": {
+    "88": {
+      "id": 88,
+      "mediaType": "IMAGE",
+      "contentType": "image/webp",
+      "sizeBytes": 245678,
+      "width": 1600,
+      "height": 900,
+      "durationMillis": null,
+      "deliveryUrl": "https://cdn.sfs.com/cms/images/88.webp"
+    }
+  }
+}
+```
+
+**Notes:**
+- Unknown slug, a non-`PUBLISHED` post, or a document stored at a schema version this backend build no longer supports all return the identical `404 CONTENT_NOT_FOUND` — the frontend cannot and should not try to distinguish these cases.
+- `seo.title`/`seo.description` are editor-authored overrides — fall back to the post's own `title`/`excerpt` when `null`. `seo.canonicalUrl` is an editor-authored **absolute** URL (used for syndicated content whose canonical home is elsewhere) — when `null` (the common case), the canonical is this post's own URL on your site.
+- `media` is a map **keyed by `mediaAssetId` as a JSON object with string keys** (a Java `Map<Long, ...>` serializes this way — parse the keys back to numbers if your client needs them as such). Every `mediaAssetId` referenced by an `IMAGE`/`VIDEO` block in `document.blocks`, plus the cover and the author's profile photo (when either is set), is guaranteed to have an entry here. Never construct a media delivery URL yourself from a bare `mediaAssetId` — always resolve it through this map.
+
+---
+
+#### GET `/api/public/content/categories`
+
+**Access:** Public
+**Description:** Every active content category — for a category filter UI, not paginated (category counts are low).
+
+**Response `200`:** `PublicCategoryListResponse`
+
+```json
+{
+  "items": [
+    { "id": 7, "name": "Market Trends", "slug": "market-trends", "description": "Market analysis and price trends.", "publishedContentCount": 18 },
+    { "id": 9, "name": "Buying Guide", "slug": "buying-guide", "description": null, "publishedContentCount": 6 }
+  ]
+}
+```
+
+---
+
+#### Rich-Document Block Schema (`document.blocks`)
+
+`document.schemaVersion` is currently `3`. Each block is a discriminated union on `type` — switch on it, and skip (don't fail the whole render for) any type your frontend doesn't yet support. Every `content`/`caption` field below is an **inline node array**, not plain text:
+
+- `{ "type": "TEXT", "text": "...", "marks": [...] }` — `marks` is zero or more of `{"type":"BOLD"}`, `{"type":"ITALIC"}`, `{"type":"UNDERLINE"}`, `{"type":"LINK","href","openInNewTab","nofollow","sponsored"}`
+- `{ "type": "HARD_BREAK" }`
+
+| Block `type` | Fields |
+|---|---|
+| `PARAGRAPH` | `content: InlineNode[]` |
+| `HEADING` | `level: "H2"\|"H3"\|"H4"`, `content` |
+| `BULLET_LIST` / `ORDERED_LIST` / `CHECK_LIST` | `items: { "content": InlineNode[] }[]` (`CHECK_LIST` is an editorial "verified/features" list, not an interactive to-do list — items carry no checked state) |
+| `BLOCKQUOTE` | `content` |
+| `CALLOUT` | `variant: "INFO"\|"NOTE"\|"VERDICT"\|"WARNING"`, `title: string\|null`, `content` |
+| `TABLE` | `title?: string\|null` (heading above the table), `caption: string\|null` (annotation below), `columns: {"label":string}[]`, `rows: {"rowType":"NORMAL"\|"SECTION"\|"TOTAL","cells":InlineNode[][]}[]` — a `SECTION` row has exactly one cell spanning the full width; `NORMAL`/`TOTAL` rows have one cell per column |
+| `DIVIDER` | (no fields — a horizontal rule) |
+| `IMAGE` | `mediaAssetId: number`, `decorative: boolean`, `altText: string\|null`, `caption`, `layout: "STANDARD"\|"WIDE"`, `link: string\|null` |
+| `VIDEO` | `mediaAssetId: number`, `posterMediaAssetId: number\|null`, `caption` |
+| `EMBED` | `provider: "YOUTUBE"`, `externalId: string`, `caption` — render as an iframe at `https://www.youtube.com/embed/{externalId}` |
+| `LAYOUT` | `columns: 1\|2\|3`, `children: (IMAGE\|TABLE)[]` — a responsive multi-column grid; **only** `IMAGE`/`TABLE` blocks may nest inside (never another `LAYOUT`, never text blocks) |
+
+Every `mediaAssetId` an `IMAGE`/`VIDEO` block references resolves through the detail response's own `media` map — see the notes on `GET /api/public/content/{slug}` above.
+
+---
+
 ## 6. Review System — Complete Guide
 
 ### Review Types
@@ -2979,6 +3261,12 @@ GYMS, OFFICES, RESTAURANTS, BANKS, DAILY_NEEDS, LIFESTYLE, SAFETY, SEARCH
 | GET | /api/dashboard/project-metadata/amenity-categories | All roles | Amenity cats |
 | GET | /api/dashboard/project-metadata/amenity-suggestions | All roles | Suggestions |
 | POST | /api/dashboard/media/presign-upload | ADMIN, DE | Presign upload |
+| GET | /api/dashboard/promo-banners | ADMIN, REVIEWER, DE | List promo banners |
+| GET | /api/dashboard/promo-banners/{id} | ADMIN, REVIEWER, DE | Get promo banner |
+| POST | /api/dashboard/promo-banners | ADMIN, DE | Create promo banner |
+| PUT | /api/dashboard/promo-banners/{id} | ADMIN, DE | Full promo-banner update |
+| PATCH | /api/dashboard/promo-banners/{id}/active | ADMIN | Activate/deactivate promo banner |
+| DELETE | /api/dashboard/promo-banners/{id} | ADMIN | Soft-delete promo banner |
 | POST | /api/dashboard/cities | ADMIN | Create city |
 | PUT | /api/dashboard/cities/{id} | ADMIN | Update city |
 | PATCH | /api/dashboard/cities/{id}/cover-image | ADMIN, DE | Update city cover image |

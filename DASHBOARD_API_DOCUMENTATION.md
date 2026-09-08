@@ -3102,6 +3102,38 @@ GET /api/admin/interior-cost/addon-rules
 
 ## 11. Media Upload (Presign)
 
+### Home Promo Banners
+
+Secured promo-banner management is available under `/api/dashboard/promo-banners`.
+
+| Method | Path | Access | Purpose |
+|--------|------|--------|---------|
+| `GET` | `/api/dashboard/promo-banners?categoryId=0&slotKey=HERO` | A, R, DE | List non-deleted banners with pagination/filtering |
+| `GET` | `/api/dashboard/promo-banners/{bannerId}` | A, R, DE | Get one banner |
+| `POST` | `/api/dashboard/promo-banners` | A, DE | Create a banner |
+| `PUT` | `/api/dashboard/promo-banners/{bannerId}` | A, DE | Full banner update |
+| `PATCH` | `/api/dashboard/promo-banners/{bannerId}/active?value=true` | A | Activate/deactivate |
+| `DELETE` | `/api/dashboard/promo-banners/{bannerId}` | A | Soft-delete |
+
+Supported `mediaType` values are `IMAGE`, `LOTTIE_JSON`, and `VIDEO`. `VIDEO` requires a permanent public HTTP(S) URL whose path ends in `.mp4`; temporary S3 presigned URLs are rejected. `PUT` is a full update, so send all required fields.
+
+```json
+{
+  "categoryId": 0,
+  "slotKey": "HERO",
+  "title": "Compare Smarter",
+  "subtitle": "Compare projects side by side",
+  "mediaType": "VIDEO",
+  "mediaUrl": "https://cdn.example.com/home/promo-banners/99/hero.mp4",
+  "targetUrl": "/compare-projects/select",
+  "priority": 2,
+  "active": true,
+  "displayDurationMs": 12000,
+  "startAt": null,
+  "endAt": null
+}
+```
+
 Use this endpoint to get a pre-signed S3 URL for direct file upload from the browser. This avoids routing large files through your backend.
 
 **Upload flow:**
@@ -3127,6 +3159,7 @@ POST /api/dashboard/media/presign-upload
 | `projectId` | number | ❌ | Required when uploadType is project-related | Project this upload belongs to |
 | `builderId` | number | ❌ | Required when uploadType is builder-related | Builder this upload belongs to |
 | `cityId` | number | ❌ | Required when uploadType is `CITY_COVER_IMAGE` | City this cover image belongs to |
+| `promoBannerId` | number | ❌ | Required when uploadType is `HOME_PROMO_BANNER_VIDEO` | Existing non-deleted promo banner |
 
 **`uploadType` values and when to use each:**
 
@@ -3142,6 +3175,18 @@ POST /api/dashboard/media/presign-upload
 | `BUILDER_HIGHLIGHT_THUMBNAIL` | Builder Highlight card thumbnail | `builderId` |
 | `BUILDER_ANALYSIS_VIDEO_THUMBNAIL` | Thumbnail for SFS Builder Analysis video/YouTube item | `builderId` |
 | `CITY_COVER_IMAGE` | City/location cover image for homepage/trending city cards | `cityId` |
+| `HOME_PROMO_BANNER_VIDEO` | Home promo-banner MP4 | `promoBannerId` |
+
+`HOME_PROMO_BANNER_VIDEO` accepts only `video/mp4`, defaults to a configurable 25 MB limit (`APP_MEDIA_MAX_PROMO_BANNER_VIDEO_BYTES`), and stores objects under `home/promo-banners/{promoBannerId}/{uuid}.mp4`.
+
+```json
+{
+  "uploadType": "HOME_PROMO_BANNER_VIDEO",
+  "contentType": "video/mp4",
+  "fileSizeBytes": 10485760,
+  "promoBannerId": 99
+}
+```
 
 `MASTER_PLAN_IMAGE` accepts only `image/jpeg`, `image/jpg`, `image/png`, or `image/webp`, rejects PDFs, uses the current 2 MB image limit, and stores objects under `dashboard/projects/{projectId}/master-plan/{uuid}.{ext}`.
 

@@ -24,6 +24,9 @@ class RateLimitPolicyResolverTest {
     void mapsEachDocumentedRouteToItsPolicy() {
         assertThat(resolver.resolve(request("POST", "/api/auth/request-otp")))
                 .contains(RateLimitPolicy.MOBILE_OTP_REQUEST);
+        // Resend shares request-otp's exact policy/bucket - see RateLimitPolicyResolver.
+        assertThat(resolver.resolve(request("POST", "/api/auth/otp/resend")))
+                .contains(RateLimitPolicy.MOBILE_OTP_REQUEST);
         assertThat(resolver.resolve(request("POST", "/api/auth/verify-otp")))
                 .contains(RateLimitPolicy.MOBILE_OTP_VERIFY);
         assertThat(resolver.resolve(request("POST", "/api/auth/refresh")))
@@ -40,6 +43,10 @@ class RateLimitPolicyResolverTest {
                 .contains(RateLimitPolicy.PUBLIC_HOME_READ);
         assertThat(resolver.resolve(request("GET", "/api/projects/42")))
                 .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+        assertThat(resolver.resolve(request("GET", "/api/v2/public/projects/42")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+        assertThat(resolver.resolve(request("HEAD", "/api/v2/public/projects/42")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
         assertThat(resolver.resolve(request("POST", "/api/projects/compare")))
                 .contains(RateLimitPolicy.PUBLIC_PROJECT_COMPARE);
         assertThat(resolver.resolve(request("POST", "/api/location/resolve")))
@@ -48,6 +55,16 @@ class RateLimitPolicyResolverTest {
                 .contains(RateLimitPolicy.PUBLIC_SEARCH);
         assertThat(resolver.resolve(request("GET", "/api/search/businesses")))
                 .contains(RateLimitPolicy.PUBLIC_SEARCH);
+        assertThat(resolver.resolve(request("GET", "/api/public/content")))
+                .contains(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ);
+        assertThat(resolver.resolve(request("GET", "/api/public/content/published-slug")))
+                .contains(RateLimitPolicy.PUBLIC_CMS_CONTENT_READ);
+    }
+
+    @Test
+    void publicCmsContentWritesDoNotReceiveTheReadPolicy() {
+        assertThat(resolver.resolve(request("POST", "/api/public/content"))).isEmpty();
+        assertThat(resolver.resolve(request("PUT", "/api/public/content/published-slug"))).isEmpty();
     }
 
     @Test
@@ -71,6 +88,12 @@ class RateLimitPolicyResolverTest {
     void getProjectDetailMapsToPublicProjectRead() {
         assertThat(resolver.resolve(request("GET", "/api/projects/123")))
                 .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+    }
+
+    @Test
+    void getFavoriteOverlayMapsToAuthenticatedFavoriteReadPolicy() {
+        assertThat(resolver.resolve(request("GET", "/api/me/project-favorites")))
+                .contains(RateLimitPolicy.MOBILE_FAVORITE_READ);
     }
 
     @Test
@@ -491,6 +514,18 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void gap001SlugLookupRouteIsAlreadyCoveredByPublicProjectRead() {
+        // GET /api/projects/slug/{projectSlug} (GAP-001, Phase 4A) - like the meter
+        // routes above, this is under the existing /api/projects/** wildcard rule and
+        // needed no new Route entry. Verified explicitly per this file's own
+        // established precedent of confirming a new route isn't silently unmatched
+        // (resolve() would otherwise return Optional.empty() for it, per GAP-017's
+        // own documented lesson in this file's sibling city-route tests).
+        assertThat(resolver.resolve(request("GET", "/api/projects/slug/m3m-antalya-hills")))
+                .contains(RateLimitPolicy.PUBLIC_PROJECT_READ);
+    }
+
+    @Test
     void publicFeedGetRouteMapsToPublicFeedRead() {
         assertThat(resolver.resolve(request("GET", "/api/public/feed")))
                 .contains(RateLimitPolicy.PUBLIC_FEED_READ);
@@ -576,6 +611,20 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void cityDetailRouteReusesPublicCityReadPolicy() {
+        // GAP-017: GET /api/public/cities/{citySlug}. Before this route existed,
+        // this request resolved to Optional.empty() (no rate limiting at all) -
+        // this test guards against that regressing silently in the future.
+        assertThat(resolver.resolve(request("GET", "/api/public/cities/mumbai")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+        // The exact-match /trending route still wins over the new wildcard for
+        // that specific path - both resolve to the same policy, but this proves
+        // the new route did not shadow the existing one.
+        assertThat(resolver.resolve(request("GET", "/api/public/cities/trending")))
+                .contains(RateLimitPolicy.PUBLIC_CITY_READ);
+    }
+
+    @Test
     void contentVersionRouteMapsToPublicContentVersionRead() {
         assertThat(resolver.resolve(request("GET", "/api/content/version")))
                 .contains(RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ);
@@ -588,11 +637,22 @@ class RateLimitPolicyResolverTest {
     }
 
     @Test
+    void analyticsIngestRouteMapsToPublicAnalyticsIngest() {
+        // Backend-optimization audit: before this route existed, this request resolved
+        // to Optional.empty() - i.e. zero rate limiting and zero body-size bound on a
+        // permitAll endpoint. This test guards against that regressing silently.
+        assertThat(resolver.resolve(request("POST", "/api/analytics/events/batch")))
+                .contains(RateLimitPolicy.PUBLIC_ANALYTICS_INGEST);
+        assertThat(resolver.resolve(request("GET", "/api/analytics/events/batch"))).isEmpty();
+    }
+
+    @Test
     void writeMethodsDoNotAccidentallyMapToPhase4ReadPolicies() {
         assertThat(resolver.resolve(request("POST", "/api/brands"))).isEmpty();
         assertThat(resolver.resolve(request("PUT", "/api/distributors/1"))).isEmpty();
         assertThat(resolver.resolve(request("DELETE", "/api/categories/1"))).isEmpty();
         assertThat(resolver.resolve(request("PATCH", "/api/public/cities/trending"))).isEmpty();
+        assertThat(resolver.resolve(request("POST", "/api/public/cities/mumbai"))).isEmpty();
         assertThat(resolver.resolve(request("POST", "/api/content/version"))).isEmpty();
         assertThat(resolver.resolve(request("POST", "/api/session/me"))).isEmpty();
     }

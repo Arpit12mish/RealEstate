@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.project.dto.ProjectMasterPlanResponse;
 import com.brandPitara.sfs.project.dto.ProjectMasterPlanUpsertRequest;
@@ -31,6 +33,7 @@ class ProjectMasterPlanServiceImplTest {
   @Mock private ProjectMasterPlanRepository masterPlanRepository;
   @Mock private ContentVersionService contentVersionService;
   @Mock private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  @Mock private ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @InjectMocks private ProjectMasterPlanServiceImpl service;
 
@@ -47,6 +50,7 @@ class ProjectMasterPlanServiceImplTest {
     assertThat(response.getImageUrl()).isEqualTo("https://cdn.example.com/master.webp");
     assertThat(response.getStats()).extracting("key").contains("TOTAL_UNITS", "PARK_AREA");
     verify(contentVersionService).bump("PROJECTS");
+    verify(cacheEvictionPublisher).publish(11L, ProjectCacheEvictionReason.MASTER_PLAN_CHANGED);
   }
 
   @Test

@@ -1,9 +1,12 @@
 package com.brandPitara.sfs.service.impl;
 
 import com.brandPitara.sfs.config.AppReviewLoginProperties;
+import com.brandPitara.sfs.config.OtpProperties;
 import com.brandPitara.sfs.config.TwilioProperties;
 import com.brandPitara.sfs.entity.OtpRequestTracker;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.observability.LogSanitizer;
+import com.brandPitara.sfs.observability.OtpMetrics;
 import com.brandPitara.sfs.repository.OtpRequestTrackerRepository;
 import com.brandPitara.sfs.service.TwilioVerifyClient;
 import com.brandPitara.sfs.service.model.OtpSendResult;
@@ -56,7 +59,7 @@ import static org.mockito.Mockito.when;
         properties = {
                 "spring.jpa.hibernate.ddl-auto=create-drop",
                 "spring.flyway.enabled=false",
-                "app.logging.path=target/test-logs",
+                "sfs.log.dir=target/test-logs",
                 "twilio.account-sid=ACtest",
                 "twilio.auth-token=test-token",
                 "twilio.verify-service-sid=VAtest",
@@ -158,7 +161,7 @@ class OtpVerifyFailureConcurrencyIntegrationTest {
 
     @SpringBootConfiguration
     @EnableAutoConfiguration
-    @EnableConfigurationProperties({TwilioProperties.class, AppReviewLoginProperties.class})
+    @EnableConfigurationProperties({TwilioProperties.class, AppReviewLoginProperties.class, OtpProperties.class})
     @EntityScan(basePackageClasses = OtpRequestTracker.class)
     @EnableJpaRepositories(
             basePackageClasses = OtpRequestTrackerRepository.class,
@@ -167,7 +170,7 @@ class OtpVerifyFailureConcurrencyIntegrationTest {
                     pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!OtpRequestTrackerRepository$).*"
             )
     )
-    @Import({TwilioOtpServiceImpl.class, LogSanitizer.class})
+    @Import({TwilioOtpServiceImpl.class, LogSanitizer.class, OtpMetrics.class, ExternalProviderTransactions.class})
     static class TestApplication {
     }
 }

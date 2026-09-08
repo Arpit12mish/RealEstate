@@ -68,6 +68,25 @@ class PreAuthenticationAbuseFilterTest {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void deterministicPublicV2DoesNotTreatAuthorizationAsPreAuthenticationTraffic() throws Exception {
+        RateLimitProperties properties = properties(1);
+        InMemoryRateLimitService service = mock(InMemoryRateLimitService.class);
+        PreAuthenticationAbuseFilter filter = new PreAuthenticationAbuseFilter(
+                new RateLimitPolicyResolver(), new ClientIpResolver(properties), service,
+                properties, RateLimitMetrics.isolated(), new ObjectMapper());
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/v2/public/projects/27");
+        request.setRemoteAddr("203.0.113.10");
+        request.addHeader("Authorization", "malformed");
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+
+        verify(chain).doFilter(any(), any());
+        verifyNoInteractions(service);
+    }
+
     private PreAuthenticationAbuseFilter filter(RateLimitProperties properties) {
         return new PreAuthenticationAbuseFilter(new RateLimitPolicyResolver(), new ClientIpResolver(properties),
                 new InMemoryRateLimitService(properties), properties, RateLimitMetrics.isolated(), new ObjectMapper());

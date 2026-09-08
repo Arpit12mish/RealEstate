@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
@@ -23,6 +24,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.CannotCreateTransactionException;
+import com.brandPitara.sfs.project.exception.PublicationConflictException;
 
 import java.time.OffsetDateTime;
 import java.util.HashMap;
@@ -141,6 +144,14 @@ public class GlobalExceptionHandler {
     }
 
     // ── 409 Conflict ─────────────────────────────────────────────────────────
+    @ExceptionHandler(PublicationConflictException.class)
+    public ResponseEntity<ApiError> handlePublicationConflict(
+            PublicationConflictException ex,
+            HttpServletRequest req
+    ) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), req);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleConstraint(
             DataIntegrityViolationException ex,
@@ -157,6 +168,29 @@ public class GlobalExceptionHandler {
             return "This Google place is already attached to this project.";
         }
         return "Constraint violation";
+    }
+
+    // ── 503 Database temporarily unavailable ────────────────────────────────
+    @ExceptionHandler(CannotCreateTransactionException.class)
+    public ResponseEntity<ApiError> handleCannotCreateTransaction(
+            CannotCreateTransactionException ex,
+            HttpServletRequest req
+    ) {
+        logStructured(ERROR_LOG, "error", LogEvents.DATABASE_ERROR, req, ex,
+                Map.of("classification", "database_unavailable"));
+
+        ApiError body = ApiError.builder()
+                .timestamp(OffsetDateTime.now())
+                .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+                .error(HttpStatus.SERVICE_UNAVAILABLE.getReasonPhrase())
+                .message("Database temporarily unavailable")
+                .path(req.getRequestURI())
+                .requestId(resolveRequestId(req))
+                .build();
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "1")
+                .body(body);
     }
 
     // ── 500 Unexpected ───────────────────────────────────────────────────────

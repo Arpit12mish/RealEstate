@@ -1,13 +1,17 @@
 package com.brandPitara.sfs.dashboard.city.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
 import com.brandPitara.sfs.dashboard.city.dto.DashboardCityUpsertRequest;
 import com.brandPitara.sfs.dto.CityResponse;
 import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.repository.CityRepository;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -19,7 +23,8 @@ class DashboardCityServiceImplTest {
     @Test
     void createGeneratesSlugAndPersistsHomepageMetadata() {
         CityRepository cityRepository = mock(CityRepository.class);
-        DashboardCityServiceImpl service = new DashboardCityServiceImpl(cityRepository);
+        DashboardCityServiceImpl service = new DashboardCityServiceImpl(
+                cityRepository, mock(ProjectRepository.class), mock(ProjectPublicCacheEvictionPublisher.class));
 
         DashboardCityUpsertRequest request = new DashboardCityUpsertRequest();
         request.setName("Greater Noida West");
@@ -50,7 +55,8 @@ class DashboardCityServiceImplTest {
     @Test
     void createRejectsDuplicateSlug() {
         CityRepository cityRepository = mock(CityRepository.class);
-        DashboardCityServiceImpl service = new DashboardCityServiceImpl(cityRepository);
+        DashboardCityServiceImpl service = new DashboardCityServiceImpl(
+                cityRepository, mock(ProjectRepository.class), mock(ProjectPublicCacheEvictionPublisher.class));
 
         DashboardCityUpsertRequest request = new DashboardCityUpsertRequest();
         request.setName("Mumbai");
@@ -69,7 +75,8 @@ class DashboardCityServiceImplTest {
     @Test
     void updateCoverImagePersistsOnlyCoverImageUrl() {
         CityRepository cityRepository = mock(CityRepository.class);
-        DashboardCityServiceImpl service = new DashboardCityServiceImpl(cityRepository);
+        DashboardCityServiceImpl service = new DashboardCityServiceImpl(
+                cityRepository, mock(ProjectRepository.class), mock(ProjectPublicCacheEvictionPublisher.class));
         CityEntity entity = CityEntity.builder()
                 .id(7L)
                 .name("Noida")
@@ -91,5 +98,23 @@ class DashboardCityServiceImplTest {
         assertThat(response.getName()).isEqualTo("Noida");
         assertThat(response.getCoverImageUrl()).isEqualTo("https://cdn.sfs.com/dashboard/cities/7/cover/new.webp");
         assertThat(entity.getCoverImageUrl()).isEqualTo("https://cdn.sfs.com/dashboard/cities/7/cover/new.webp");
+    }
+
+    @Test
+    void cityNameUpdateEvictsAffectedProjectDocuments() {
+        CityRepository cities = mock(CityRepository.class);
+        ProjectRepository projects = mock(ProjectRepository.class);
+        ProjectPublicCacheEvictionPublisher publisher = mock(ProjectPublicCacheEvictionPublisher.class);
+        DashboardCityServiceImpl service = new DashboardCityServiceImpl(cities, projects, publisher);
+        CityEntity city = CityEntity.builder().id(7L).name("Old").slug("old").build();
+        DashboardCityUpsertRequest request = new DashboardCityUpsertRequest();
+        request.setName("New");
+        when(cities.findById(7L)).thenReturn(Optional.of(city));
+        when(cities.save(city)).thenReturn(city);
+        when(projects.findIdsByCityIdAndDeletedFalse(7L)).thenReturn(List.of(27L));
+
+        service.update(7L, request);
+
+        verify(publisher).publishAll(List.of(27L), ProjectCacheEvictionReason.CITY_CHANGED);
     }
 }

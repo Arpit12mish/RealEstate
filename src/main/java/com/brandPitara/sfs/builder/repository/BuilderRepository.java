@@ -11,12 +11,18 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 public interface BuilderRepository extends JpaRepository<BuilderEntity, Long> {
 
   Optional<BuilderEntity> findByIdAndDeletedFalse(Long id);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select b from BuilderEntity b where b.id = :id and b.deleted = false")
+  Optional<BuilderEntity> findByIdAndDeletedFalseForUpdate(@Param("id") Long id);
 
   Optional<BuilderEntity> findByIdAndPublishedTrueAndActiveTrueAndDeletedFalse(Long id);
 

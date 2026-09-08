@@ -12,6 +12,7 @@ public enum DashboardMediaUploadType {
     INSTAGRAM_REEL_THUMBNAIL,
     INSTAGRAM_REEL_PREVIEW_VIDEO,
     HOME_LOTTIE_JSON,
+    HOME_PROMO_BANNER_VIDEO,
     APP_SCREEN_LOTTIE_JSON,
     APP_SCREEN_VIDEO,
     BUILDER_HIGHLIGHT_IMAGE,
@@ -42,7 +43,13 @@ public enum DashboardMediaUploadType {
 
     // Phase 4.8B - company certificate image (separate from BRAND_CERTIFICATE_FILE,
     // which allows PDF; this one is image-only, matching COMPANY_MEDIA_IMAGE).
-    COMPANY_CERTIFICATE_IMAGE;
+    COMPANY_CERTIFICATE_IMAGE,
+
+    COMPANY_PROJECT_MEDIA_IMAGE,
+
+    // Floor Plan Insights redesign - Visual Analysis media (image/video/Lottie JSON),
+    // one per floor plan. Project-scoped like FLOOR_PLAN_IMAGE.
+    FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -50,6 +57,7 @@ public enum DashboardMediaUploadType {
 
     public boolean requiresVideo() {
         return this == INSTAGRAM_REEL_PREVIEW_VIDEO
+                || this == HOME_PROMO_BANNER_VIDEO
                 || this == APP_SCREEN_VIDEO;
     }
 
@@ -69,9 +77,15 @@ public enum DashboardMediaUploadType {
         return this == BRAND_PROMO_MEDIA;
     }
 
+    // FLOOR_PLAN_INSIGHT_VISUAL_MEDIA is the only upload type that accepts image, video,
+    // or Lottie JSON, since the Visual Analysis media slot supports all three.
+    public boolean allowsImageOrVideoOrLottie() {
+        return this == FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
+    }
+
     public boolean requiresImage() {
         return !requiresPdf() && !requiresVideo() && !requiresLottieJson()
-                && !allowsImageOrPdf() && !allowsImageOrVideo();
+                && !allowsImageOrPdf() && !allowsImageOrVideo() && !allowsImageOrVideoOrLottie();
     }
 
     public boolean isProjectScoped() {
@@ -79,7 +93,8 @@ public enum DashboardMediaUploadType {
                 || this == FLOOR_PLAN_IMAGE
                 || this == MASTER_PLAN_IMAGE
                 || this == CONNECTIVITY_MAP
-                || this == BROCHURE_PDF;
+                || this == BROCHURE_PDF
+                || this == FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
     }
 
     public boolean isBuilderScoped() {
@@ -107,5 +122,13 @@ public enum DashboardMediaUploadType {
                 || this == COMPANY_COVER_IMAGE
                 || this == COMPANY_MEDIA_IMAGE
                 || this == COMPANY_CERTIFICATE_IMAGE;
+    }
+
+    public boolean isCompanyProjectScoped() {
+        return this == COMPANY_PROJECT_MEDIA_IMAGE;
+    }
+
+    public boolean isPromoBannerScoped() {
+        return this == HOME_PROMO_BANNER_VIDEO;
     }
 }

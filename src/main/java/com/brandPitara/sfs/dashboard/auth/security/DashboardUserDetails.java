@@ -4,11 +4,9 @@ import com.brandPitara.sfs.dashboard.user.entity.DashboardUserEntity;
 import com.brandPitara.sfs.security.identity.DashboardAuthenticationUserSnapshot;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
-import java.util.List;
 
 @Getter
 public class DashboardUserDetails implements UserDetails {
@@ -21,7 +19,8 @@ public class DashboardUserDetails implements UserDetails {
                 user.getEmail(),
                 user.getName(),
                 user.getRole(),
-                Boolean.TRUE.equals(user.getActive())
+                Boolean.TRUE.equals(user.getActive()),
+                user.getPermissions()
         ));
     }
 
@@ -40,6 +39,7 @@ public class DashboardUserDetails implements UserDetails {
                 .name(snapshot.name())
                 .role(snapshot.role())
                 .active(snapshot.active())
+                .permissions(new java.util.LinkedHashSet<>(snapshot.permissions()))
                 .build();
     }
 
@@ -61,11 +61,22 @@ public class DashboardUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(
-                new SimpleGrantedAuthority("ROLE_" + snapshot.role().name())
-        );
+        return snapshot.getAuthorities();
     }
 
+    /**
+     * Always empty - intentionally, not an oversight. Dashboard authentication is
+     * entirely manual: DashboardAuthServiceImpl#login compares the submitted
+     * password against DashboardUserEntity#getPasswordHash via PasswordEncoder
+     * directly, and issues a JWT itself. This class is never passed through
+     * Spring Security's AuthenticationManager/DaoAuthenticationProvider (no such
+     * bean exists in this app), so getPassword() is never read for credential
+     * verification - it exists purely because UserDetails requires the method.
+     * DashboardJwtAuthenticationFilter/DashboardUserDetailsService only ever use
+     * this class post-authentication, to read role/active status for
+     * authorization. Do not wire this UserDetails into a real AuthenticationManager
+     * without first replacing this with the real password hash.
+     */
     @Override
     public String getPassword() {
         return "";

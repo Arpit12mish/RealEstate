@@ -4,6 +4,9 @@ import com.brandPitara.sfs.builder.entity.BuilderEntity;
 import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
+import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
+import com.brandPitara.sfs.project.enums.ProjectMediaType;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonOverviewInsightResponse;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonRow;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonSection;
 import com.brandPitara.sfs.projectcompare.enums.ComparisonSectionKey;
@@ -90,6 +93,68 @@ class ProjectComparisonSectionBuilderTest {
         fp.setCarpetAreaSqft(carpetArea);
         fp.setSuperAreaSqft(superArea);
         return fp;
+    }
+
+    private ProjectMediaEntity media(long id, ProjectEntity project, ProjectMediaType type, String url,
+                                     int sortOrder, boolean active, boolean deleted) {
+        return ProjectMediaEntity.builder()
+                .id(id)
+                .project(project)
+                .mediaType(type)
+                .url(url)
+                .caption("caption-" + id)
+                .sortOrder(sortOrder)
+                .active(active)
+                .deleted(deleted)
+                .build();
+    }
+
+    @Test
+    void visualComparisonPreservesProjectOrderAndMapsOnlyOrderedPublicImages() {
+        ProjectEntity p1 = project(1L, "Alpha");
+        ProjectEntity p2 = project(2L, "Beta");
+
+        ComparisonSection section = builder.buildVisualComparison(
+                List.of(p2, p1),
+                Map.of(
+                        1L, List.of(
+                                media(12L, p1, ProjectMediaType.IMAGE, "https://cdn/second.jpg", 1, true, false),
+                                media(11L, p1, ProjectMediaType.IMAGE, "https://cdn/cover.jpg", 1, true, false),
+                                media(10L, p1, ProjectMediaType.BROCHURE_PDF, "https://cdn/brochure.pdf", 0, true, false),
+                                media(9L, p1, ProjectMediaType.VIDEO, "https://cdn/video.mp4", 0, true, false),
+                                media(8L, p1, ProjectMediaType.IMAGE, "https://cdn/inactive.jpg", 0, false, false),
+                                media(7L, p1, ProjectMediaType.IMAGE, "https://cdn/deleted.jpg", 0, true, true)
+                        )
+                )
+        );
+
+        assertThat(section.getSectionKey()).isEqualTo(ComparisonSectionKey.VISUAL_COMPARISON);
+        assertThat(section.getSectionTitle()).isEqualTo("Visual Comparison");
+        assertThat(section.getLayout()).isEqualTo("PROJECT_MEDIA_GALLERY");
+        assertThat(section.getRows()).isNull();
+        assertThat(section.getProjectGalleries()).extracting(g -> g.getProjectId()).containsExactly(2L, 1L);
+        assertThat(section.getProjectGalleries().get(0).getItems()).isEmpty();
+        assertThat(section.getProjectGalleries().get(0).getTotalCount()).isZero();
+
+        var alpha = section.getProjectGalleries().get(1);
+        assertThat(alpha.getCoverImageUrl()).isEqualTo("https://cdn/cover.jpg");
+        assertThat(alpha.getTotalCount()).isEqualTo(2);
+        assertThat(alpha.getItems()).extracting(item -> item.getId()).containsExactly(11L, 12L);
+        assertThat(alpha.getItems()).extracting(item -> item.getCover()).containsExactly(true, false);
+    }
+
+    @Test
+    void visualComparisonReturnsAtMostEightImagesButKeepsFullEligibleCount() {
+        ProjectEntity project = project(1L, "Alpha");
+        List<ProjectMediaEntity> images = java.util.stream.LongStream.rangeClosed(1, 10)
+                .mapToObj(id -> media(id, project, ProjectMediaType.IMAGE, "https://cdn/" + id + ".jpg",
+                        Math.toIntExact(id), true, false))
+                .toList();
+
+        ComparisonSection section = builder.buildVisualComparison(List.of(project), Map.of(1L, images));
+
+        assertThat(section.getProjectGalleries().get(0).getTotalCount()).isEqualTo(10);
+        assertThat(section.getProjectGalleries().get(0).getItems()).hasSize(8);
     }
 
     // ─── Issue 1: Optional rows hidden when all values unavailable ─────────────
@@ -506,8 +571,23 @@ class ProjectComparisonSectionBuilderTest {
         ComparisonSection section = builder.buildOverview(List.of(project(1L, "A")), Map.of());
 
         assertThat(section.getSectionKey()).isEqualTo(ComparisonSectionKey.OVERVIEW);
-        assertThat(section.getDisplayOrder()).isEqualTo(1);
+        assertThat(section.getDisplayOrder()).isEqualTo(ComparisonSectionKey.OVERVIEW.defaultOrder());
         assertThat(section.isInitiallyExpanded()).isTrue();
+    }
+
+    @Test
+    void overviewInsightIsAttachedWithoutChangingExistingRows() {
+        List<ProjectEntity> projects = List.of(project(1L, "A"), project(2L, "B"));
+        ComparisonSection original = builder.buildOverview(projects, Map.of());
+        ComparisonOverviewInsightResponse insight = ComparisonOverviewInsightResponse.builder()
+                .title("A vs B — Clear, Data-Led Comparison")
+                .blocks(List.of())
+                .build();
+
+        ComparisonSection enriched = builder.buildOverview(projects, Map.of(), insight);
+
+        assertThat(enriched.getOverviewInsight()).isSameAs(insight);
+        assertThat(enriched.getRows()).usingRecursiveComparison().isEqualTo(original.getRows());
     }
 
     @Test

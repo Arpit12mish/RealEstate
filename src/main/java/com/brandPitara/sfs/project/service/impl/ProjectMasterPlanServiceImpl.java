@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.ProjectMasterPlanResponse;
 import com.brandPitara.sfs.project.dto.ProjectMasterPlanUpsertRequest;
@@ -27,6 +29,7 @@ public class ProjectMasterPlanServiceImpl implements ProjectMasterPlanService {
   private final ProjectMasterPlanRepository masterPlanRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @Override
   @Transactional(readOnly = true)
@@ -73,6 +76,7 @@ public class ProjectMasterPlanServiceImpl implements ProjectMasterPlanService {
     applyRequest(entity, request);
     ProjectMasterPlanEntity saved = masterPlanRepository.save(entity);
     bumpContentVersions(project);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MASTER_PLAN_CHANGED);
 
     return ProjectMasterPlanMapper.toDashboardResponse(saved);
   }
@@ -86,6 +90,7 @@ public class ProjectMasterPlanServiceImpl implements ProjectMasterPlanService {
     entity.setActive(active);
     ProjectMasterPlanEntity saved = masterPlanRepository.save(entity);
     bumpContentVersions(entity.getProject());
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MASTER_PLAN_CHANGED);
 
     return ProjectMasterPlanMapper.toDashboardResponse(saved);
   }
@@ -100,6 +105,7 @@ public class ProjectMasterPlanServiceImpl implements ProjectMasterPlanService {
     entity.setActive(false);
     masterPlanRepository.save(entity);
     bumpContentVersions(entity.getProject());
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.MASTER_PLAN_CHANGED);
   }
 
   private ProjectEntity getProject(Long projectId) {

@@ -1,0 +1,21 @@
+{
+  "samples": 797,
+  "durationSeconds": 800.674,
+  "maximumHikariActive": 2.0,
+  "minimumHikariIdle": 1.0,
+  "maximumHikariPending": 0.0,
+  "hikariTimeoutCountDelta": 0.0,
+  "maximumAcquireSeconds": 0.037,
+  "maximumUsageSeconds": 0.332,
+  "maximumActiveHttpRequests": 4.0,
+  "maximumTomcatBusyThreads": 3.0,
+  "maximumTomcatCurrentThreads": 5.0,
+  "configuredTomcatMaxThreads": 50.0,
+  "maximumJvmLiveThreads": 28.0,
+  "maximumProcessCpu": 0.05787416204197418,
+  "maximumSystemCpu": 0.9923076923076923,
+  "gcPauseCountDelta": 49.0,
+  "maximumGcPauseSeconds": 0.092,
+  "memoryHighWaterBytes": 523834256.0,
+  "samplesWithErrors": 0
+}

@@ -4,9 +4,11 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import com.brandPitara.sfs.observability.LogSanitizer;
+import com.brandPitara.sfs.config.LocalFakeOtpProperties;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,7 +23,11 @@ class FakeOtpServiceLoggingSafetyTest {
         logger.setLevel(Level.INFO);
         logger.addAppender(events);
         try {
-            FakeOtpService service = new FakeOtpService(new LogSanitizer());
+            LocalFakeOtpProperties properties = new LocalFakeOtpProperties();
+            properties.setEnabled(true);
+            properties.setFixedOtp("123456");
+            properties.setPhoneNumbers(Set.of("+919876543210"));
+            FakeOtpService service = new FakeOtpService(properties);
             service.sendOtp("9876543210");
             service.verifyOtp("9876543210", "123456");
 

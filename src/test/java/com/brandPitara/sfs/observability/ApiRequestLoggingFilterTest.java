@@ -3,6 +3,8 @@ package com.brandPitara.sfs.observability;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
+import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import org.junit.jupiter.api.AfterEach;
@@ -21,7 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ApiRequestLoggingFilterTest {
 
     private final LogSanitizer sanitizer = new LogSanitizer();
-    private final ApiRequestLoggingFilter requestFilter = new ApiRequestLoggingFilter(sanitizer);
+    private final ApiRequestLoggingFilter requestFilter =
+            new ApiRequestLoggingFilter(sanitizer, new ClientIpResolver(new RateLimitProperties()));
     private final CorrelationIdFilter correlationFilter = new CorrelationIdFilter(sanitizer);
     private final Logger infoLogger = (Logger) LoggerFactory.getLogger(LoggingConstants.LOGGER_API);
     private final Logger reliableLogger = (Logger) LoggerFactory.getLogger(LoggingConstants.LOGGER_API_RELIABLE);
@@ -145,6 +148,68 @@ class ApiRequestLoggingFilterTest {
         assertThat(reliable.list).hasSize(2);
         assertThat(reliable.list.get(0).getLevel()).isEqualTo(ch.qos.logback.classic.Level.ERROR);
         assertThat(reliable.list.get(1).getFormattedMessage()).contains("event=slow_api", "slow=true", "status=500");
+    }
+
+    @Test
+    void successfulHealthCheckIsNotLogged() throws Exception {
+        MockHttpServletRequest request = request("/actuator/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(200);
+
+        invoke(request, response, (req, res) -> { });
+
+        assertThat(info.list).isEmpty();
+        assertThat(reliable.list).isEmpty();
+    }
+
+    @Test
+    void failingHealthCheckIsStillLoggedOnTheReliablePath() throws Exception {
+        // A failing readiness probe (e.g. `db` indicator down during a Hikari-pool-exhaustion
+        // incident) must remain visible - suppressing it too would remove exactly the signal
+        // an on-call engineer needs to correlate probe failures with incident timing.
+        MockHttpServletRequest request = request("/actuator/health/readiness");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setStatus(503);
+
+        invoke(request, response, (req, res) -> { });
+
+        assertThat(info.list).isEmpty();
+        assertThat(reliable.list).hasSize(1);
+        assertThat(reliable.list.get(0).getFormattedMessage())
+                .contains("path=/actuator/health/readiness", "status=503");
+    }
+
+    @Test
+    void apiHealthPathFollowsTheSameSuccessSuppressedFailureLoggedRule() throws Exception {
+        MockHttpServletRequest okRequest = request("/api/health");
+        invoke(okRequest, new MockHttpServletResponse(), (req, res) -> { });
+        assertThat(info.list).isEmpty();
+        assertThat(reliable.list).isEmpty();
+
+        MockHttpServletRequest failingRequest = request("/api/health");
+        MockHttpServletResponse failingResponse = new MockHttpServletResponse();
+        failingResponse.setStatus(503);
+        invoke(failingRequest, failingResponse, (req, res) -> { });
+        assertThat(reliable.list).hasSize(1);
+    }
+
+    @Test
+    void clientIpIsNotSpoofableViaXForwardedForFromAnUntrustedPeer() throws Exception {
+        // resolveClientIp now goes through the same trusted-proxy-gated ClientIpResolver the
+        // rate-limit filters use, instead of blindly trusting the left-most X-Forwarded-For hop.
+        MockHttpServletRequest request = request("/api/projects/42");
+        request.addHeader("X-Forwarded-For", "203.0.113.9");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        invoke(request, response, (req, res) -> { });
+
+        assertThat(info.list).hasSize(1);
+        // remoteAddr (10.20.30.40, set by request()) is not a configured trusted proxy, so the
+        // spoofed XFF header must be ignored and the real peer address logged instead - masked
+        // to its /16 by LogSanitizer, matching the existing maskIp contract.
+        assertThat(info.list.get(0).getFormattedMessage())
+                .contains("clientIp=10.20.*.*")
+                .doesNotContain("203.0.113.9");
     }
 
     private MockHttpServletRequest request(String uri) {

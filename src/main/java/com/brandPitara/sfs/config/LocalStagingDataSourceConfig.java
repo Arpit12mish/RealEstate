@@ -11,12 +11,12 @@ import org.springframework.context.annotation.Profile;
 import javax.sql.DataSource;
 
 /**
- * Constructs the local-staging pool only after all Hikari settings have been
- * bound. This avoids late mutation of a sealed Hikari 7 pool while retaining
- * Spring Boot's canonical datasource property names.
+ * Constructs the local-staging and production pools only after all Hikari
+ * settings have been bound. This avoids late mutation of a sealed Hikari 7
+ * pool while retaining Spring Boot's canonical datasource property names.
  */
 @Configuration(proxyBeanMethods = false)
-@Profile("local-staging")
+@Profile({"local-staging", "prod"})
 public class LocalStagingDataSourceConfig {
 
     @Bean

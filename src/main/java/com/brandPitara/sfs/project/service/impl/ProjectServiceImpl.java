@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.builder.entity.BuilderEntity;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
@@ -13,12 +15,13 @@ import com.brandPitara.sfs.project.dto.ProjectUpsertRequest;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.mapper.ProjectMapper;
-import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
+import com.brandPitara.sfs.project.mapper.ProjectPublicCoreMapper;
 import com.brandPitara.sfs.project.enums.UnitConfigurationType;
+import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
-import com.brandPitara.sfs.project.service.ProjectDetailComposer;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
+import com.brandPitara.sfs.project.service.ProjectPublicCoreService;
 import com.brandPitara.sfs.project.service.ProjectService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -44,7 +47,8 @@ public class ProjectServiceImpl implements ProjectService {
   private final ContentVersionService contentVersionService;
   private final ProjectMediaRepository projectMediaRepository;
   private final ProjectFavoriteService projectFavoriteService;
-  private final ProjectDetailComposer projectDetailComposer;
+  private final ProjectPublicCoreService projectPublicCoreService;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
 
   @jakarta.persistence.PersistenceContext
@@ -119,12 +123,19 @@ public class ProjectServiceImpl implements ProjectService {
 
   private ProjectResponse saveDashboardProject(ProjectEntity entity) {
 
+    if (Boolean.TRUE.equals(entity.getPublished()) && Boolean.TRUE.equals(entity.getActive())) {
+      attachLockedBuilder(entity);
+      projectPublicVisibilityPolicy.assertEligibleForPublication(entity, entity.getId());
+    }
+
     ProjectEntity saved = projectRepository.save(entity);
 
     contentVersionService.bump(KEY_PROJECTS);
     if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+
+    cacheEvictionPublisher.publish(saved.getId(), ProjectCacheEvictionReason.PROJECT_UPDATED);
 
     return ProjectMapper.toResponse(saved);
   }
@@ -135,11 +146,9 @@ public class ProjectServiceImpl implements ProjectService {
     ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-    if (published && entity.getReviewStatus() != ReviewStatus.APPROVED) {
-      throw new IllegalStateException(
-          "Project must be APPROVED before it can be published. Current review status: " +
-              (entity.getReviewStatus() != null ? entity.getReviewStatus() : ReviewStatus.DRAFT)
-      );
+    if (published) {
+      attachLockedBuilder(entity);
+      projectPublicVisibilityPolicy.assertEligibleForPublication(entity, projectId);
     }
 
     entity.setPublished(published);
@@ -147,6 +156,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
     return ProjectMapper.toResponse(saved);
   }
@@ -158,10 +168,15 @@ public class ProjectServiceImpl implements ProjectService {
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     entity.setActive(active);
+    if (active && Boolean.TRUE.equals(entity.getPublished())) {
+      attachLockedBuilder(entity);
+      projectPublicVisibilityPolicy.assertEligibleForPublication(entity, projectId);
+    }
     ProjectEntity saved = projectRepository.save(entity);
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.VISIBILITY_CHANGED);
 
     return ProjectMapper.toResponse(saved);
   }
@@ -172,14 +187,18 @@ public class ProjectServiceImpl implements ProjectService {
     ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
-    BuilderEntity builder = builderRepository.findByIdAndDeletedFalse(builderId)
+    BuilderEntity builder = builderRepository.findByIdAndDeletedFalseForUpdate(builderId)
         .orElseThrow(() -> new NotFoundException("Builder not found: " + builderId));
 
     project.setBuilder(builder);
+    if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
+      projectPublicVisibilityPolicy.assertEligibleForPublication(project, projectId);
+    }
     ProjectEntity saved = projectRepository.save(project);
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.PROJECT_UPDATED);
 
     return ProjectMapper.toResponse(saved);
   }
@@ -196,12 +215,13 @@ public class ProjectServiceImpl implements ProjectService {
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.PROJECT_DELETED);
   }
 
   @Override
   @Transactional(readOnly = true)
   public ProjectResponse adminGet(Long projectId) {
-    ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
+    ProjectEntity entity = projectRepository.findDetailByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     return ProjectMapper.toResponse(entity);
@@ -214,6 +234,7 @@ public class ProjectServiceImpl implements ProjectService {
         ? projectRepository.findByDeletedFalse(pageable)
         : projectRepository.findByBuilderIdAndDeletedFalse(builderId, pageable);
 
+    preloadPropertyTypes(page.getContent());
     return page.map(ProjectMapper::toResponse);
   }
 
@@ -232,6 +253,7 @@ public class ProjectServiceImpl implements ProjectService {
       page = projectRepository.findByBuilderIdAndDeletedFalseAndReviewStatus(builderId, reviewStatus, pageable);
     }
 
+    preloadPropertyTypes(page.getContent());
     return page.map(ProjectMapper::toResponse);
   }
 
@@ -248,6 +270,8 @@ public class ProjectServiceImpl implements ProjectService {
     List<Long> projectIds = page.getContent().stream()
         .map(ProjectEntity::getId)
         .toList();
+
+    preloadPropertyTypes(page.getContent());
 
     Map<Long, List<ProjectMediaEntity>> mediaMap;
 
@@ -272,20 +296,26 @@ public class ProjectServiceImpl implements ProjectService {
   }
 
   @Override
-  @Transactional(readOnly = true)
   public ProjectPublicResponse publicGet(Long projectId) {
-    ProjectEntity entity = projectRepository.findByIdAndDeletedFalse(projectId)
-        .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
+    var core = projectPublicCoreService.getById(projectId);
+    boolean favorite = projectFavoriteService.isCurrentViewerFavorite(core.getId());
+    return ProjectPublicCoreMapper.toV1Response(core, favorite);
+  }
 
-    projectPublicVisibilityPolicy.assertPubliclyVisible(entity, projectId);
-
-    List<ProjectMediaEntity> media =
-        projectMediaRepository.findByProjectIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdDesc(projectId);
-
-    ProjectPublicResponse response = projectDetailComposer.composePublic(entity, media);
-    projectFavoriteService.enrichPublicProject(response);
-
-    return response;
+  // GAP-001: canonical public lookup by backend-owned slug, mirroring
+  // publicGet(Long) above exactly. Case-sensitive (see
+  // findBySlugAndDeletedFalse's own doc comment) - an unknown OR
+  // differently-cased slug both fall through to the same 404, since this
+  // repository has no case-insensitive lookup convention to distinguish
+  // them (unlike City's own findBySlugIgnoreCaseAndActiveTrue()). A blank
+  // or malformed slug is not special-cased either - it simply matches no
+  // row, same as BrandPublicServiceImpl.getPublicBrandBySlug()'s own
+  // precedent of not validating slug format server-side.
+  @Override
+  public ProjectPublicResponse publicGetBySlug(String projectSlug) {
+    var core = projectPublicCoreService.getBySlug(projectSlug);
+    boolean favorite = projectFavoriteService.isCurrentViewerFavorite(core.getId());
+    return ProjectPublicCoreMapper.toV1Response(core, favorite);
   }
 
   @Override
@@ -305,6 +335,8 @@ public class ProjectServiceImpl implements ProjectService {
     List<Long> projectIds = page.getContent().stream()
         .map(ProjectEntity::getId)
         .toList();
+
+    preloadPropertyTypes(page.getContent());
 
     Map<Long, List<ProjectMediaEntity>> mediaMap;
 
@@ -347,6 +379,7 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     List<Long> projectIds = page.getContent().stream().map(ProjectEntity::getId).toList();
+    preloadPropertyTypes(page.getContent());
     Map<Long, List<ProjectMediaEntity>> mediaMap = projectIds.isEmpty()
         ? Collections.emptyMap()
         : projectMediaRepository.findActiveByProjectIds(projectIds).stream()
@@ -358,6 +391,34 @@ public class ProjectServiceImpl implements ProjectService {
 
     projectFavoriteService.enrichPublicProjects(responses);
     return new PageImpl<>(responses, pageable, page.getTotalElements());
+  }
+
+  private void preloadPropertyTypes(List<ProjectEntity> projects) {
+    if (projects == null || projects.isEmpty()) {
+      return;
+    }
+
+    List<Long> projectIds = projects.stream()
+        .map(ProjectEntity::getId)
+        .filter(java.util.Objects::nonNull)
+        .toList();
+
+    if (!projectIds.isEmpty()) {
+      projectRepository.findAllWithPropertyTypesByIdIn(projectIds);
+    }
+  }
+
+  private void attachLockedBuilder(ProjectEntity project) {
+    BuilderEntity currentBuilder = project.getBuilder();
+    if (currentBuilder == null || currentBuilder.getId() == null) {
+      projectPublicVisibilityPolicy.assertEligibleForPublication(project, project.getId());
+      return;
+    }
+
+    BuilderEntity lockedBuilder = builderRepository
+        .findByIdAndDeletedFalseForUpdate(currentBuilder.getId())
+        .orElse(null);
+    project.setBuilder(lockedBuilder);
   }
 
   private void applyUpdate(ProjectEntity entity, ProjectUpsertRequest request, Long projectId) {

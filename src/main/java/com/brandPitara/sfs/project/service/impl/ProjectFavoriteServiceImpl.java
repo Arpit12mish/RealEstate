@@ -10,6 +10,8 @@ import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.home.dto.GenericCardDto;
 import com.brandPitara.sfs.home.enums.HomeSectionItemType;
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
+import com.brandPitara.sfs.project.dto.ProjectFavoriteOverlayItemResponse;
+import com.brandPitara.sfs.project.dto.ProjectFavoriteOverlayResponse;
 import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
 import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
@@ -19,15 +21,18 @@ import com.brandPitara.sfs.project.mapper.ProjectMapper;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
+import com.brandPitara.sfs.project.service.reader.ProjectFavoriteMembershipReader;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationUserSnapshot;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -41,9 +46,13 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final ProjectMediaRepository projectMediaRepository;
+    private final ProjectFavoriteMembershipReader favoriteMembershipReader;
 
     @Override
     public void toggleProjectFavorite(Long projectId) {
+        // Intentional CDN contract: favoriteCount is eventually consistent for the
+        // public v2 document and refreshes through its 30-second shared TTL. A
+        // viewer toggle must not generate CloudFront control-plane traffic.
         User user = getCurrentUserOrThrow();
 
         ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
@@ -98,6 +107,50 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public boolean isCurrentViewerFavorite(Long projectId) {
+        return getCurrentUserIdOptional()
+                .map(userId -> favoriteMembershipReader.isFavorite(userId, projectId))
+                .orElse(false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ProjectFavoriteOverlayResponse getCurrentViewerFavoriteOverlay(List<Long> projectIds) {
+        if (projectIds == null || projectIds.isEmpty()) {
+            throw new IllegalArgumentException("projectIds must contain at least one project ID");
+        }
+        if (projectIds.size() > 100) {
+            throw new IllegalArgumentException("projectIds must contain at most 100 project IDs");
+        }
+        if (projectIds.stream().anyMatch(id -> id == null || id <= 0)) {
+            throw new IllegalArgumentException("projectIds must contain only positive project IDs");
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof MobileAuthenticationUserSnapshot snapshot)
+                || snapshot.userId() == null || !snapshot.enabled()) {
+            throw new org.springframework.security.authentication.InsufficientAuthenticationException(
+                    "Authenticated mobile user required");
+        }
+
+        List<Long> requestedIds = List.copyOf(new LinkedHashSet<>(projectIds));
+        Set<Long> favoritedIds = new HashSet<>(userFavoriteRepository.findFavoritedTargetIds(
+                snapshot.userId(),
+                FavoriteTargetType.PROJECT,
+                requestedIds
+        ));
+
+        return new ProjectFavoriteOverlayResponse(requestedIds.stream()
+                .map(projectId -> new ProjectFavoriteOverlayItemResponse(
+                        projectId,
+                        favoritedIds.contains(projectId)
+                ))
+                .toList());
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Page<ProjectResponse> listMyFavoriteProjects(Pageable pageable) {
         User user = getCurrentUserOrThrow();
@@ -137,6 +190,10 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
                 start >= orderedProjects.size() ? List.of() : orderedProjects.subList(start, end);
 
         List<Long> pageProjectIds = pageContent.stream().map(ProjectEntity::getId).toList();
+
+        if (!pageProjectIds.isEmpty()) {
+            projectRepository.findAllWithPropertyTypesByIdIn(pageProjectIds);
+        }
 
         Map<Long, List<ProjectMediaEntity>> mediaMap;
         if (!pageProjectIds.isEmpty()) {
@@ -410,6 +467,10 @@ public class ProjectFavoriteServiceImpl implements ProjectFavoriteService {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
         if (auth == null || !auth.isAuthenticated()) return Optional.empty();
+
+        if (auth.getPrincipal() instanceof MobileAuthenticationUserSnapshot snapshot) {
+            return Optional.ofNullable(snapshot.userId());
+        }
 
         String name = auth.getName();
         if (name == null || name.isBlank() || "anonymousUser".equalsIgnoreCase(name)) {

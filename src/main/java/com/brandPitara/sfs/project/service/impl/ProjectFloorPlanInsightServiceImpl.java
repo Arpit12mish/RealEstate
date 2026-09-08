@@ -1,19 +1,24 @@
 package com.brandPitara.sfs.project.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.FloorPlanInsightResponse;
 import com.brandPitara.sfs.project.dto.FloorPlanInsightUpsertRequest;
 import com.brandPitara.sfs.project.dto.FloorPlanRoomDimensionResponse;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanInsightDetailResponse;
+import com.brandPitara.sfs.project.dto.ProjectFloorPlanVisualAnalysisResponse;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanInsightEntity;
 import com.brandPitara.sfs.project.mapper.ProjectFloorPlanInsightMapper;
 import com.brandPitara.sfs.project.mapper.ProjectFloorPlanRoomDimensionMapper;
+import com.brandPitara.sfs.project.mapper.ProjectFloorPlanVisualAnalysisMapper;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanInsightRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRepository;
 import com.brandPitara.sfs.project.repository.ProjectFloorPlanRoomDimensionRepository;
+import com.brandPitara.sfs.project.repository.ProjectFloorPlanVisualAnalysisRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFloorPlanInsightService;
 import lombok.RequiredArgsConstructor;
@@ -31,8 +36,10 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
   private final ProjectFloorPlanRepository floorPlanRepository;
   private final ProjectFloorPlanInsightRepository insightRepository;
   private final ProjectFloorPlanRoomDimensionRepository roomRepository;
+  private final ProjectFloorPlanVisualAnalysisRepository visualAnalysisRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @Override
   @Transactional
@@ -45,6 +52,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .title(request.getTitle().trim())
         .summary(clean(request.getSummary()))
         .detailedText(clean(request.getDetailedText()))
+        .dimensionText(clean(request.getDimensionText()))
         .unitValue(request.getUnitValue())
         .benchmarkValue(request.getBenchmarkValue())
         .unitLabel(clean(request.getUnitLabel()))
@@ -66,6 +74,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
     return ProjectFloorPlanInsightMapper.toResponse(saved);
   }
 
@@ -81,6 +90,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
     if (request.getTitle() != null) entity.setTitle(request.getTitle().trim());
     if (request.getSummary() != null) entity.setSummary(clean(request.getSummary()));
     if (request.getDetailedText() != null) entity.setDetailedText(clean(request.getDetailedText()));
+    if (request.getDimensionText() != null) entity.setDimensionText(clean(request.getDimensionText()));
     if (request.getUnitValue() != null) entity.setUnitValue(request.getUnitValue());
     if (request.getBenchmarkValue() != null) entity.setBenchmarkValue(request.getBenchmarkValue());
     if (request.getUnitLabel() != null) entity.setUnitLabel(clean(request.getUnitLabel()));
@@ -100,6 +110,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
     return ProjectFloorPlanInsightMapper.toResponse(saved);
   }
 
@@ -118,6 +129,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
   }
 
   @Override
@@ -157,6 +169,14 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .map(ProjectFloorPlanInsightMapper::toResponse)
         .toList();
 
+    ProjectFloorPlanVisualAnalysisResponse visualAnalysis = visualAnalysisRepository
+        .findByFloorPlanIdAndActiveTrueAndDeletedFalse(floorPlanId)
+        .map(ProjectFloorPlanVisualAnalysisMapper::toResponse)
+        .orElse(null);
+
+    boolean hasRoomComparisonData = rooms.stream().anyMatch(FloorPlanRoomDimensionResponse::isHasComparisonData);
+    boolean demo = visualAnalysis == null && !hasRoomComparisonData;
+
     return ProjectFloorPlanInsightDetailResponse.builder()
         .floorPlanId(fp.getId())
         .projectId(project.getId())
@@ -180,6 +200,9 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .keyPlanImageUrl(fp.getKeyPlanImageUrl())
         .rooms(rooms)
         .insights(insights)
+        .visualAnalysis(visualAnalysis)
+        .demo(demo)
+        .sourceLabel(demo ? "Sample content" : "Verified floor-plan intelligence")
         .build();
   }
 

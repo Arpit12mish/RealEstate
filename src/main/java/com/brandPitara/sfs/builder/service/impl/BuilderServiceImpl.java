@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.builder.service.impl;
 
 import com.brandPitara.sfs.builder.dto.BuilderCardResponse;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.builder.dto.BuilderPublicResponse;
 import com.brandPitara.sfs.builder.dto.BuilderResponse;
 import com.brandPitara.sfs.builder.dto.BuilderUpsertRequest;
@@ -11,6 +13,8 @@ import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.builder.service.BuilderService;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.entity.CityEntity;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.exception.PublicationConflictException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
@@ -27,6 +31,8 @@ public class BuilderServiceImpl implements BuilderService {
 
   private final BuilderRepository builderRepository;
   private final ContentVersionService contentVersionService;
+  private final ProjectRepository projectRepository;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @jakarta.persistence.PersistenceContext
   private jakarta.persistence.EntityManager em;
@@ -63,8 +69,15 @@ public class BuilderServiceImpl implements BuilderService {
   @Override
   @Transactional
   public BuilderResponse update(Long id, BuilderUpsertRequest request) {
-    BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
+    boolean deactivating = Boolean.FALSE.equals(request.getActive());
+    BuilderEntity entity = (deactivating
+        ? builderRepository.findByIdAndDeletedFalseForUpdate(id)
+        : builderRepository.findByIdAndDeletedFalse(id))
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
+
+    if (deactivating) {
+      assertNoPublishedProjects(entity, "deactivated");
+    }
 
     if (StringUtils.hasText(request.getName())) entity.setName(clean(request.getName()));
     if (request.getLogoUrl() != null) entity.setLogoUrl(clean(request.getLogoUrl()));
@@ -88,6 +101,7 @@ public class BuilderServiceImpl implements BuilderService {
     if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    evictAffectedProjects(id);
     return BuilderMapper.toResponse(saved);
   }
 
@@ -104,28 +118,38 @@ public class BuilderServiceImpl implements BuilderService {
     if (Boolean.TRUE.equals(saved.getPublished()) && Boolean.TRUE.equals(saved.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    evictAffectedProjects(id);
     return BuilderMapper.toResponse(saved);
   }
 
   @Override
   @Transactional
   public BuilderResponse setPublished(Long id, boolean published) {
-    BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
+    BuilderEntity entity = (published
+        ? builderRepository.findByIdAndDeletedFalse(id)
+        : builderRepository.findByIdAndDeletedFalseForUpdate(id))
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
+
+    if (!published) {
+      assertNoPublishedProjects(entity, "unpublished");
+    }
 
     entity.setPublished(published);
     BuilderEntity saved = builderRepository.save(entity);
 
     contentVersionService.bump(KEY_BUILDERS);
     contentVersionService.bump(KEY_HOME);
+    evictAffectedProjects(id);
     return BuilderMapper.toResponse(saved);
   }
 
   @Override
   @Transactional
   public void softDelete(Long id) {
-    BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
+    BuilderEntity entity = builderRepository.findByIdAndDeletedFalseForUpdate(id)
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
+
+    assertNoPublishedProjects(entity, "deleted");
 
     entity.setDeleted(true);
     entity.setPublished(false);
@@ -133,6 +157,7 @@ public class BuilderServiceImpl implements BuilderService {
 
     contentVersionService.bump(KEY_BUILDERS);
     contentVersionService.bump(KEY_HOME);
+    evictAffectedProjects(id);
   }
 
   @Override
@@ -191,6 +216,31 @@ public class BuilderServiceImpl implements BuilderService {
   private String clean(String s) {
     if (!StringUtils.hasText(s)) return null;
     return s.trim();
+  }
+
+  private void evictAffectedProjects(Long builderId) {
+    cacheEvictionPublisher.publishAll(
+        projectRepository.findIdsByBuilderIdAndDeletedFalse(builderId),
+        ProjectCacheEvictionReason.BUILDER_CHANGED
+    );
+  }
+
+  private void assertNoPublishedProjects(BuilderEntity builder, String operation) {
+    long publishedProjectCount = projectRepository
+        .countByBuilderIdAndPublishedTrueAndDeletedFalse(builder.getId());
+    if (publishedProjectCount == 0) {
+      return;
+    }
+
+    String builderName = StringUtils.hasText(builder.getName())
+        ? builder.getName()
+        : "Builder " + builder.getId();
+    String noun = publishedProjectCount == 1 ? "project depends" : "projects depend";
+    throw new PublicationConflictException(
+        "BUILDER_HAS_PUBLISHED_PROJECTS",
+        builderName + " cannot be " + operation + " because " + publishedProjectCount
+            + " published " + noun + " on it. Unpublish those projects first."
+    );
   }
 
   @Override

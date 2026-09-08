@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.ratelimit.filter;
 
 import com.brandPitara.sfs.config.SecurityRequestBypass;
+import com.brandPitara.sfs.config.DeterministicPublicRequestMatcher;
 import com.brandPitara.sfs.observability.LoggingConstants;
 import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
 import com.brandPitara.sfs.ratelimit.enums.RateLimitFailureMode;
@@ -57,6 +58,7 @@ public class PreAuthenticationAbuseFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return SecurityRequestBypass.shouldBypass(request)
+                || DeterministicPublicRequestMatcher.matches(request)
                 || request.getRequestURI().startsWith("/api/dashboard/")
                 || request.getRequestURI().startsWith("/api/admin/");
     }

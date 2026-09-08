@@ -13,16 +13,13 @@ import com.brandPitara.sfs.instagram.repository.InstagramReelRepository;
 import com.brandPitara.sfs.instagram.service.InstagramAssetCacheService;
 import com.brandPitara.sfs.instagram.service.InstagramReelMapper;
 import com.brandPitara.sfs.instagram.service.InstagramReelSyncService;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.OffsetDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -38,6 +35,28 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
     private final InstagramAssetCacheService instagramAssetCacheService;
     private final InstagramReelRepository instagramReelRepository;
     private final InstagramReelMapper instagramReelMapper;
+    private final InstagramTrendingScoreCalculator trendingScoreCalculator;
+    // A real, separate bean - not a self-invoked internal method - so that
+    // recalculateTrendingScores() below is actually called through Spring's
+    // transactional proxy. See InstagramTrendingScoreRecalculator's Javadoc
+    // for why the previous `this.recalculateTrendingScores()` self-call made
+    // its own @Transactional silently do nothing (a well-known Spring AOP
+    // proxy pitfall), and why a self-injected @Lazy proxy field turned out not
+    // to be a safe fix either: it produced a real, Spring-boot-refusing
+    // circular dependency (dashboardInstagramReelController ->
+    // instagramReelSyncServiceImpl -> itself), confirmed by actually booting
+    // the app, not just by reasoning about it.
+    private final InstagramTrendingScoreRecalculator trendingScoreRecalculator;
+    // Makes "this DB write is a short phase around, never containing, the external Meta Graph
+    // API calls above/below it" explicit and consistent with Twilio/PublicReview/
+    // ProjectConnectivity, instead of relying on Spring Data's own implicit per-call
+    // @Transactional on save(). Each save is still only atomic with itself, not across the
+    // whole sync loop - the loop's per-item external calls (fetchInsights, cacheThumbnail)
+    // make batch-wide atomicity impossible without holding a connection across external I/O,
+    // and the sync is idempotent/resumable per Instagram media ID, so per-item atomicity is
+    // the correct, deliberate tradeoff here (a failure mid-loop leaves already-processed items
+    // correctly saved and picked up again, not corrupted, on the next scheduled run).
+    private final ExternalProviderTransactions externalProviderTransactions;
 
     @Override
     public InstagramReelSyncResult syncLatestReels() {
@@ -53,11 +72,8 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
     }
 
     @Override
-    @Transactional
     public void recalculateTrendingScores() {
-        List<InstagramReelEntity> reels = instagramReelRepository.findByDeletedFalse();
-        reels.forEach(entity -> entity.setTrendingScore(calculateTrendingScore(entity)));
-        instagramReelRepository.saveAll(reels);
+        trendingScoreRecalculator.recalculateTrendingScores();
     }
 
     @Override
@@ -79,7 +95,7 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             } else {
                 failed++;
             }
-            instagramReelRepository.save(entity);
+            externalProviderTransactions.write(() -> instagramReelRepository.save(entity));
         }
 
         OffsetDateTime completedAt = OffsetDateTime.now();
@@ -162,7 +178,7 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             }
 
             CacheOutcome cacheOutcome = applyMeta(media, insights, entity);
-            instagramReelRepository.save(entity);
+            externalProviderTransactions.write(() -> instagramReelRepository.save(entity));
 
             if (cacheOutcome == CacheOutcome.CACHED) {
                 thumbnailCached++;
@@ -177,7 +193,7 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             }
         }
 
-        recalculateTrendingScores();
+        trendingScoreRecalculator.recalculateTrendingScores();
         OffsetDateTime completedAt = OffsetDateTime.now();
         InstagramReelSyncResult result = InstagramReelSyncResult.builder()
             .fetchedCount(mediaItems.size())
@@ -231,7 +247,7 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
         entity.setSaveCount(nonNull(insights.getSaveCount()));
         entity.setSyncedFromMeta(true);
         entity.setLastSyncedAt(now);
-        entity.setTrendingScore(calculateTrendingScore(entity));
+        entity.setTrendingScore(trendingScoreCalculator.calculate(entity));
 
         CacheOutcome cacheOutcome = CacheOutcome.SKIPPED;
         if (StringUtils.hasText(sourceThumbnailUrl) && shouldCacheThumbnail(entity, previousSourceThumbnailUrl, sourceThumbnailUrl, now)) {
@@ -304,29 +320,6 @@ public class InstagramReelSyncServiceImpl implements InstagramReelSyncService {
             return true;
         }
         return "video".equals(mediaType) && permalink != null && permalink.contains("/reel/");
-    }
-
-    private BigDecimal calculateTrendingScore(InstagramReelEntity entity) {
-        double score =
-            nonNull(entity.getViewCount()) * 0.50
-                + nonNull(entity.getLikeCount()) * 0.20
-                + nonNull(entity.getCommentCount()) * 0.20
-                + nonNull(entity.getShareCount()) * 0.10
-                + nonNull(entity.getSaveCount()) * 0.10;
-
-        OffsetDateTime publishedAt = entity.getPublishedAt();
-        if (publishedAt != null) {
-            long ageHours = ChronoUnit.HOURS.between(publishedAt, OffsetDateTime.now());
-            if (ageHours <= 24) {
-                score += 500;
-            } else if (ageHours <= 24 * 7) {
-                score += 250;
-            } else if (ageHours <= 24 * 30) {
-                score += 100;
-            }
-        }
-
-        return BigDecimal.valueOf(score).setScale(2, RoundingMode.HALF_UP);
     }
 
     private void validateConfig() {

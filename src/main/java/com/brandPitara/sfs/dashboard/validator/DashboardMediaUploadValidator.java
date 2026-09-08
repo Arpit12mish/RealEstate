@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.dashboard.validator;
 
 import com.brandPitara.sfs.dashboard.media.enums.DashboardMediaUploadType;
+import com.brandPitara.sfs.media.config.S3Properties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,6 +19,9 @@ public class DashboardMediaUploadValidator {
     private static final long MAX_PDF_BYTES      = 15L * 1024 * 1024;
     private static final long MAX_VIDEO_BYTES    = 5L * 1024 * 1024;
     private static final long MAX_JSON_BYTES     = 2L * 1024 * 1024;
+    private static final long DEFAULT_MAX_PROMO_BANNER_VIDEO_BYTES = 25L * 1024 * 1024;
+
+    private final long maxPromoBannerVideoBytes;
 
     // Brand upload size limits (Phase 2B.2) - each brand upload type has its own limit,
     // distinct from the generic MAX_IMAGE_BYTES/MAX_VIDEO_BYTES used by pre-existing types.
@@ -30,6 +35,17 @@ public class DashboardMediaUploadValidator {
     // non-pdf client-side pre-check at 2 MB regardless of the maxSizeLabel a form passes in -
     // keep this at 2 MB so the client-side check and this server-side limit never disagree.
     private static final long MAX_BRAND_PRODUCT_CATEGORY_IMAGE_BYTES = 2L * 1024 * 1024;
+
+    public DashboardMediaUploadValidator() {
+        this.maxPromoBannerVideoBytes = DEFAULT_MAX_PROMO_BANNER_VIDEO_BYTES;
+    }
+
+    @Autowired
+    public DashboardMediaUploadValidator(S3Properties s3Properties) {
+        this.maxPromoBannerVideoBytes = s3Properties.getMaxPromoBannerVideoBytes() > 0
+                ? s3Properties.getMaxPromoBannerVideoBytes()
+                : DEFAULT_MAX_PROMO_BANNER_VIDEO_BYTES;
+    }
 
     public void validateContentType(DashboardMediaUploadType uploadType, String contentType) {
         boolean isPdf = APPLICATION_PDF.equals(contentType);
@@ -66,6 +82,12 @@ public class DashboardMediaUploadValidator {
                     uploadType + " supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4"
             );
         }
+        boolean isLottieJson = APPLICATION_JSON.equals(contentType);
+        if (uploadType.allowsImageOrVideoOrLottie() && !isVideo && !isSupportedImage && !isLottieJson) {
+            throw new IllegalArgumentException(
+                    uploadType + " supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4, application/json"
+            );
+        }
     }
 
     public void validateFileSize(DashboardMediaUploadType uploadType, String contentType, long fileSizeBytes) {
@@ -97,6 +119,14 @@ public class DashboardMediaUploadValidator {
         if (uploadType == DashboardMediaUploadType.BRAND_PRODUCT_CATEGORY_IMAGE) {
             return MAX_BRAND_PRODUCT_CATEGORY_IMAGE_BYTES;
         }
+        if (uploadType == DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO) {
+            return maxPromoBannerVideoBytes;
+        }
+        if (uploadType.allowsImageOrVideoOrLottie()) {
+            if (VIDEO_MP4.equals(contentType)) return MAX_VIDEO_BYTES;
+            if (APPLICATION_JSON.equals(contentType)) return MAX_JSON_BYTES;
+            return MAX_IMAGE_BYTES;
+        }
         if (uploadType.requiresPdf()) {
             return MAX_PDF_BYTES;
         }
@@ -117,6 +147,31 @@ public class DashboardMediaUploadValidator {
             Long brandId,
             Long companyId
     ) {
+        validateContextIds(uploadType, projectId, builderId, cityId, brandId, companyId, null, null);
+    }
+
+    public void validateContextIds(
+            DashboardMediaUploadType uploadType,
+            Long projectId,
+            Long builderId,
+            Long cityId,
+            Long brandId,
+            Long companyId,
+            Long promoBannerId
+    ) {
+        validateContextIds(uploadType, projectId, builderId, cityId, brandId, companyId, promoBannerId, null);
+    }
+
+    public void validateContextIds(
+            DashboardMediaUploadType uploadType,
+            Long projectId,
+            Long builderId,
+            Long cityId,
+            Long brandId,
+            Long companyId,
+            Long promoBannerId,
+            Long companyProjectId
+    ) {
         if (uploadType.isProjectScoped() && projectId == null) {
             throw new IllegalArgumentException(uploadType + " requires projectId");
         }
@@ -131,6 +186,12 @@ public class DashboardMediaUploadValidator {
         }
         if (uploadType.isCompanyScoped() && companyId == null) {
             throw new IllegalArgumentException(uploadType + " requires companyId");
+        }
+        if (uploadType.isPromoBannerScoped() && promoBannerId == null) {
+            throw new IllegalArgumentException(uploadType + " requires promoBannerId");
+        }
+        if (uploadType.isCompanyProjectScoped() && companyProjectId == null) {
+            throw new IllegalArgumentException(uploadType + " requires companyProjectId");
         }
     }
 }

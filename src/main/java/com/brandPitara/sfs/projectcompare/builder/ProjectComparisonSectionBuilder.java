@@ -6,8 +6,12 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectFloorPlanEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
 import com.brandPitara.sfs.project.enums.ProjectConnectivityCategory;
+import com.brandPitara.sfs.project.enums.ProjectMediaType;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonCellValue;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonMediaItemResponse;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonOverviewInsightResponse;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonProjectHeader;
+import com.brandPitara.sfs.projectcompare.dto.response.ComparisonProjectGalleryResponse;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonRow;
 import com.brandPitara.sfs.projectcompare.dto.response.ComparisonSection;
 import com.brandPitara.sfs.projectcompare.enums.ComparisonSectionKey;
@@ -33,6 +37,7 @@ public class ProjectComparisonSectionBuilder {
     private static final DateTimeFormatter MONTH_YEAR = DateTimeFormatter.ofPattern("MMM yyyy");
     private static final long CRORE = 10_000_000L;
     private static final long LAKH = 100_000L;
+    private static final int MAX_COMPARISON_IMAGES_PER_PROJECT = 8;
 
     // ─── Amenity normalization ────────────────────────────────────────────────
 
@@ -83,9 +88,38 @@ public class ProjectComparisonSectionBuilder {
         }).toList();
     }
 
+    public ComparisonSection buildVisualComparison(
+            List<ProjectEntity> projects,
+            Map<Long, List<ProjectMediaEntity>> mediaMap
+    ) {
+        List<ComparisonProjectGalleryResponse> galleries = projects.stream()
+                .map(project -> buildProjectGallery(
+                        project,
+                        mediaMap.getOrDefault(project.getId(), List.of())
+                ))
+                .toList();
+
+        return ComparisonSection.builder()
+                .sectionKey(ComparisonSectionKey.VISUAL_COMPARISON)
+                .sectionTitle(ComparisonSectionKey.VISUAL_COMPARISON.toTitle())
+                .displayOrder(ComparisonSectionKey.VISUAL_COMPARISON.defaultOrder())
+                .initiallyExpanded(true)
+                .layout("PROJECT_MEDIA_GALLERY")
+                .projectGalleries(galleries)
+                .build();
+    }
+
     public ComparisonSection buildOverview(
             List<ProjectEntity> projects,
             Map<Long, ProjectMeterSnapshotEntity> snapshots
+    ) {
+        return buildOverview(projects, snapshots, null);
+    }
+
+    public ComparisonSection buildOverview(
+            List<ProjectEntity> projects,
+            Map<Long, ProjectMeterSnapshotEntity> snapshots,
+            ComparisonOverviewInsightResponse overviewInsight
     ) {
         List<ComparisonRow> rows = new ArrayList<>();
 
@@ -102,7 +136,14 @@ public class ProjectComparisonSectionBuilder {
         addOptionalTextRow(rows, "address", "Address", "TEXT", false, projects, p -> cv(p.getAddressLine()));
         rows.add(buildScoreRow("meterScore", "Meter Score", projects, snapshots));
 
-        return section(ComparisonSectionKey.OVERVIEW, rows);
+        return ComparisonSection.builder()
+                .sectionKey(ComparisonSectionKey.OVERVIEW)
+                .sectionTitle(ComparisonSectionKey.OVERVIEW.toTitle())
+                .displayOrder(ComparisonSectionKey.OVERVIEW.defaultOrder())
+                .initiallyExpanded(ComparisonSectionKey.OVERVIEW.initiallyExpanded())
+                .rows(rows)
+                .overviewInsight(overviewInsight)
+                .build();
     }
 
     public ComparisonSection buildPrice(
@@ -683,6 +724,47 @@ public class ProjectComparisonSectionBuilder {
                 .initiallyExpanded(key.initiallyExpanded())
                 .description(description)
                 .rows(rows)
+                .build();
+    }
+
+    private ComparisonProjectGalleryResponse buildProjectGallery(
+            ProjectEntity project,
+            List<ProjectMediaEntity> media
+    ) {
+        List<ProjectMediaEntity> orderedImages = media.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getMediaType() == ProjectMediaType.IMAGE)
+                .filter(item -> Boolean.TRUE.equals(item.getActive()))
+                .filter(item -> Boolean.FALSE.equals(item.getDeleted()))
+                .filter(item -> item.getUrl() != null && !item.getUrl().isBlank())
+                .sorted(Comparator
+                        .comparing(ProjectMediaEntity::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(ProjectMediaEntity::getId, Comparator.nullsLast(Long::compareTo)))
+                .toList();
+
+        List<ComparisonMediaItemResponse> items = java.util.stream.IntStream
+                .range(0, Math.min(orderedImages.size(), MAX_COMPARISON_IMAGES_PER_PROJECT))
+                .mapToObj(index -> {
+                    ProjectMediaEntity item = orderedImages.get(index);
+                    return ComparisonMediaItemResponse.builder()
+                            .id(item.getId())
+                            .mediaType(item.getMediaType().name())
+                            .url(item.getUrl())
+                            .thumbnailUrl(null)
+                            .title(null)
+                            .caption(item.getCaption())
+                            .displayOrder(item.getSortOrder() != null ? item.getSortOrder() : 0)
+                            .cover(index == 0)
+                            .build();
+                })
+                .toList();
+
+        return ComparisonProjectGalleryResponse.builder()
+                .projectId(project.getId())
+                .projectName(project.getName())
+                .coverImageUrl(items.isEmpty() ? null : items.get(0).getUrl())
+                .totalCount(orderedImages.size())
+                .items(items)
                 .build();
     }
 

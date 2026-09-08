@@ -14,6 +14,7 @@ import com.brandPitara.sfs.media.service.PresignedUploadResult;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
+import com.brandPitara.sfs.repository.PromoBannerRepository;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 
@@ -219,6 +220,45 @@ class DashboardMediaPresignServiceImplTest {
                 .containsEntry("Content-Type", "video/mp4")
                 .containsEntry("Cache-Control", "public, max-age=31536000, immutable");
         verify(mediaStorageService).createPresignedUpload(any(PresignedUploadRequest.class));
+    }
+
+    @Test
+    void homePromoBannerVideoPresignBuildsBannerScopedPermanentKey() {
+        MediaStorageService mediaStorageService = fakeMediaStorageService();
+        PromoBannerRepository promoBannerRepository = mock(PromoBannerRepository.class);
+        when(promoBannerRepository.existsByIdAndDeletedFalse(99L)).thenReturn(true);
+        DashboardMediaPresignServiceImpl service = new DashboardMediaPresignServiceImpl(
+                mediaStorageService,
+                mock(DashboardProjectOwnershipService.class),
+                new DashboardMediaUploadValidator(),
+                mock(CityRepository.class),
+                mock(ProjectRepository.class),
+                mock(BrandRepository.class),
+                mock(CompanyRepository.class),
+                mock(com.brandPitara.sfs.company.repository.CompanyProjectRepository.class),
+                promoBannerRepository
+        );
+
+        DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/mp4",
+                10L * 1024 * 1024,
+                null,
+                null,
+                null,
+                null,
+                null,
+                99L
+        ));
+
+        assertThat(response.storageKey())
+                .startsWith("home/promo-banners/99/")
+                .endsWith(".mp4");
+        assertThat(response.publicUrl()).isEqualTo("https://cdn.squarefootstory.com/" + response.storageKey());
+        assertThat(response.uploadUrl()).isEqualTo("https://upload.example.com/presigned");
+        assertThat(response.requiredHeaders())
+                .containsEntry("Content-Type", "video/mp4")
+                .containsEntry("Cache-Control", "public, max-age=31536000, immutable");
     }
 
     @Test
@@ -517,7 +557,9 @@ class DashboardMediaPresignServiceImplTest {
                 cityRepository,
                 projectRepository,
                 brandRepository,
-                mock(CompanyRepository.class)
+                mock(CompanyRepository.class),
+                mock(com.brandPitara.sfs.company.repository.CompanyProjectRepository.class),
+                mock(PromoBannerRepository.class)
         );
     }
 }

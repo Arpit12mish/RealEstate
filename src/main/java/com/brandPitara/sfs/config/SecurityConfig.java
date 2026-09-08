@@ -10,9 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -28,6 +26,7 @@ public class SecurityConfig {
 
     static final String[] PUBLIC_MOBILE_AUTH_ENDPOINTS = {
             "/api/auth/request-otp",
+            "/api/auth/otp/resend",
             "/api/auth/verify-otp",
             "/api/auth/refresh",
             "/api/auth/logout",
@@ -176,13 +175,28 @@ public class SecurityConfig {
                                 "/api/projects/compare"
                         ).permitAll()
                         .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/analytics/events/batch"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/public/interior-cost/**",
+                                "/api/public/circle-rates/**",
+                                "/api/public/stamp-duty/**"
+                        ).permitAll()
+                        .requestMatchers(
                                 HttpMethod.GET,
+                                "/api/v2/public/**",
                                 "/api/public/**",
                                 "/api/projects/**",
                                 "/api/businesses/**",
                                 "/api/public/stamp-duty/**",
                                 "/api/public/interior-cost/**",
                                 "/api/search/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.HEAD,
+                                "/api/v2/public/projects/**"
                         ).permitAll()
                         .anyRequest()
                         .authenticated()
@@ -202,13 +216,6 @@ public class SecurityConfig {
         );
 
         return http.build();
-    }
-
-    @Bean
-    public AuthenticationManager authenticationManager(
-            AuthenticationConfiguration configuration
-    ) throws Exception {
-        return configuration.getAuthenticationManager();
     }
 
     @Bean

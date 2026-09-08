@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClientException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -31,6 +32,13 @@ public class InstagramMetaClientImpl implements InstagramMetaClient {
     );
     private static final int MAX_MEDIA_FETCH = 100;
     private static final int MAX_PAGES = 5;
+    // RestClientException#getMessage() can embed the full request URL (e.g.
+    // Spring's ResourceAccessException: `I/O error on GET request for "<url>"`),
+    // and every URL we call carries access_token as a query param - including
+    // Meta's paging.next URLs. This exception is later logged with its full
+    // cause chain by the global error handler, so the raw token must never
+    // survive into it.
+    private static final Pattern ACCESS_TOKEN_PATTERN = Pattern.compile("access_token=[^&\\s\"]*");
 
     private final InstagramMetaProperties properties;
     private final RestClient restClient;
@@ -103,7 +111,7 @@ public class InstagramMetaClientImpl implements InstagramMetaClient {
                 .retrieve()
                 .body(MetaMediaResponse.class);
         } catch (RestClientException ex) {
-            throw new InstagramMetaException("Unable to fetch Instagram media from Meta Graph API", ex);
+            throw new InstagramMetaException("Unable to fetch Instagram media from Meta Graph API", redact(ex));
         }
     }
 
@@ -120,8 +128,21 @@ public class InstagramMetaClientImpl implements InstagramMetaClient {
 
             return toInsights(response);
         } catch (RestClientException ex) {
-            throw new InstagramMetaException("Unable to fetch Instagram media insights", ex);
+            throw new InstagramMetaException("Unable to fetch Instagram media insights", redact(ex));
         }
+    }
+
+    /**
+     * Strips any {@code access_token=...} query value from the exception message
+     * before it can be chained as a cause and logged with a full stack trace.
+     */
+    RestClientException redact(RestClientException ex) {
+        String message = ex.getMessage();
+        if (message == null || !message.contains("access_token=")) {
+            return ex;
+        }
+        String redacted = ACCESS_TOKEN_PATTERN.matcher(message).replaceAll("access_token=REDACTED");
+        return new RestClientException(redacted, ex.getCause());
     }
 
     private InstagramMetaInsights toInsights(MetaInsightsResponse response) {

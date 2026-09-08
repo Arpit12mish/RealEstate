@@ -14,6 +14,7 @@ public class ProjectFloorPlanInsightMapper {
         .title(e.getTitle())
         .summary(e.getSummary())
         .detailedText(e.getDetailedText())
+        .dimensionText(e.getDimensionText())
         .unitValue(e.getUnitValue())
         .benchmarkValue(e.getBenchmarkValue())
         .unitLabel(e.getUnitLabel())

@@ -27,6 +27,10 @@ public class FloorPlanInsightUpsertRequest {
   @Size(max = 2000)
   private String detailedText;
 
+  // Free-form dimension string for room-size insight types (e.g. "12ft x 14ft")
+  @Size(max = 100)
+  private String dimensionText;
+
   // Numeric benchmark comparison
   @Digits(integer = 10, fraction = 4)
   private BigDecimal unitValue;

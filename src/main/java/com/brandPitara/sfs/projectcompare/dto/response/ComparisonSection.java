@@ -18,4 +18,13 @@ public class ComparisonSection {
     /** Optional note about the section (e.g. "All compared projects are by M3M"). Omitted from JSON when null. */
     private final String description;
     private final List<ComparisonRow> rows;
+
+    /** Optional renderer hint for non-tabular comparison sections. */
+    private final String layout;
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private final List<ComparisonProjectGalleryResponse> projectGalleries;
+
+    /** Optional deterministic narrative attached only to the Overview section. */
+    private final ComparisonOverviewInsightResponse overviewInsight;
 }

@@ -14,6 +14,8 @@ import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.Optional;
@@ -29,6 +31,16 @@ import static org.mockito.Mockito.*;
  * profile-scoped storage-key format and returned URL/expiry behavior.
  */
 class ProfileServiceImplTest {
+
+    @Test
+    void profilePhotoPresignSuspendsAnyCallerTransactionBeforePresigning() throws Exception {
+        Transactional transactional = ProfileServiceImpl.class
+                .getMethod("createProfilePhotoPresign", String.class, PresignProfilePhotoRequest.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(transactional).isNotNull();
+        assertThat(transactional.propagation()).isEqualTo(Propagation.NOT_SUPPORTED);
+    }
 
     @Test
     void profilePhotoPresignBuildsUserScopedKeyAndDelegatesToPort() {
@@ -129,6 +141,7 @@ class ProfileServiceImplTest {
 
         service.deleteAccount(user.getPhoneNumber());
 
+        verify(guestSessions).deleteByLinkedUser_Id(81L);
         verify(userRepository).delete(user);
         verify(invalidator).invalidateMobileAfterCommit(81L);
     }

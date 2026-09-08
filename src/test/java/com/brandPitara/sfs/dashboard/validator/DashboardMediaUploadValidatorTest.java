@@ -159,6 +159,40 @@ class DashboardMediaUploadValidatorTest {
         validator.validateContextIds(DashboardMediaUploadType.HOME_LOTTIE_JSON, null, null, null, null, null);
     }
 
+    @Test
+    void homePromoBannerVideoAcceptsOnlyMp4AndUsesDedicatedLimit() {
+        validator.validateContentType(DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO, "video/mp4");
+        validator.validateFileSize(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/mp4",
+                25L * 1024 * 1024
+        );
+
+        assertThatThrownBy(() -> validator.validateContentType(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/quicktime"
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("only video/mp4");
+
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                "video/mp4",
+                25L * 1024 * 1024 + 1
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("25 MB");
+    }
+
+    @Test
+    void homePromoBannerVideoRequiresBannerId() {
+        assertThatThrownBy(() -> validator.validateContextIds(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                null, null, null, null, null, null
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("requires promoBannerId");
+
+        validator.validateContextIds(
+                DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
+                null, null, null, null, null, 99L
+        );
+    }
+
     // --- Brand uploads (Phase 2B.2) ---
 
     @Test
@@ -335,6 +369,49 @@ class DashboardMediaUploadValidatorTest {
         ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("exceeds maximum allowed size of 2 MB");
+    }
+
+    // --- Floor Plan Insights: Visual Analysis media (image/video/Lottie JSON) ---
+
+    @Test
+    void floorPlanInsightVisualMediaAcceptsImageVideoAndLottieJson() {
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/webp");
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4");
+        validator.validateContentType(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json");
+
+        assertThatThrownBy(() -> validator.validateContentType(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+                "application/pdf"
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4, application/json");
+    }
+
+    @Test
+    void floorPlanInsightVisualMediaAppliesSizeLimitPerContentType() {
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/webp", 2L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "image/webp", 2L * 1024 * 1024 + 1
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("exceeds maximum allowed size of 2 MB");
+
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4", 5L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "video/mp4", 5L * 1024 * 1024 + 1
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("exceeds maximum allowed size of 5 MB");
+
+        validator.validateFileSize(DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json", 2L * 1024 * 1024);
+        assertThatThrownBy(() -> validator.validateFileSize(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA, "application/json", 2L * 1024 * 1024 + 1
+        )).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("exceeds maximum allowed size of 2 MB");
+    }
+
+    @Test
+    void floorPlanInsightVisualMediaRequiresProjectId() {
+        assertThatThrownBy(() -> validator.validateContextIds(
+                DashboardMediaUploadType.FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+                null, null, null, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("FLOOR_PLAN_INSIGHT_VISUAL_MEDIA requires projectId");
     }
 
     @Test

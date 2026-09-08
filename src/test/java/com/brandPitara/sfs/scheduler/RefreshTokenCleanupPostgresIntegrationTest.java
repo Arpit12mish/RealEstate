@@ -7,6 +7,7 @@ import com.brandPitara.sfs.enums.OnboardingStatus;
 import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.repository.RefreshTokenRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.service.impl.RefreshTokenFamilyRevoker;
 import com.brandPitara.sfs.service.impl.RefreshTokenServiceImpl;
 import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import com.zaxxer.hikari.HikariDataSource;
@@ -63,7 +64,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
                 "spring.datasource.hikari.connection-timeout=3000",
                 "spring.task.scheduling.enabled=false",
                 "jwt.refresh.expiration.days=30",
-                "app.logging.path=target/test-logs"
+                "sfs.log.dir=target/test-logs"
         }
 )
 @ActiveProfiles("test")
@@ -445,7 +446,7 @@ class RefreshTokenCleanupPostgresIntegrationTest {
                     pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!(RefreshTokenRepository|UserRepository)$).*"
             )
     )
-    @Import({RefreshTokenCleanupBatchWorker.class, RefreshTokenServiceImpl.class})
+    @Import({RefreshTokenCleanupBatchWorker.class, RefreshTokenServiceImpl.class, RefreshTokenFamilyRevoker.class})
     static class TestApplication {
     }
 }

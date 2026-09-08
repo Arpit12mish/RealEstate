@@ -19,6 +19,7 @@ public class FloorPlanInsightResponse {
   private String title;
   private String summary;
   private String detailedText;
+  private String dimensionText;
 
   // Numeric benchmark fields
   private BigDecimal unitValue;

@@ -4,8 +4,10 @@ import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.entity.ProjectMediaEntity;
+import com.brandPitara.sfs.project.enums.PropertyType;
 
 import java.util.List;
+import java.util.Set;
 
 public class ProjectMapper {
 
@@ -38,7 +40,7 @@ public class ProjectMapper {
 
         .status(e.getStatus())
         .reviewStatus(e.getReviewStatus())
-        .propertyTypes(e.getPropertyTypes())
+        .propertyTypes(copyPropertyTypes(e))
 
         .active(Boolean.TRUE.equals(e.getActive()))
         .published(Boolean.TRUE.equals(e.getPublished()))
@@ -92,8 +94,16 @@ public class ProjectMapper {
         .reraNumber(e.getReraNumber())
 
         .status(e.getStatus())
-        .propertyTypes(e.getPropertyTypes())
+        .propertyTypes(copyPropertyTypes(e))
         .build();
+  }
+
+  private static Set<PropertyType> copyPropertyTypes(ProjectEntity project) {
+    if (project.getPropertyTypes() == null || project.getPropertyTypes().isEmpty()) {
+      return Set.of();
+    }
+
+    return Set.copyOf(project.getPropertyTypes());
   }
 
   public static ProjectPublicResponse toPublicResponse(ProjectEntity entity, List<ProjectMediaEntity> media) {

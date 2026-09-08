@@ -17,7 +17,9 @@ sfs:
       - 127.0.0.1
       - 0:0:0:0:0:0:0:1
       - ::1
-    max-cached-body-bytes: ${RATE_LIMIT_MAX_CACHED_BODY_BYTES:32768}
+    # Raised from 32768 to cover PUBLIC_ANALYTICS_INGEST's legitimate worst case
+    # (~130KB for a full 50-event batch) - see RateLimitProperties#maxCachedBodyBytes.
+    max-cached-body-bytes: ${RATE_LIMIT_MAX_CACHED_BODY_BYTES:262144}
     abuse-capacity-multiplier: ${RATE_LIMIT_ABUSE_CAPACITY_MULTIPLIER:10}
     fail-closed-policies:
       - MOBILE_OTP_REQUEST
@@ -109,6 +111,12 @@ sfs:
             capacity: 120
             refillTokens: 120
             refillPeriodSeconds: 60
+      PUBLIC_CMS_CONTENT_READ:
+        limits:
+          - keyType: PRIMARY_IDENTITY
+            capacity: 120
+            refillTokens: 120
+            refillPeriodSeconds: 60
       PUBLIC_PROJECT_COMPARE:
         limits:
           - keyType: PRIMARY_IDENTITY
@@ -156,6 +164,12 @@ sfs:
           - keyType: PRIMARY_IDENTITY
             capacity: 120
             refillTokens: 120
+            refillPeriodSeconds: 60
+      PUBLIC_MOBILE_UPDATE_POLICY_READ:
+        limits:
+          - keyType: PRIMARY_IDENTITY
+            capacity: 300
+            refillTokens: 300
             refillPeriodSeconds: 60
       PUBLIC_CALCULATOR_READ:
         limits:
@@ -343,4 +357,16 @@ sfs:
           - keyType: PRIMARY_IDENTITY
             capacity: 300
             refillTokens: 300
+            refillPeriodSeconds: 60
+
+      # Analytics Phase 1 backend-hardening pass. Generous by design (task's own
+      # "generous abuse protection only, do not rate-limit legitimate app usage
+      # aggressively"): a well-behaved AnalyticsClient flushes at most every ~15s,
+      # so 60/min is roughly 15x normal usage while still bounding a runaway or
+      # malicious client sending repeated 50-event batches.
+      PUBLIC_ANALYTICS_INGEST:
+        limits:
+          - keyType: PRIMARY_IDENTITY
+            capacity: 60
+            refillTokens: 60
             refillPeriodSeconds: 60

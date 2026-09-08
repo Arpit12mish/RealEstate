@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
@@ -46,6 +48,7 @@ class ProjectConnectivityServiceImplTest {
   @Mock private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   @Mock private NearbyPlaceProvider nearbyPlaceProvider;
   @Mock private ExternalProviderTransactions externalProviderTransactions;
+  @Mock private ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @InjectMocks private ProjectConnectivityServiceImpl service;
 
@@ -321,6 +324,22 @@ class ProjectConnectivityServiceImplTest {
     assertThat(response.getSavedCount()).isZero();
     assertThat(response.getSkippedDuplicateCount()).isEqualTo(1);
     verify(placeRepository, never()).save(any());
+    verify(cacheEvictionPublisher, never()).publish(anyLong(), any());
+  }
+
+  @Test
+  void overviewWritePublishesConnectivityEviction() {
+    ProjectEntity project = publicProject();
+    when(projectRepository.findByIdAndDeletedFalse(27L)).thenReturn(Optional.of(project));
+    when(connectivityRepository.findByProjectIdAndDeletedFalse(27L)).thenReturn(Optional.empty());
+    when(placeRepository.findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(27L)).thenReturn(List.of());
+
+    service.upsertOverview(27L, com.brandPitara.sfs.project.dto.ProjectConnectivityUpsertRequest.builder()
+        .title("Connectivity")
+        .active(true)
+        .build());
+
+    verify(cacheEvictionPublisher).publish(27L, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────────

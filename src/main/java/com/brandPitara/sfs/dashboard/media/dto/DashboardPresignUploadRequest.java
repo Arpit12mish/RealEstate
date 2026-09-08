@@ -37,5 +37,39 @@ public record DashboardPresignUploadRequest(
 
         // Required when uploadType is COMPANY_LOGO or COMPANY_COVER_IMAGE - the company must
         // already exist (same create-first-then-upload convention as BRAND_*).
-        Long companyId
-) {}
+        Long companyId,
+
+        // Required when uploadType is HOME_PROMO_BANNER_VIDEO. The banner must
+        // already exist, following the dashboard's create-entity-first upload convention.
+        Long promoBannerId,
+
+        // Required for COMPANY_PROJECT_MEDIA_IMAGE.
+        Long companyProjectId
+) {
+    public DashboardPresignUploadRequest(
+            DashboardMediaUploadType uploadType,
+            String contentType,
+            Long fileSizeBytes,
+            Long projectId,
+            Long builderId,
+            Long cityId,
+            Long brandId,
+            Long companyId
+    ) {
+        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, null, null);
+    }
+
+    public DashboardPresignUploadRequest(
+            DashboardMediaUploadType uploadType,
+            String contentType,
+            Long fileSizeBytes,
+            Long projectId,
+            Long builderId,
+            Long cityId,
+            Long brandId,
+            Long companyId,
+            Long promoBannerId
+    ) {
+        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, promoBannerId, null);
+    }
+}

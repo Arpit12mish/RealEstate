@@ -59,6 +59,21 @@ class ProdProfileConfigTest {
         }
 
         @Test
+        void productionDisablesReviewOtpByDefaultAndContainsNoLiteralBypassCredentials() throws IOException {
+            var config = loadProdConfig();
+            String source = readClasspathResource("application-prod.yml");
+
+            assertThat(config.getProperty("app.review.enabled"))
+                    .isEqualTo("${APP_REVIEW_ENABLED:false}");
+            assertThat(config.getProperty("app.review.phone-number"))
+                    .isEqualTo("${APP_REVIEW_PHONE_NUMBER:}");
+            assertThat(config.getProperty("app.review.fixed-otp"))
+                    .isEqualTo("${APP_REVIEW_FIXED_OTP:}");
+            assertThat(source)
+                    .doesNotContain("password: bp@", "authToken: bfe", "access-key: AKIA", "fixed-otp: \"123456\"");
+        }
+
+        @Test
         void dashboardSeedDefaultsToDisabledWhenEnvVarsAreNotSet() throws IOException {
             var config = loadProdConfig();
 
@@ -96,6 +111,31 @@ class ProdProfileConfigTest {
         }
 
         @Test
+        void productionHikariSettingsRemainCompleteAndMBeansStayAbsent() throws IOException {
+            var config = loadProdConfig();
+
+            assertThat(config.getProperty("spring.datasource.hikari.pool-name"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_POOL_NAME:SfsHikariPool}");
+            assertThat(config.getProperty("spring.datasource.hikari.maximum-pool-size"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:10}");
+            assertThat(config.getProperty("spring.datasource.hikari.minimum-idle"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:2}");
+            assertThat(config.getProperty("spring.datasource.hikari.connection-timeout"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:5000}");
+            assertThat(config.getProperty("spring.datasource.hikari.validation-timeout"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:2000}");
+            assertThat(config.getProperty("spring.datasource.hikari.idle-timeout"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:600000}");
+            assertThat(config.getProperty("spring.datasource.hikari.max-lifetime"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}");
+            assertThat(config.getProperty("spring.datasource.hikari.keepalive-time"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME:0}");
+            assertThat(config.getProperty("spring.datasource.hikari.leak-detection-threshold"))
+                    .isEqualTo("${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}");
+            assertThat(config.getProperty("spring.datasource.hikari.register-mbeans")).isNull();
+        }
+
+        @Test
         void metaInstagramConfigHasNoBakedInSecretsAndDefaultsSyncToDisabled() throws IOException {
             var config = loadProdConfig();
 
@@ -116,8 +156,26 @@ class ProdProfileConfigTest {
         }
 
         @Test
+        void cmsPublicMediaDomainHasNoHardCodedProductionDefault() throws IOException {
+            var config = loadProdConfig();
+
+            assertThat(config.getProperty("app.cms.media.public-delivery.base-url"))
+                    .isEqualTo("${CMS_MEDIA_PUBLIC_BASE_URL:}");
+        }
+
+        @Test
         void prodProfileDeclaresTheRateLimitConfigImport() throws IOException {
             assertThat(readClasspathResource("application-prod.yml")).contains("application-rate-limit.yml");
+        }
+
+        @Test
+        void productionLogDirectoryUsesThePropertyConsumedByLogback() throws IOException {
+            var config = loadProdConfig();
+
+            assertThat(config.getProperty("sfs.log.dir"))
+                    .isEqualTo("${SFS_LOG_DIR:/var/log/sfs/app}");
+            assertThat(readClasspathResource("logback-spring.xml"))
+                    .contains("source=\"sfs.log.dir\"");
         }
 
         @Test
@@ -152,7 +210,7 @@ class ProdProfileConfigTest {
                     "META_APP_SECRET=fake-test-app-secret-not-real",
                     "META_FACEBOOK_PAGE_ID=1234567890",
                     "META_INSTAGRAM_BUSINESS_ACCOUNT_ID=9876543210",
-                    "app.logging.path=target/test-logs"
+                    "sfs.log.dir=target/test-logs"
             }
     )
     class MetaConfigBinding {
@@ -181,7 +239,7 @@ class ProdProfileConfigTest {
             classes = ElasticsearchDisabled.TestApplication.class,
             properties = {
                     "spring.config.import=classpath:application-prod.yml",
-                    "app.logging.path=target/test-logs"
+                    "sfs.log.dir=target/test-logs"
             }
     )
     @ActiveProfiles("prod")
@@ -215,7 +273,7 @@ class ProdProfileConfigTest {
                     "JWT_EXPIRATION_MS=900000",
                     "DASHBOARD_JWT_SECRET=fake-test-dashboard-secret-not-real-0123456789",
                     "DASHBOARD_JWT_ACCESS_EXPIRATION_MS=900000",
-                    "app.logging.path=target/test-logs"
+                    "sfs.log.dir=target/test-logs"
             }
     )
     class JwtConfigBinding {

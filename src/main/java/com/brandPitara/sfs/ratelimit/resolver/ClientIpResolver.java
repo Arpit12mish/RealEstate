@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Resolves the client IP for rate-limiting purposes. X-Forwarded-For is only
@@ -25,6 +26,33 @@ import java.util.Set;
 public class ClientIpResolver {
 
     private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
+
+    /**
+     * Strict RFC 4291 IPv6 literal syntax (zone IDs excluded - already filtered out earlier by
+     * the "%" check). Matched BEFORE {@link InetAddress#getByName} is ever called: that method
+     * only skips DNS for a string its own internal literal-address check accepts, so a
+     * charset-valid-but-structurally-invalid candidate (e.g. "aaaa:bbbb" - two groups, no "::")
+     * previously fell through to a real, blocking, attacker-triggerable hostname lookup on the
+     * request thread. Rejecting anything that fails this check first means getByName is only
+     * ever invoked on an already-confirmed-literal string, so it can never reach the
+     * nameservice - closing that thread-exhaustion path without weakening what's accepted as a
+     * valid address.
+     */
+    private static final Pattern IPV6_LITERAL = Pattern.compile(
+            "^("
+                    + "([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}"
+                    + "|([0-9a-fA-F]{1,4}:){1,7}:"
+                    + "|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}"
+                    + "|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}"
+                    + "|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}"
+                    + "|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}"
+                    + "|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}"
+                    + "|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})"
+                    + "|:((:[0-9a-fA-F]{1,4}){1,7}|:)"
+                    + "|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])"
+                    + "|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])"
+                    + ")$"
+    );
 
     private final Set<String> trustedProxies;
 
@@ -80,7 +108,10 @@ public class ClientIpResolver {
         }
 
         if (candidate.indexOf(':') < 0) return normalizeIpv4(candidate);
-        if (!candidate.matches("[0-9a-f:.]+")) return "unknown";
+        // Must be a syntactically valid IPv6 literal BEFORE getByName ever sees it - see
+        // IPV6_LITERAL's doc comment for why this ordering is what keeps this call
+        // non-blocking against attacker-controlled input.
+        if (!IPV6_LITERAL.matcher(candidate).matches()) return "unknown";
         try {
             InetAddress parsed = InetAddress.getByName(candidate);
             if (parsed instanceof Inet4Address) return parsed.getHostAddress();

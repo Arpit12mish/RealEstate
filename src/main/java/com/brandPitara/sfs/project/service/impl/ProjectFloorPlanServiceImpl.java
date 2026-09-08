@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanResponse;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanUpsertRequest;
@@ -25,6 +27,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
   private final ProjectFloorPlanRepository projectFloorPlanRepository;
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -73,6 +76,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
 
     return ProjectFloorPlanMapper.toResponse(saved);
   }
@@ -122,6 +126,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
 
     return ProjectFloorPlanMapper.toResponse(saved);
   }
@@ -143,6 +148,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
 
     return ProjectFloorPlanMapper.toResponse(saved);
   }
@@ -165,6 +171,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
   }
 
   @Override
@@ -179,7 +186,7 @@ public class ProjectFloorPlanServiceImpl implements ProjectFloorPlanService {
   @Override
   @Transactional(readOnly = true)
   public List<ProjectFloorPlanResponse> publicList(Long projectId) {
-    ProjectEntity project = projectRepository.findByIdAndDeletedFalse(projectId)
+    ProjectEntity project = projectRepository.findWithBuilderByIdAndDeletedFalse(projectId)
         .orElseThrow(() -> new NotFoundException("Project not found: " + projectId));
 
     projectPublicVisibilityPolicy.assertPubliclyVisible(project, projectId);

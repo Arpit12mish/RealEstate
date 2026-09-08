@@ -65,6 +65,30 @@ TWILIO_VERIFY_SERVICE_SID=REDACTED
 # currently vestigial. Still externalized for completeness/future use.
 TWILIO_PHONE_NUMBER=REDACTED
 
+# ── Single-number production review OTP ──
+# This is the production-safe equivalent of the local fake-OTP provider. It
+# bypasses Twilio only for one explicitly configured phone number. Keep the
+# phone and OTP server-side and never commit their real values.
+APP_REVIEW_ENABLED=false
+APP_REVIEW_PHONE_NUMBER=REDACTED
+APP_REVIEW_FIXED_OTP=REDACTED
+APP_REVIEW_RESEND_AFTER_SECONDS=30
+
+# ── OTP send/verify abuse limits (TwilioOtpServiceImpl, sfs.otp.*) ──
+# Shared by POST /api/auth/request-otp and POST /api/auth/otp/resend - both
+# call the same OtpService.sendOtp(), so these limits apply identically to
+# both routes. SFS_OTP_EXPIRES_IN_SECONDS is informational only (surfaced in
+# the API response for the frontend countdown): Twilio Verify's own code TTL
+# is a fixed ~10 minutes and is not configurable via the Verify API, so this
+# value does not change actual OTP expiry and must be kept in sync by hand.
+SFS_OTP_RESEND_COOLDOWN_SECONDS=30
+SFS_OTP_MAX_SENDS_PER_WINDOW=5
+SFS_OTP_SEND_WINDOW_MINUTES=15
+SFS_OTP_MAX_VERIFY_FAILURES_PER_WINDOW=5
+SFS_OTP_VERIFY_WINDOW_MINUTES=10
+SFS_OTP_BLOCK_MINUTES=15
+SFS_OTP_EXPIRES_IN_SECONDS=600
+
 # ── Google Places / Maps (connectivity, nearby-place features) ──
 GOOGLE_MAPS_PLACES_ENABLED=true
 GOOGLE_PLACES_API_KEY=REDACTED
@@ -107,6 +131,49 @@ AWS_S3_BUCKET=sfs-s3bucket
 AWS_S3_REGION=ap-south-1
 AWS_S3_PUBLIC_BASE_URL=
 AWS_S3_PRESIGN_EXPIRY_SECONDS=300
+APP_MEDIA_MAX_PROMO_BANNER_VIDEO_BYTES=26214400
+
+# CMS drafts must use a private bucket, or a bucket where cms/** is explicitly
+# denied anonymous/public reads. It intentionally has no production default.
+CMS_MEDIA_S3_BUCKET=
+# Required HTTPS CloudFront/custom-domain base for published CMS media.
+# Do not use an S3 URL or a dashboard presigned URL.
+CMS_MEDIA_PUBLIC_BASE_URL=https://media.example.com
+CMS_MEDIA_MAX_IMAGE_BYTES=15728640
+CMS_MEDIA_MAX_VIDEO_BYTES=262144000
+CMS_MEDIA_VALIDATION_PREFIX_BYTES=262144
+CMS_MEDIA_PENDING_RETENTION_HOURS=24
+CMS_MEDIA_FAILED_RETENTION_DAYS=7
+CMS_MEDIA_CLEANUP_BATCH_SIZE=100
+
+# CDN invalidation remains disabled until the CloudFront rollout is approved.
+SFS_CDN_ENABLED=false
+SFS_CDN_DISTRIBUTION_ID=
+
+# Emergency native-app update rollback. Keep false during normal operation.
+# Setting true makes the public update-policy endpoint return CURRENT without
+# reading policy data. Apply using the deployment's normal config refresh/restart.
+SFS_MOBILE_UPDATE_EMERGENCY_KILL_SWITCH_ENABLED=false
+
+# ── Analytics ingestion (Phase 1) ──
+# None of these are secrets and every one has a safe Java-level default
+# (AnalyticsIngestionProperties) - omitting this whole block would not fail
+# startup. It is externalized so the pipeline is tunable/reviewable without a
+# code change. SFS_ANALYTICS_ENABLED is the kill switch: setting it false
+# makes the ingestion endpoint accept nothing (still 202s, never errors the
+# mobile/web caller) and skips the nightly aggregation run; a manual
+# aggregation re-run still works via the dashboard endpoint regardless.
+SFS_ANALYTICS_ENABLED=true
+SFS_ANALYTICS_QUEUE_CAPACITY=10000
+SFS_ANALYTICS_DRAIN_BATCH_SIZE=300
+SFS_ANALYTICS_DRAIN_INTERVAL_MS=2000
+SFS_ANALYTICS_MAX_PROPERTIES_JSON_LENGTH=2000
+SFS_ANALYTICS_RAW_RETENTION_DAYS=120
+SFS_ANALYTICS_PARTITION_LOOKAHEAD_MONTHS=3
+# Cron expressions - quote if your env-file loader is sensitive to spaces.
+SFS_ANALYTICS_AGGREGATION_SCHEDULE=0 30 2 * * *
+SFS_ANALYTICS_PARTITION_MAINTENANCE_SCHEDULE=0 0 3 * * *
+
 # Leave BOTH blank in production - AwsS3Config already falls back to
 # DefaultCredentialsProvider (supports an EC2 IAM instance role) whenever
 # AWS_ACCESS_KEY_ID is blank. Only set these if IAM role access is genuinely
@@ -140,9 +207,14 @@ SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
 | `dashboard.seed.{admin,reviewer,data-entry}.email/password` | `DashboardFixedUserSeeder` | Yes, 3 real plaintext passwords | Yes | Dashboard auth | No | Yes (empty string) | `DASHBOARD_SEED_*` | Externalize, no secret default | F |
 | `twilio.accountSid/authToken/verifyServiceSid` | `TwilioProperties` / `TwilioOtpServiceImpl` | Yes | authToken: yes | Mobile OTP | Yes - `@PostConstruct Twilio.init()` fails startup for `dev/prod/staging` profiles | No | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` | Externalize, no default | A |
 | `twilio.phoneNumber` | `TwilioProperties` | Yes | No (vestigial, unread) | Mobile OTP | No (dead field) | No | `TWILIO_PHONE_NUMBER` | Externalize for completeness | D |
+| `app.review.*` | `AppReviewLoginProperties` / `TwilioOtpServiceImpl` | No | phone/fixed OTP: yes | Single-number production review login | No | Disabled | `APP_REVIEW_*` | Keep server-side; enable only for an approved number | F |
 | `otp.provider` / `msg91.*` | none - zero Java consumers | Yes (placeholder values only) | No | Dead config | No | n/a | n/a | Safe to delete (not done, low priority) | E |
 | `elasticsearch.url` / `.api-key` | `ElasticsearchConfig` | Yes | api-key: yes | Search (disabled) | **Bean construction is unconditional** - blank URL fails startup | Now yes (`:http://localhost:9200` / `:`) | `ELASTICSEARCH_URL`, `ELASTICSEARCH_API_KEY` | Fixed with safe inert default | C |
 | `sfs.search.enabled` | `BusinessSearchServiceImpl`, `BusinessIndexInitializer` | Yes (`false`) | No | Search (disabled) | No | Yes (`:false`) | `SFS_SEARCH_ENABLED` | Keep `false` | C |
+| `sfs.mobile-update.emergency-kill-switch-enabled` | `MobileUpdateProperties` | No | No | Native app update policy | No | Yes (`false`) | `SFS_MOBILE_UPDATE_EMERGENCY_KILL_SWITCH_ENABLED` | Keep `false`; enable only for emergency rollback | F |
+| `sfs.analytics.ingestion.enabled` | `AnalyticsIngestionProperties` | Was gitignored-only | No | Analytics Phase 1 | No | Yes (`true`) | `SFS_ANALYTICS_ENABLED` | Now externalized to `application-prod.yml`; kill switch | F |
+| `sfs.analytics.ingestion.{queue-capacity,drain-batch-size,drain-interval-ms,max-properties-json-length,raw-retention-days,partition-lookahead-months}` | `AnalyticsIngestionProperties` | Was gitignored-only | No | Analytics Phase 1 | No | Yes (see class defaults) | `SFS_ANALYTICS_{QUEUE_CAPACITY,DRAIN_BATCH_SIZE,DRAIN_INTERVAL_MS,MAX_PROPERTIES_JSON_LENGTH,RAW_RETENTION_DAYS,PARTITION_LOOKAHEAD_MONTHS}` | Now externalized to `application-prod.yml` | D |
+| `sfs.analytics.aggregation.schedule` / `sfs.analytics.partition-maintenance.schedule` | `AnalyticsAggregationScheduler` / `AnalyticsPartitionMaintenanceScheduler` (`@Scheduled` cron placeholders, not a bound properties class) | Was gitignored-only | No | Analytics Phase 1 | No - Spring fails fast at startup if the cron string is malformed, independent of this file | Yes | `SFS_ANALYTICS_AGGREGATION_SCHEDULE`, `SFS_ANALYTICS_PARTITION_MAINTENANCE_SCHEDULE` | Now externalized to `application-prod.yml` | D |
 | `google.places.*`, `google.maps.places.*` | `GooglePlacesProperties` (x2 classes), `GooglePlacesClient`, `GoogleNearbyPlaceProvider` | Yes, real API key | api-key: yes | Connectivity/nearby-places | No (fails on first call, not at boot) | Partial | `GOOGLE_PLACES_*`, `GOOGLE_MAPS_PLACES_ENABLED` | Externalize, no secret default | B |
 | `aws.credentials.access-key/secret-key` | `AwsS3Config` | Yes | Yes | Media/S3 | No - falls back to `DefaultCredentialsProvider` (EC2 IAM role) | Yes (`:` empty) | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Leave blank, prefer IAM role | D/F |
 | `app.media.s3.bucket/region/publicBaseUrl/presignExpirySeconds` | `S3Properties` | Yes | No (identifiers, not secrets) | Media/S3 | `region` yes - `Region.of(null)` NPEs at startup | Now yes | `AWS_S3_*` | Externalize with real non-secret defaults | D |

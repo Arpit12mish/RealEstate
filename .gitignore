@@ -47,3 +47,20 @@ scripts/diagnostics/output/
 
 .DS_Store
 **/.DS_Store
+.env.local
+.k6-local-tokens
+
+# Local load-test outputs
+*-stress-metrics-*.csv
+*-stress-metrics-*.json
+project-user-flow-*.json
+project-meter-*-summary.json
+project-meter-stress-*.json
+mixed-backend-*.json
+stress-metrics-*.csv
+stress-metrics-*.json
+backend-*.log
+thread-dump-*.txt
+
+# Local tooling scratch
+MEMORY.md
