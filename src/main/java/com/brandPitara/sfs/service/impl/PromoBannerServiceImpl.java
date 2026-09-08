@@ -7,6 +7,7 @@ import com.brandPitara.sfs.repository.CategoryRepository;
 import com.brandPitara.sfs.repository.PromoBannerRepository;
 import com.brandPitara.sfs.service.PromoBannerService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,9 +44,8 @@ public class PromoBannerServiceImpl implements PromoBannerService {
         int limit = (maxItems == null || maxItems < 1) ? 10 : Math.min(maxItems, 25);
 
         List<PromoBannerEntity> list = promoBannerRepository
-                .findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAsc(categoryId, safeSlot);
-
-        if (list.size() > limit) list = list.subList(0, limit);
+                .findByCategory_IdAndSlotKeyAndActiveTrueOrderByPriorityAscIdAsc(
+                        categoryId, safeSlot, PageRequest.of(0, limit));
 
         return list.stream()
                 .map(b -> toResponse(b, category.getName(), category.getSlug()))

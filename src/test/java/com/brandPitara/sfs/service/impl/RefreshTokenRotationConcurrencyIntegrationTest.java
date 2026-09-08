@@ -10,6 +10,7 @@ import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.model.RefreshTokenRotationResult;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,11 +18,14 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -48,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
 @ExtendWith(OutputCaptureExtension.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class RefreshTokenRotationConcurrencyIntegrationTest {
 
     @Container
@@ -69,6 +74,7 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
     private final UserRepository userRepository;
     private final JdbcTemplate jdbcTemplate;
 
+    @Autowired
     RefreshTokenRotationConcurrencyIntegrationTest(
             RefreshTokenServiceImpl refreshTokenService,
             RefreshTokenRepository refreshTokenRepository,
@@ -188,7 +194,13 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
     @SpringBootConfiguration
     @EnableAutoConfiguration
     @EntityScan(basePackageClasses = {User.class, RefreshToken.class, Otp.class})
-    @EnableJpaRepositories(basePackageClasses = {UserRepository.class, RefreshTokenRepository.class})
+    @EnableJpaRepositories(
+            basePackageClasses = {UserRepository.class, RefreshTokenRepository.class},
+            excludeFilters = @ComponentScan.Filter(
+                    type = FilterType.REGEX,
+                    pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!(RefreshTokenRepository|UserRepository)$).*"
+            )
+    )
     @Import(RefreshTokenServiceImpl.class)
     static class TestApplication {
     }

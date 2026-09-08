@@ -7,14 +7,17 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class TopBuildersSectionLoader implements HomeSectionLoader {
 
   private final BuilderRepository builderRepository;
@@ -31,10 +34,9 @@ public class TopBuildersSectionLoader implements HomeSectionLoader {
     Long cityId = ctx.cityId();
 
     var builders = (cityId == null)
-        ? builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc()
-        : builderRepository.findTop20ByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(cityId);
-
-    if (builders.size() > limit) builders = builders.subList(0, limit);
+        ? builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseOrderByPriorityAscIdDesc(PageRequest.of(0, limit))
+        : builderRepository.findByPublishedTrueAndActiveTrueAndDeletedFalseAndCity_IdOrderByPriorityAscIdDesc(
+            cityId, PageRequest.of(0, limit));
 
     List<BuilderCardDto> cards = builders.stream()
         .map(BuilderCardMapper::toCard)

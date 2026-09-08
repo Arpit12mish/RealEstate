@@ -6,16 +6,19 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.mapper.CategoryCardMapper;
 import com.brandPitara.sfs.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.data.domain.PageRequest;
 
 import java.util.List;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class TopCategoriesSectionLoader implements HomeSectionLoader {
 
   private final CategoryRepository categoryRepository;
@@ -33,12 +36,10 @@ public class TopCategoriesSectionLoader implements HomeSectionLoader {
     List<CategoryEntity> cats;
     if (cfg.getParam1() != null && !cfg.getParam1().isBlank()) {
       Long parentId = Long.valueOf(cfg.getParam1());
-      cats = categoryRepository.findByParentIdAndActiveTrueOrderByPriorityAsc(parentId);
+      cats = categoryRepository.findByParentIdAndActiveTrueOrderByPriorityAscIdAsc(parentId, PageRequest.of(0, limit));
     } else {
-      cats = categoryRepository.findByParentIsNullAndActiveTrueOrderByPriorityAsc();
+      cats = categoryRepository.findByParentIsNullAndActiveTrueOrderByPriorityAscIdAsc(PageRequest.of(0, limit));
     }
-
-    if (cats.size() > limit) cats = cats.subList(0, limit);
 
     List<CategoryCardDto> cards = cats.stream()
         .map(CategoryCardMapper::toCard)

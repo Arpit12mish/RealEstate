@@ -138,18 +138,20 @@ public class ProjectComparisonServiceImpl implements ProjectComparisonService {
             }
         });
 
-        // Builder credibility — fetch once per unique builder (max 4, usually 1–2)
+        // Builder credibility — one batch query group for all unique builders.
         Set<Long> builderIds = projects.stream()
                 .filter(p -> p.getBuilder() != null)
                 .map(p -> p.getBuilder().getId())
                 .collect(Collectors.toSet());
         Map<Long, BuilderCredibilitySummaryResponse> credibilityMap = new HashMap<>();
-        for (Long builderId : builderIds) {
-            try {
-                credibilityMap.put(builderId, builderCredibilityService.publicGetCredibilitySummary(builderId));
-            } catch (Exception ignored) {
-                // credibility is enrichment — never fail the comparison for it
+        try {
+            Map<Long, BuilderCredibilitySummaryResponse> summaries =
+                    builderCredibilityService.publicGetCredibilitySummaries(builderIds);
+            if (summaries != null) {
+                credibilityMap.putAll(summaries);
             }
+        } catch (Exception ignored) {
+            // credibility is enrichment — never fail the comparison for it
         }
 
         // ── 6. Build headers ──────────────────────────────────────────────────

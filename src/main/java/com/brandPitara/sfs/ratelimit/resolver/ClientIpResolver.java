@@ -2,8 +2,16 @@ package com.brandPitara.sfs.ratelimit.resolver;
 
 import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
 import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Resolves the client IP for rate-limiting purposes. X-Forwarded-For is only
@@ -14,52 +22,88 @@ import org.springframework.stereotype.Component;
  * X-Forwarded-For header directly to the app.
  */
 @Component
-@RequiredArgsConstructor
 public class ClientIpResolver {
 
     private static final String FORWARDED_FOR_HEADER = "X-Forwarded-For";
 
-    private final RateLimitProperties properties;
+    private final Set<String> trustedProxies;
+
+    public ClientIpResolver(RateLimitProperties properties) {
+        this.trustedProxies = properties.getTrustedProxies().stream()
+                .map(this::normalize)
+                .filter(value -> !"unknown".equals(value))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
 
     public String resolve(HttpServletRequest request) {
-        String remoteAddr = request.getRemoteAddr();
+        String remoteAddr = normalize(request.getRemoteAddr());
 
         if (isTrustedProxy(remoteAddr)) {
-            String forwardedFor = request.getHeader(FORWARDED_FOR_HEADER);
-            String firstHop = firstHop(forwardedFor);
-            if (firstHop != null) {
-                return firstHop;
+            List<String> forwarded = normalizedHops(request.getHeader(FORWARDED_FOR_HEADER));
+            for (int index = forwarded.size() - 1; index >= 0; index--) {
+                String candidate = forwarded.get(index);
+                if (!isTrustedProxy(candidate)) return candidate;
             }
         }
 
-        return remoteAddr != null ? remoteAddr : "unknown";
+        return remoteAddr;
     }
 
     private boolean isTrustedProxy(String remoteAddr) {
-        if (remoteAddr == null) {
-            return false;
-        }
-        return properties.getTrustedProxies().contains(remoteAddr);
+        if ("unknown".equals(remoteAddr)) return false;
+        return trustedProxies.contains(remoteAddr);
     }
 
     /**
-     * Returns the first non-blank hop in a comma-separated X-Forwarded-For value,
-     * or null if there isn't one. Uses a limit of -1 so a malformed value (e.g.
-     * all-commas, leading/trailing commas, empty segments) never produces a
-     * zero-length array - String.split with the default limit of 0 strips
-     * trailing empty strings and can return an empty array for input like ",,,",
-     * which would otherwise throw ArrayIndexOutOfBoundsException here.
+     * Parses only numeric addresses. The right-most untrusted hop is the client;
+     * this prevents a client-supplied left-most XFF value from winning when a
+     * trusted nginx appends instead of overwriting the header.
      */
-    private String firstHop(String forwardedFor) {
+    private List<String> normalizedHops(String forwardedFor) {
         if (forwardedFor == null || forwardedFor.isBlank()) {
-            return null;
+            return List.of();
         }
+        List<String> hops = new ArrayList<>();
         for (String candidate : forwardedFor.split(",", -1)) {
-            String trimmed = candidate.trim();
-            if (!trimmed.isEmpty()) {
-                return trimmed;
-            }
+            String normalized = normalize(candidate);
+            if (!"unknown".equals(normalized)) hops.add(normalized);
         }
-        return null;
+        return hops;
+    }
+
+    String normalize(String rawAddress) {
+        if (rawAddress == null) return "unknown";
+        String candidate = rawAddress.trim().toLowerCase(Locale.ROOT);
+        if (candidate.isEmpty() || candidate.contains("%")) return "unknown";
+        if (candidate.startsWith("[") && candidate.endsWith("]")) {
+            candidate = candidate.substring(1, candidate.length() - 1);
+        }
+
+        if (candidate.indexOf(':') < 0) return normalizeIpv4(candidate);
+        if (!candidate.matches("[0-9a-f:.]+")) return "unknown";
+        try {
+            InetAddress parsed = InetAddress.getByName(candidate);
+            if (parsed instanceof Inet4Address) return parsed.getHostAddress();
+            if (parsed instanceof Inet6Address) return parsed.getHostAddress().toLowerCase(Locale.ROOT);
+            return "unknown";
+        } catch (UnknownHostException ignored) {
+            return "unknown";
+        }
+    }
+
+    private String normalizeIpv4(String candidate) {
+        String[] octets = candidate.split("\\.", -1);
+        if (octets.length != 4) return "unknown";
+        int[] parsed = new int[4];
+        for (int index = 0; index < octets.length; index++) {
+            if (!octets[index].matches("[0-9]{1,3}")) return "unknown";
+            try {
+                parsed[index] = Integer.parseInt(octets[index]);
+            } catch (NumberFormatException ignored) {
+                return "unknown";
+            }
+            if (parsed[index] > 255) return "unknown";
+        }
+        return parsed[0] + "." + parsed[1] + "." + parsed[2] + "." + parsed[3];
     }
 }

@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest(
         classes = RateLimitConfigLoadingTest.TestApplication.class,
-        properties = "spring.config.import=classpath:application-rate-limit.yml"
+        properties = {"spring.config.import=classpath:application-rate-limit.yml", "app.logging.path=target/test-logs"}
 )
 class RateLimitConfigLoadingTest {
 
@@ -42,8 +42,12 @@ class RateLimitConfigLoadingTest {
         assertThat(properties.isDefaultEnabled()).isTrue();
         assertThat(properties.getTrustedProxies()).contains("127.0.0.1", "::1");
         assertThat(properties.getMaxCachedBodyBytes()).isEqualTo(32 * 1024);
-        assertThat(properties.getBucketCache().getMaximumSize()).isEqualTo(200_000);
-        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(120);
+        assertThat(properties.getBucketCache().getPrimaryMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getAbuseMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(30);
+        assertThat(properties.getBucketCache().getAbuseExpireAfterAccessMinutes()).isEqualTo(60);
+        assertThat(properties.getAbuseCapacityMultiplier()).isEqualTo(10);
+        assertThat(properties.getFailClosedPolicies()).contains(RateLimitPolicy.MOBILE_TOKEN_REFRESH);
     }
 
     @Test
@@ -99,7 +103,7 @@ class RateLimitConfigLoadingTest {
         assertThat(calculatorWrite.getLimits()).hasSize(3);
         assertThat(calculatorWrite.getLimits())
                 .extracting(RateLimitProperties.LimitConfig::getKeyType)
-                .contains(RateLimitKeyType.IP, RateLimitKeyType.BODY_FINGERPRINT);
+                .contains(RateLimitKeyType.PRIMARY_IDENTITY, RateLimitKeyType.BODY_FINGERPRINT);
     }
 
     @Test
@@ -145,7 +149,7 @@ class RateLimitConfigLoadingTest {
         assertThat(businessEventWrite.getLimits()).hasSize(2);
         assertThat(businessEventWrite.getLimits())
                 .extracting(RateLimitProperties.LimitConfig::getKeyType)
-                .containsOnly(RateLimitKeyType.IP);
+                .containsOnly(RateLimitKeyType.PRIMARY_IDENTITY);
     }
 
     @Test
@@ -174,7 +178,7 @@ class RateLimitConfigLoadingTest {
                 properties.getPolicies().get(RateLimitPolicy.PUBLIC_CONTENT_VERSION_READ);
 
         assertThat(contentVersionRead.getLimits()).hasSize(1);
-        assertThat(contentVersionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP);
+        assertThat(contentVersionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
         assertThat(contentVersionRead.getLimits().get(0).getCapacity()).isEqualTo(600);
     }
 
@@ -184,7 +188,7 @@ class RateLimitConfigLoadingTest {
                 properties.getPolicies().get(RateLimitPolicy.MOBILE_SESSION_READ);
 
         assertThat(sessionRead.getLimits()).hasSize(1);
-        assertThat(sessionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.IP_OR_USER);
+        assertThat(sessionRead.getLimits().get(0).getKeyType()).isEqualTo(RateLimitKeyType.PRIMARY_IDENTITY);
         assertThat(sessionRead.getLimits().get(0).getCapacity()).isEqualTo(300);
     }
 

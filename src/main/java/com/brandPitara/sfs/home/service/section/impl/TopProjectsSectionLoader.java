@@ -4,6 +4,7 @@ import com.brandPitara.sfs.home.dto.HomeSectionDto;
 import com.brandPitara.sfs.home.entity.HomeSectionConfigEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
 import com.brandPitara.sfs.home.service.section.HomeSectionLoader;
+import com.brandPitara.sfs.home.service.section.HomeSectionReadTransaction;
 import com.brandPitara.sfs.home.service.section.SectionContext;
 import com.brandPitara.sfs.project.dto.ProjectCardDto;
 import com.brandPitara.sfs.project.entity.ProjectEntity;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
+@HomeSectionReadTransaction
 public class TopProjectsSectionLoader implements HomeSectionLoader {
 
   private final ProjectRepository projectRepository;

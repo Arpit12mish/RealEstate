@@ -2,6 +2,7 @@ package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
+import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
 import com.brandPitara.sfs.project.connectivity.provider.dto.NearbyPlaceProviderResult;
 import com.brandPitara.sfs.project.dto.ConnectivityProviderSearchRequest;
@@ -18,6 +19,7 @@ import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityPlaceRepository;
 import com.brandPitara.sfs.project.repository.ProjectConnectivityRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,8 +45,15 @@ class ProjectConnectivityServiceImplTest {
   @Mock private ContentVersionService contentVersionService;
   @Mock private ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   @Mock private NearbyPlaceProvider nearbyPlaceProvider;
+  @Mock private ExternalProviderTransactions externalProviderTransactions;
 
   @InjectMocks private ProjectConnectivityServiceImpl service;
+
+  @BeforeEach
+  void executeShortTransactionsInline() {
+    lenient().when(externalProviderTransactions.read(any())).thenAnswer(invocation ->
+        ((Supplier<?>) invocation.getArgument(0)).get());
+  }
 
   // ── Public endpoint ─────────────────────────────────────────────────────────
 

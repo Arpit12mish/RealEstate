@@ -14,9 +14,10 @@ set -euo pipefail
 
 SFS_LOG_BASE="${SFS_LOG_DIR:-/var/log/sfs}"
 LOG_DIR="$SFS_LOG_BASE/app"
-ARCHIVE_DIR="$SFS_LOG_BASE/archive"
+ARCHIVE_DIR="$LOG_DIR/archived"
 
 API_LOG="$LOG_DIR/sfs-api.log"
+API_RELIABLE_LOG="$LOG_DIR/sfs-api-reliable.log"
 ERROR_LOG="$LOG_DIR/sfs-error.log"
 SECURITY_LOG="$LOG_DIR/sfs-security.log"
 AUDIT_LOG="$LOG_DIR/sfs-audit.log"
@@ -110,6 +111,7 @@ Usage:
   sfs-logs event <event_name> today        Any event name (e.g. jwt_expired)
 
   sfs-logs tail api                        Live tail: API log
+  sfs-logs tail api-reliable               Live tail: reliable API WARN/ERROR log
   sfs-logs tail errors                     Live tail: error log
   sfs-logs tail security                   Live tail: security log
   sfs-logs tail audit                      Live tail: audit log
@@ -127,7 +129,11 @@ Environment:
 EOF
 }
 
-cmd_api()      { require_file "$API_LOG";      grep_all '"event"' "$API_LOG"; }
+cmd_api() {
+  [[ -f "$API_LOG" || -f "$API_RELIABLE_LOG" ]] || require_file "$API_LOG"
+  [[ -f "$API_LOG" ]] && grep_all '"event"' "$API_LOG"
+  [[ -f "$API_RELIABLE_LOG" ]] && grep_all '"event"' "$API_RELIABLE_LOG"
+}
 cmd_errors()   { require_file "$ERROR_LOG";    grep_all '"event"' "$ERROR_LOG"; }
 cmd_security() { require_file "$SECURITY_LOG"; grep_all '"event"' "$SECURITY_LOG"; }
 cmd_audit()    { require_file "$AUDIT_LOG";    grep_all '"event"' "$AUDIT_LOG"; }
@@ -136,16 +142,17 @@ cmd_app()      { require_file "$APP_LOG";      grep_all '.' "$APP_LOG"; }
 cmd_status() {
   local status="${1:-}"
   [[ -z "$status" ]] && { error "Usage: sfs-logs status <code> today"; exit 1; }
-  require_file "$API_LOG"
-  info "Searching for status $status in $API_LOG ..."
-  grep_all "\"status\":$status" "$API_LOG"
+  [[ -f "$API_LOG" || -f "$API_RELIABLE_LOG" ]] || require_file "$API_LOG"
+  info "Searching request logs for status $status ..."
+  [[ -f "$API_LOG" ]] && grep_all "\"status\":$status" "$API_LOG"
+  [[ -f "$API_RELIABLE_LOG" ]] && grep_all "\"status\":$status" "$API_RELIABLE_LOG"
 }
 
 cmd_request() {
   local rid="${1:-}"
   [[ -z "$rid" ]] && { error "Usage: sfs-logs request <requestId>"; exit 1; }
   info "Searching all logs for requestId: $rid"
-  for f in "$API_LOG" "$ERROR_LOG" "$SECURITY_LOG" "$AUDIT_LOG" "$APP_LOG"; do
+  for f in "$API_LOG" "$API_RELIABLE_LOG" "$ERROR_LOG" "$SECURITY_LOG" "$AUDIT_LOG" "$APP_LOG"; do
     [[ -f "$f" ]] || continue
     result=$(grep -a -- "\"$rid\"" "$f" 2>/dev/null || true)
     if [[ -n "$result" ]]; then
@@ -168,22 +175,23 @@ cmd_request() {
 cmd_api_path() {
   local path_fragment="${1:-}"
   [[ -z "$path_fragment" ]] && { error "Usage: sfs-logs api-path <fragment> today"; exit 1; }
-  require_file "$API_LOG"
+  [[ -f "$API_LOG" || -f "$API_RELIABLE_LOG" ]] || require_file "$API_LOG"
   info "API requests matching path fragment: $path_fragment"
-  grep_all "$path_fragment" "$API_LOG"
+  [[ -f "$API_LOG" ]] && grep_all "$path_fragment" "$API_LOG"
+  [[ -f "$API_RELIABLE_LOG" ]] && grep_all "$path_fragment" "$API_RELIABLE_LOG"
 }
 
 cmd_slow() {
-  require_file "$API_LOG"
-  info "Slow API events in $API_LOG ..."
-  grep_all '"event":"slow_api"' "$API_LOG"
+  require_file "$API_RELIABLE_LOG"
+  info "Slow API events in $API_RELIABLE_LOG ..."
+  grep_all '"event":"slow_api"' "$API_RELIABLE_LOG"
 }
 
 cmd_event() {
   local event_name="${1:-}"
   [[ -z "$event_name" ]] && { error "Usage: sfs-logs event <event_name> today"; exit 1; }
   info "Searching all logs for event: $event_name"
-  for f in "$API_LOG" "$ERROR_LOG" "$SECURITY_LOG" "$AUDIT_LOG" "$APP_LOG"; do
+  for f in "$API_LOG" "$API_RELIABLE_LOG" "$ERROR_LOG" "$SECURITY_LOG" "$AUDIT_LOG" "$APP_LOG"; do
     [[ -f "$f" ]] || continue
     result=$(grep -a -- "\"event\":\"$event_name\"" "$f" 2>/dev/null || true)
     if [[ -n "$result" ]]; then
@@ -198,11 +206,12 @@ cmd_tail() {
   local file
   case "$target" in
     api)      file="$API_LOG" ;;
+    api-reliable) file="$API_RELIABLE_LOG" ;;
     errors)   file="$ERROR_LOG" ;;
     security) file="$SECURITY_LOG" ;;
     audit)    file="$AUDIT_LOG" ;;
     app)      file="$APP_LOG" ;;
-    *) error "Unknown target: $target. Use: api|errors|security|audit|app"; exit 1 ;;
+    *) error "Unknown target: $target. Use: api|api-reliable|errors|security|audit|app"; exit 1 ;;
   esac
   require_file "$file"
   info "Tailing $file (Ctrl+C to stop) ..."
@@ -214,7 +223,7 @@ cmd_between() {
   local to="${2:-}"
   [[ -z "$from" || -z "$to" ]] && { error 'Usage: sfs-logs between "YYYY-MM-DD HH:MM" "YYYY-MM-DD HH:MM"'; exit 1; }
   info "Log entries between $from and $to"
-  for f in "$API_LOG" "$ERROR_LOG" "$SECURITY_LOG"; do
+  for f in "$API_LOG" "$API_RELIABLE_LOG" "$ERROR_LOG" "$SECURITY_LOG"; do
     [[ -f "$f" ]] || continue
     echo -e "${CYAN}── $(basename "$f") ──${NC}"
     grep_between "$from" "$to" "$f"

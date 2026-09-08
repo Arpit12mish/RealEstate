@@ -8,6 +8,8 @@ import com.brandPitara.sfs.dashboard.auth.service.DashboardJwtService;
 import com.brandPitara.sfs.observability.LogSanitizer;
 import com.brandPitara.sfs.ratelimit.config.RateLimitProperties;
 import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
+import com.brandPitara.sfs.ratelimit.filter.PreAuthenticationAbuseFilter;
+import com.brandPitara.sfs.ratelimit.metrics.RateLimitMetrics;
 import com.brandPitara.sfs.ratelimit.resolver.ClientIpResolver;
 import com.brandPitara.sfs.ratelimit.resolver.RateLimitKeyResolver;
 import com.brandPitara.sfs.ratelimit.resolver.RateLimitPolicyResolver;
@@ -28,6 +30,7 @@ import org.springframework.mock.web.MockServletContext;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.web.FilterChainProxy;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
@@ -40,11 +43,13 @@ import org.springframework.web.bind.annotation.RestController;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class SecurityConfigRuntimeTest {
 
     private MockMvc mockMvc;
     private AnnotationConfigWebApplicationContext context;
+    private FilterChainProxy securityFilterChain;
 
     @BeforeEach
     void setUp() {
@@ -54,10 +59,35 @@ class SecurityConfigRuntimeTest {
         webContext.refresh();
 
         Filter springSecurityFilterChain = webContext.getBean("springSecurityFilterChain", Filter.class);
+        securityFilterChain = (FilterChainProxy) springSecurityFilterChain;
         mockMvc = MockMvcBuilders.webAppContextSetup(webContext)
                 .addFilters(springSecurityFilterChain)
                 .build();
         context = webContext;
+    }
+
+    @Test
+    void filtersRunPreAuthThenJwtThenPrincipalLimiterOnTheAppChain() {
+        var appFilters = securityFilterChain.getFilterChains().stream()
+                .map(chain -> chain.getFilters())
+                .filter(filters -> filters.stream().anyMatch(JwtRequestFilter.class::isInstance))
+                .findFirst()
+                .orElseThrow();
+        int jwtIndex = indexOf(appFilters, JwtRequestFilter.class);
+        int preAuthIndex = indexOf(appFilters, PreAuthenticationAbuseFilter.class);
+        int rateIndex = indexOf(appFilters, RateLimitingFilter.class);
+
+        assertThat(preAuthIndex).isGreaterThanOrEqualTo(0);
+        assertThat(jwtIndex).isGreaterThan(preAuthIndex);
+        assertThat(jwtIndex).isGreaterThanOrEqualTo(0);
+        assertThat(rateIndex).isGreaterThan(jwtIndex);
+    }
+
+    private int indexOf(java.util.List<Filter> filters, Class<?> type) {
+        for (int index = 0; index < filters.size(); index++) {
+            if (type.isInstance(filters.get(index))) return index;
+        }
+        return -1;
     }
 
     @AfterEach
@@ -108,6 +138,28 @@ class SecurityConfigRuntimeTest {
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/projects/other"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void actuatorReadinessProbeIsPublicButMetricsRemainProtected() throws Exception {
+        mockMvc.perform(get("/actuator/health/readiness"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/metrics/hikaricp.connections.active"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @RestController
+    static class ActuatorSecurityTestController {
+
+        @GetMapping("/actuator/health/readiness")
+        ResponseEntity<Void> readiness() {
+            return ResponseEntity.ok().build();
+        }
+
+        @GetMapping("/actuator/metrics/hikaricp.connections.active")
+        ResponseEntity<Void> hikariMetric() {
+            return ResponseEntity.ok().build();
+        }
     }
 
     @RestController
@@ -212,6 +264,11 @@ class SecurityConfigRuntimeTest {
         }
 
         @Bean
+        ActuatorSecurityTestController actuatorSecurityTestController() {
+            return new ActuatorSecurityTestController();
+        }
+
+        @Bean
         ObjectMapper objectMapper() {
             return new ObjectMapper();
         }
@@ -299,6 +356,17 @@ class SecurityConfigRuntimeTest {
                     objectMapper,
                     jwtTokenUtil
             );
+        }
+
+        @Bean
+        PreAuthenticationAbuseFilter preAuthenticationAbuseFilter(
+                RateLimitProperties rateLimitProperties,
+                RateLimitService rateLimitService,
+                ObjectMapper objectMapper
+        ) {
+            return new PreAuthenticationAbuseFilter(
+                    new RateLimitPolicyResolver(), new ClientIpResolver(rateLimitProperties),
+                    rateLimitService, rateLimitProperties, RateLimitMetrics.isolated(), objectMapper);
         }
     }
 }

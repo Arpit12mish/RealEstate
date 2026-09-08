@@ -8,6 +8,29 @@ spring:
     url: ${SPRING_DATASOURCE_URL}
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    hikari:
+      pool-name: ${SPRING_DATASOURCE_HIKARI_POOL_NAME:SfsHikariPool}
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE:2}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT:5000}
+      validation-timeout: ${SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT:2000}
+      idle-timeout: ${SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT:600000}
+      max-lifetime: ${SPRING_DATASOURCE_HIKARI_MAX_LIFETIME:1800000}
+      keepalive-time: ${SPRING_DATASOURCE_HIKARI_KEEPALIVE_TIME:0}
+      leak-detection-threshold: ${SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD:0}
+      register-mbeans: ${SPRING_DATASOURCE_HIKARI_REGISTER_MBEANS:true}
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        default_batch_fetch_size: 25
+        jdbc:
+          batch_size: 25
+        generate_statistics: false
+      jakarta:
+        persistence:
+          query:
+            timeout: ${SPRING_JPA_QUERY_TIMEOUT_MS:10000}
   # Mail is not actually used to send anything today (EmailService is dead/
   # commented-out code) and management.health.mail.enabled=false below
   # disables the only thing that would otherwise probe this at /actuator/
@@ -51,11 +74,34 @@ springdoc:
 server:
   address: 0.0.0.0
   port: 8080
+  tomcat:
+    threads:
+      max: ${SERVER_TOMCAT_THREADS_MAX:50}
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:5}
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:2048}
 
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db
   health:
     mail:
       enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name:sfs}
 
 # ============================================================
 # Mobile/app JWT. No safe default - required for every mobile
@@ -98,9 +144,8 @@ dashboard:
       name: ${DASHBOARD_SEED_DATA_ENTRY_NAME:SFS Data Entry}
 
 # ============================================================
-# Twilio Verify (OTP). No safe default - TwilioOtpServiceImpl's
-# @PostConstruct calls Twilio.init() eagerly for the prod profile,
-# so a blank accountSid/authToken fails application startup
+# Twilio Verify (OTP). No safe default: TwilioVerifyClientImpl initializes
+# the SDK eagerly for the prod profile, so blank credentials fail startup
 # immediately (fail-fast, not a silent runtime break).
 # ============================================================
 twilio:
@@ -135,6 +180,10 @@ google:
     api-key: ${GOOGLE_PLACES_API_KEY:}
     base-url: ${GOOGLE_PLACES_BASE_URL:https://places.googleapis.com/v1}
     field-mask: id,displayName,formattedAddress,googleMapsUri,rating,userRatingCount,reviews
+    search-text-url: ${GOOGLE_PLACES_TEXT_SEARCH_URL:https://places.googleapis.com/v1/places:searchText}
+    connect-timeout-ms: ${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}
+    read-timeout-ms: ${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}
+    request-timeout-ms: ${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}
   maps:
     places:
       enabled: ${GOOGLE_MAPS_PLACES_ENABLED:true}
@@ -142,7 +191,9 @@ google:
       text-search-url: ${GOOGLE_PLACES_TEXT_SEARCH_URL:https://places.googleapis.com/v1/places:searchText}
       default-language-code: en
       default-region-code: IN
-      timeout-ms: ${GOOGLE_PLACES_TIMEOUT_MS:8000}
+      connect-timeout-ms: ${GOOGLE_PLACES_CONNECT_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:3000}}
+      read-timeout-ms: ${GOOGLE_PLACES_READ_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:5000}}
+      request-timeout-ms: ${GOOGLE_PLACES_REQUEST_TIMEOUT_MS:${GOOGLE_PLACES_TIMEOUT_MS:8000}}
       max-results: ${GOOGLE_PLACES_MAX_RESULTS:10}
       max-radius-meters: ${GOOGLE_PLACES_MAX_RADIUS_METERS:5000}
 
@@ -167,6 +218,31 @@ aws:
 sfs:
   search:
     enabled: ${SFS_SEARCH_ENABLED:false}
+  logging:
+    request:
+      async:
+        queue-size: ${SFS_REQUEST_LOG_ASYNC_QUEUE_SIZE:2048}
+        discarding-threshold: ${SFS_REQUEST_LOG_ASYNC_DISCARDING_THRESHOLD:0}
+        never-block: ${SFS_REQUEST_LOG_ASYNC_NEVER_BLOCK:true}
+        include-caller-data: ${SFS_REQUEST_LOG_ASYNC_INCLUDE_CALLER_DATA:false}
+        max-flush-time-ms: ${SFS_REQUEST_LOG_ASYNC_MAX_FLUSH_TIME_MS:5000}
+  authentication:
+    identity-cache:
+      mobile:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_MAXIMUM_SIZE:50000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_MOBILE_EXPIRE_AFTER_WRITE:30s}
+      dashboard:
+        enabled: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_ENABLED:true}
+        maximum-size: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_MAXIMUM_SIZE:5000}
+        expire-after-write: ${SFS_AUTH_IDENTITY_CACHE_DASHBOARD_EXPIRE_AFTER_WRITE:15s}
+  refresh-token:
+    cleanup:
+      enabled: ${SFS_REFRESH_TOKEN_CLEANUP_ENABLED:true}
+      schedule: ${SFS_REFRESH_TOKEN_CLEANUP_SCHEDULE:0 0 2 * * *}
+      batch-size: ${SFS_REFRESH_TOKEN_CLEANUP_BATCH_SIZE:1000}
+      maximum-batches-per-run: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_BATCHES_PER_RUN:20}
+      maximum-execution-duration: ${SFS_REFRESH_TOKEN_CLEANUP_MAXIMUM_EXECUTION_DURATION:30s}
   instagram:
     meta:
       graph-api-version: ${META_GRAPH_API_VERSION:v25.0}
@@ -193,6 +269,7 @@ logging:
     # SFS application logs
     "[com.brandPitara.sfs]": INFO
     "[com.brandPitara.sfs.observability.api]": INFO
+    "[com.brandPitara.sfs.observability.api.reliable]": WARN
     "[com.brandPitara.sfs.observability.security]": INFO
     "[com.brandPitara.sfs.observability.audit]": INFO
     "[com.brandPitara.sfs.ratelimit]": INFO

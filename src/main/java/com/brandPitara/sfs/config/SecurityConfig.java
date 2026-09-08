@@ -4,6 +4,7 @@ import com.brandPitara.sfs.dashboard.auth.security.DashboardAccessDeniedHandler;
 import com.brandPitara.sfs.dashboard.auth.security.DashboardAuthenticationEntryPoint;
 import com.brandPitara.sfs.dashboard.auth.security.DashboardJwtAuthenticationFilter;
 import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
+import com.brandPitara.sfs.ratelimit.filter.PreAuthenticationAbuseFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -36,35 +37,69 @@ public class SecurityConfig {
 
     private final JwtRequestFilter jwtRequestFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
-    private final DashboardJwtAuthenticationFilter dashboardJwtAuthenticationFilter;
-    private final DashboardAuthenticationEntryPoint dashboardAuthenticationEntryPoint;
-    private final DashboardAccessDeniedHandler dashboardAccessDeniedHandler;
+
+    private final DashboardJwtAuthenticationFilter
+            dashboardJwtAuthenticationFilter;
+
+    private final DashboardAuthenticationEntryPoint
+            dashboardAuthenticationEntryPoint;
+
+    private final DashboardAccessDeniedHandler
+            dashboardAccessDeniedHandler;
+
     private final RateLimitingFilter rateLimitingFilter;
+    private final PreAuthenticationAbuseFilter preAuthenticationAbuseFilter;
 
     @Bean
     @Order(1)
-    public SecurityFilterChain dashboardFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain dashboardFilterChain(
+            HttpSecurity http
+    ) throws Exception {
 
         http
-            .securityMatcher("/api/dashboard/**", "/api/admin/**")
-            .csrf(csrf -> csrf.disable())
-            .cors(Customizer.withDefaults())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(dashboardAuthenticationEntryPoint)
-                .accessDeniedHandler(dashboardAccessDeniedHandler)
-            )
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/login").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/refresh").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/dashboard/auth/logout").permitAll()
-                .anyRequest().authenticated()
-            );
+                .securityMatcher(
+                        "/api/dashboard/**",
+                        "/api/admin/**"
+                )
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(
+                                dashboardAuthenticationEntryPoint
+                        )
+                        .accessDeniedHandler(
+                                dashboardAccessDeniedHandler
+                        )
+                )
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/dashboard/auth/login"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/dashboard/auth/refresh"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/dashboard/auth/logout"
+                        ).permitAll()
+                        .anyRequest()
+                        .authenticated()
+                );
 
         http.addFilterBefore(
-            dashboardJwtAuthenticationFilter,
-            UsernamePasswordAuthenticationFilter.class
+                dashboardJwtAuthenticationFilter,
+                UsernamePasswordAuthenticationFilter.class
         );
 
         return http.build();
@@ -72,63 +107,107 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
-    public SecurityFilterChain appFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain appFilterChain(
+            HttpSecurity http
+    ) throws Exception {
 
         http
-            .csrf(csrf -> csrf.disable())
-            .cors(Customizer.withDefaults())
-            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .exceptionHandling(ex -> ex.authenticationEntryPoint(jwtAuthenticationEntryPoint))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/error").permitAll()
-                .requestMatchers(
-                    "/api/health",
-                    "/actuator/health",
-                    "/v3/api-docs/**",
-                    "/swagger-ui/**",
-                    "/swagger-ui.html"
-                ).permitAll()
-                .requestMatchers(HttpMethod.POST, PUBLIC_MOBILE_AUTH_ENDPOINTS).permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/location/resolve").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/cities/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/app-content/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/app/screen-content").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/providers/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/builders/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/brands/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/projects/compare").permitAll()
-                .requestMatchers(
-                    HttpMethod.GET,
-                    "/api/public/**",
-                    "/api/projects/**",
-                    "/api/businesses/**",
-                    "/api/public/stamp-duty/**",
-                    "/api/public/interior-cost/**",
-                    "/api/search/**"
-                ).permitAll()
-                .anyRequest().authenticated()
-            );
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(
+                                jwtAuthenticationEntryPoint
+                        )
+                )
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(
+                                HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+                        .requestMatchers("/error")
+                        .permitAll()
+                        .requestMatchers(
+                                "/api/health",
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                PUBLIC_MOBILE_AUTH_ENDPOINTS
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/location/resolve"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/cities/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/app-content/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/app/screen-content"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/providers/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/builders/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/brands/**"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/projects/compare"
+                        ).permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/public/**",
+                                "/api/projects/**",
+                                "/api/businesses/**",
+                                "/api/public/stamp-duty/**",
+                                "/api/public/interior-cost/**",
+                                "/api/search/**"
+                        ).permitAll()
+                        .anyRequest()
+                        .authenticated()
+                );
 
         http.addFilterBefore(
-            jwtRequestFilter,
-            UsernamePasswordAuthenticationFilter.class
+                preAuthenticationAbuseFilter,
+                UsernamePasswordAuthenticationFilter.class
         );
+        /* JWT authentication establishes validated identity attributes. */
+        http.addFilterAfter(jwtRequestFilter, PreAuthenticationAbuseFilter.class);
 
-        // Runs after JWT authentication so SecurityContext is already populated
-        // for optionally-authenticated public endpoints (e.g. PUBLIC_PROJECT_COMPARE's
-        // IP_OR_USER key), and before any controller logic executes. Mobile/public
-        // routes only for Phase 1 - dashboard rate limiting is not in scope here.
+        /* Post-authentication principal-aware limiting. */
         http.addFilterAfter(
-            rateLimitingFilter,
-            JwtRequestFilter.class
+                rateLimitingFilter,
+                JwtRequestFilter.class
         );
 
         return http.build();
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration configuration
+    ) throws Exception {
         return configuration.getAuthenticationManager();
     }
 

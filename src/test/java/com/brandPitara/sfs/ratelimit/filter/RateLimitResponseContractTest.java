@@ -140,7 +140,10 @@ class RateLimitResponseContractTest {
                 .andExpect(jsonPath("$.error").value("TOO_MANY_REQUESTS"))
                 .andExpect(jsonPath("$.message").isNotEmpty())
                 .andExpect(jsonPath("$.retryAfterSeconds").isNumber())
-                .andExpect(jsonPath("$.policy").value(expectedPolicy));
+                .andExpect(jsonPath("$.policy").value(expectedPolicy))
+                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                .andExpect(jsonPath("$.path").isNotEmpty())
+                .andExpect(jsonPath("$.requestId").value("rate-limit-contract-rid"));
     }
 
     @Test
@@ -152,7 +155,8 @@ class RateLimitResponseContractTest {
                 .andExpect(status().isOk());
 
         assertFullContract(
-                mockMvc.perform(post("/api/auth/request-otp").contentType(MediaType.APPLICATION_JSON).content(body)
+                mockMvc.perform(post("/api/auth/request-otp").header("X-Request-Id", "rate-limit-contract-rid")
+                        .contentType(MediaType.APPLICATION_JSON).content(body)
                         .with(remoteAddr("70.70.70.70"))),
                 "MOBILE_OTP_REQUEST"
         );
@@ -163,7 +167,8 @@ class RateLimitResponseContractTest {
         mockMvc.perform(get("/api/home").with(remoteAddr("71.71.71.71"))).andExpect(status().isOk());
 
         assertFullContract(
-                mockMvc.perform(get("/api/home").with(remoteAddr("71.71.71.71"))),
+                mockMvc.perform(get("/api/home").header("X-Request-Id", "rate-limit-contract-rid")
+                        .with(remoteAddr("71.71.71.71"))),
                 "PUBLIC_HOME_READ"
         );
     }
@@ -177,7 +182,8 @@ class RateLimitResponseContractTest {
                 .andExpect(status().isOk());
 
         assertFullContract(
-                mockMvc.perform(post("/api/public/stamp-duty/calculate").contentType(MediaType.APPLICATION_JSON).content(body)
+                mockMvc.perform(post("/api/public/stamp-duty/calculate").header("X-Request-Id", "rate-limit-contract-rid")
+                        .contentType(MediaType.APPLICATION_JSON).content(body)
                         .with(remoteAddr("72.72.72.72"))),
                 "PUBLIC_CALCULATOR_WRITE"
         );
@@ -194,7 +200,8 @@ class RateLimitResponseContractTest {
                 .andExpect(status().isOk());
 
         assertFullContract(
-                mockMvc.perform(get("/api/profile").with(bearer).with(remoteAddr("73.73.73.73"))),
+                mockMvc.perform(get("/api/profile").header("X-Request-Id", "rate-limit-contract-rid")
+                        .with(bearer).with(remoteAddr("73.73.73.73"))),
                 "MOBILE_PROFILE_READ"
         );
     }

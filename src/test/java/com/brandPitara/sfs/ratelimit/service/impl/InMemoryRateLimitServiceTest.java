@@ -114,17 +114,14 @@ class InMemoryRateLimitServiceTest {
     }
 
     @Test
-    void failsOpenWhenPolicyHasNoConfiguredLimits() {
+    void missingPolicyConfigurationDoesNotSilentlyBypass() {
         RateLimitProperties properties = new RateLimitProperties();
         // MOBILE_OTP_VERIFY intentionally left unconfigured.
         InMemoryRateLimitService service = new InMemoryRateLimitService(properties);
 
-        RateLimitDecision decision = service.checkAndConsume(
-                RateLimitPolicy.MOBILE_OTP_VERIFY,
-                Map.of(RateLimitKeyType.PHONE, "+919876543210")
-        );
-
-        assertThat(decision.allowed()).isTrue();
+        assertThatThrownBy(() -> service.checkAndConsume(
+                RateLimitPolicy.MOBILE_OTP_VERIFY, Map.of(RateLimitKeyType.PHONE, "+919876543210")))
+                .isInstanceOf(com.brandPitara.sfs.ratelimit.exception.RateLimitConfigurationException.class);
     }
 
     @Test
@@ -199,8 +196,10 @@ class InMemoryRateLimitServiceTest {
     void bucketCacheDefaultsMatchDocumentedProductionValues() {
         RateLimitProperties properties = new RateLimitProperties();
 
-        assertThat(properties.getBucketCache().getMaximumSize()).isEqualTo(200_000);
-        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(120);
+        assertThat(properties.getBucketCache().getPrimaryMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getAbuseMaximumSize()).isEqualTo(10_000);
+        assertThat(properties.getBucketCache().getExpireAfterAccessMinutes()).isEqualTo(30);
+        assertThat(properties.getBucketCache().getAbuseExpireAfterAccessMinutes()).isEqualTo(60);
     }
 
     @Test

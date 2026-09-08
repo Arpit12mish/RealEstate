@@ -21,7 +21,6 @@ import com.brandPitara.sfs.service.PromoBannerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -70,7 +69,6 @@ public class HomeFeedServiceImpl implements HomeFeedService {
   private final CityRepository cityRepository;
 
   @Override
-  @Transactional(readOnly = true)
   public HomeFeedResponse getHome(
       Long cityId,
       Long categoryId,
@@ -86,7 +84,6 @@ public class HomeFeedServiceImpl implements HomeFeedService {
   }
 
   @Override
-  @Transactional(readOnly = true)
   public HomeFeedResponse getHome(HomeFeedRequest request) {
     HomeFeedRequest safeRequest = request == null ? HomeFeedRequest.builder().build() : request;
 

@@ -4,6 +4,7 @@ import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.repository.UserRepository;
 import com.brandPitara.sfs.service.model.UserLoginResult;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -34,6 +35,9 @@ class UserServiceImplTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private AuthenticationIdentityCacheInvalidator identityCacheInvalidator;
+
     @InjectMocks
     private UserServiceImpl userService;
 
@@ -53,6 +57,7 @@ class UserServiceImplTest {
         assertThat(result.getUser().getPhoneNumber()).isEqualTo("+919876543210");
         assertThat(result.getUser().isVerified()).isTrue();
         verify(userRepository).save(legacyUser);
+        verify(identityCacheInvalidator).invalidateMobileAfterCommit(7L);
     }
 
     @Test
@@ -71,6 +76,7 @@ class UserServiceImplTest {
         assertThat(result.getUser().getPhoneNumber()).isEqualTo("+919876543210");
         assertThat(result.getUser().getEmail()).isEqualTo("phone_919876543210@phone.local");
         assertThat(result.getUser().getRole()).isEqualTo(Role.CUSTOMER);
+        verify(identityCacheInvalidator).invalidateMobileAfterCommit(11L);
     }
 
     @Test

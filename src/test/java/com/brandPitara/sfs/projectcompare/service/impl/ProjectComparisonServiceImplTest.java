@@ -28,6 +28,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -327,7 +328,7 @@ class ProjectComparisonServiceImplTest {
         when(projectRepository.findByIdInAndPublishedTrueAndActiveTrueAndDeletedFalseAndReviewStatus(ids, ReviewStatus.APPROVED))
                 .thenReturn(projects);
         stubEmptyBatchRepos(ids);
-        when(builderCredibilityService.publicGetCredibilitySummary(100L))
+        when(builderCredibilityService.publicGetCredibilitySummaries(Set.of(100L)))
                 .thenThrow(new RuntimeException("credibility service down"));
         stubSectionBuilder(projects);
 

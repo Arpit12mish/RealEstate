@@ -637,4 +637,9 @@ class RateLimitPolicyResolverTest {
         assertThat(resolver.resolve(request("GET", "/api/admin/distributors"))).isEmpty();
         assertThat(resolver.resolve(request("GET", "/api/admin/session/me"))).isEmpty();
     }
+
+    @Test
+    void unknownHttpMethodDoesNotThrowOrMatchAPolicy() {
+        assertThat(resolver.resolve(request("BREW", "/api/home"))).isEmpty();
+    }
 }

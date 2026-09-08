@@ -13,6 +13,7 @@ class ClientIpResolverTest {
     @Test
     void trustsForwardedForFromTrustedProxy() {
         RateLimitProperties properties = new RateLimitProperties();
+        properties.setTrustedProxies(java.util.List.of("127.0.0.1", "10.0.0.1"));
         ClientIpResolver resolver = new ClientIpResolver(properties);
 
         HttpServletRequest request = mock(HttpServletRequest.class);
@@ -87,6 +88,7 @@ class ClientIpResolverTest {
     @Test
     void multipleForwardedForValuesWithLeadingBlankSegmentsChoosesFirstValidOne() {
         RateLimitProperties properties = new RateLimitProperties();
+        properties.setTrustedProxies(java.util.List.of("127.0.0.1", "10.0.0.1"));
         ClientIpResolver resolver = new ClientIpResolver(properties);
 
         HttpServletRequest request = mock(HttpServletRequest.class);
@@ -114,5 +116,40 @@ class ClientIpResolverTest {
         when(loopbackRequest.getHeader("X-Forwarded-For")).thenReturn("203.0.113.5");
 
         assertThat(resolver.resolve(loopbackRequest)).isEqualTo("127.0.0.1");
+    }
+
+    @Test
+    void canonicalizesIpv4AndEquivalentIpv6Forms() {
+        RateLimitProperties properties = new RateLimitProperties();
+        ClientIpResolver resolver = new ClientIpResolver(properties);
+
+        assertThat(resolver.normalize("203.000.113.005")).isEqualTo("203.0.113.5");
+        assertThat(resolver.normalize("2001:0db8:0:0:0:0:0:1"))
+                .isEqualTo(resolver.normalize("2001:db8::1"));
+        assertThat(resolver.normalize("[2001:db8::1]")).isEqualTo(resolver.normalize("2001:db8::1"));
+    }
+
+    @Test
+    void rejectsMalformedTrustedForwardedValuesAndFallsBackToProxyPeer() {
+        RateLimitProperties properties = new RateLimitProperties();
+        ClientIpResolver resolver = new ClientIpResolver(properties);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(request.getHeader("X-Forwarded-For")).thenReturn("not-an-ip, 999.2.3.4");
+
+        assertThat(resolver.resolve(request)).isEqualTo("127.0.0.1");
+    }
+
+    @Test
+    void skipsConfiguredTrustedHopsFromRightAndIgnoresSpoofedLeftPrefix() {
+        RateLimitProperties properties = new RateLimitProperties();
+        properties.setTrustedProxies(java.util.List.of("127.0.0.1", "10.0.0.1"));
+        ClientIpResolver resolver = new ClientIpResolver(properties);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+        when(request.getHeader("X-Forwarded-For"))
+                .thenReturn("1.1.1.1, 203.0.113.88, 10.0.0.1");
+
+        assertThat(resolver.resolve(request)).isEqualTo("203.0.113.88");
     }
 }

@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.ratelimit.config;
 
 import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
+import com.brandPitara.sfs.ratelimit.filter.PreAuthenticationAbuseFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,6 +21,14 @@ public class RateLimitFilterRegistrationConfig {
     @Bean
     public FilterRegistrationBean<RateLimitingFilter> rateLimitingFilterRegistration(RateLimitingFilter filter) {
         FilterRegistrationBean<RateLimitingFilter> registration = new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<PreAuthenticationAbuseFilter> preAuthenticationAbuseFilterRegistration(
+            PreAuthenticationAbuseFilter filter) {
+        FilterRegistrationBean<PreAuthenticationAbuseFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setEnabled(false);
         return registration;
     }

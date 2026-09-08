@@ -12,6 +12,7 @@ import com.brandPitara.sfs.repository.LoginHistoryRepository;
 import com.brandPitara.sfs.repository.RefreshTokenRepository;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.AuthenticationIdentityCacheInvalidator;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -40,7 +41,8 @@ class ProfileServiceImplTest {
                 mock(UserFavoriteRepository.class),
                 mock(LoginHistoryRepository.class),
                 mock(GuestSessionRepository.class),
-                mediaStorageService
+                mediaStorageService,
+                mock(AuthenticationIdentityCacheInvalidator.class)
         );
 
         User user = new User();
@@ -85,7 +87,8 @@ class ProfileServiceImplTest {
                 mock(UserFavoriteRepository.class),
                 mock(LoginHistoryRepository.class),
                 mock(GuestSessionRepository.class),
-                mediaStorageService
+                mediaStorageService,
+                mock(AuthenticationIdentityCacheInvalidator.class)
         );
 
         when(userRepository.findByPhoneNumber("+919999999999")).thenReturn(Optional.empty());
@@ -98,5 +101,35 @@ class ProfileServiceImplTest {
                 .hasMessageContaining("User not found");
 
         verifyNoInteractions(mediaStorageService);
+    }
+
+    @Test
+    void accountDeletionInvalidatesAuthenticationIdentityAfterCommit() {
+        UserRepository userRepository = mock(UserRepository.class);
+        AuthenticationIdentityCacheInvalidator invalidator = mock(AuthenticationIdentityCacheInvalidator.class);
+        RefreshTokenRepository refreshTokens = mock(RefreshTokenRepository.class);
+        FavoriteRepository favorites = mock(FavoriteRepository.class);
+        UserFavoriteRepository userFavorites = mock(UserFavoriteRepository.class);
+        LoginHistoryRepository loginHistory = mock(LoginHistoryRepository.class);
+        GuestSessionRepository guestSessions = mock(GuestSessionRepository.class);
+        ProfileServiceImpl service = new ProfileServiceImpl(
+                userRepository,
+                refreshTokens,
+                favorites,
+                userFavorites,
+                loginHistory,
+                guestSessions,
+                mock(MediaStorageService.class),
+                invalidator
+        );
+        User user = new User();
+        user.setId(81L);
+        user.setPhoneNumber("+919876500081");
+        when(userRepository.findByPhoneNumber(user.getPhoneNumber())).thenReturn(Optional.of(user));
+
+        service.deleteAccount(user.getPhoneNumber());
+
+        verify(userRepository).delete(user);
+        verify(invalidator).invalidateMobileAfterCommit(81L);
     }
 }

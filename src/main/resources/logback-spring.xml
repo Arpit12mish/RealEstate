@@ -15,6 +15,18 @@
     <!-- local → ./logs  |  prod → /var/log/sfs/app  (set via app.logging.path) -->
     <springProperty scope="context" name="LOG_DIR" source="app.logging.path" defaultValue="./logs"/>
 
+    <!-- Bounded, non-blocking low-priority request-log queue. -->
+    <springProperty scope="context" name="REQUEST_LOG_QUEUE_SIZE"
+                    source="sfs.logging.request.async.queue-size" defaultValue="2048"/>
+    <springProperty scope="context" name="REQUEST_LOG_DISCARDING_THRESHOLD"
+                    source="sfs.logging.request.async.discarding-threshold" defaultValue="0"/>
+    <springProperty scope="context" name="REQUEST_LOG_NEVER_BLOCK"
+                    source="sfs.logging.request.async.never-block" defaultValue="true"/>
+    <springProperty scope="context" name="REQUEST_LOG_INCLUDE_CALLER_DATA"
+                    source="sfs.logging.request.async.include-caller-data" defaultValue="false"/>
+    <springProperty scope="context" name="REQUEST_LOG_MAX_FLUSH_TIME_MS"
+                    source="sfs.logging.request.async.max-flush-time-ms" defaultValue="5000"/>
+
     <!-- ============================================================
          CONSOLE APPENDER  (human-readable, always active)
          ============================================================ -->
@@ -30,7 +42,8 @@
          ============================================================ -->
 
     <!-- ── sfs-api.log ─────────────────────────────────────────── -->
-    <appender name="API_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="API_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>request</metricCategory>
         <file>${LOG_DIR}/sfs-api.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/archived/sfs-api.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
@@ -46,8 +59,36 @@
         </encoder>
     </appender>
 
+    <!-- Exceptions and HTTP 5xx use this reliable path; routine 4xx and slow successes stay async. -->
+    <appender name="API_RELIABLE_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>request_reliable</metricCategory>
+        <file>${LOG_DIR}/sfs-api-reliable.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_DIR}/archived/sfs-api-reliable.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"app":"${APP_NAME}","env":"${APP_ENV}"}</customFields>
+            <includeMdcKeyName>requestId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>role</includeMdcKeyName>
+        </encoder>
+    </appender>
+
+    <appender name="API_ASYNC" class="com.brandPitara.sfs.observability.BoundedRequestAsyncAppender">
+        <queueSize>${REQUEST_LOG_QUEUE_SIZE}</queueSize>
+        <discardingThreshold>${REQUEST_LOG_DISCARDING_THRESHOLD}</discardingThreshold>
+        <neverBlock>${REQUEST_LOG_NEVER_BLOCK}</neverBlock>
+        <includeCallerData>${REQUEST_LOG_INCLUDE_CALLER_DATA}</includeCallerData>
+        <maxFlushTime>${REQUEST_LOG_MAX_FLUSH_TIME_MS}</maxFlushTime>
+        <appender-ref ref="API_FILE"/>
+    </appender>
+
     <!-- ── sfs-error.log ───────────────────────────────────────── -->
-    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="ERROR_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>error</metricCategory>
         <file>${LOG_DIR}/sfs-error.log</file>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
             <level>ERROR</level>
@@ -67,7 +108,8 @@
     </appender>
 
     <!-- ── sfs-security.log ────────────────────────────────────── -->
-    <appender name="SECURITY_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="SECURITY_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>security</metricCategory>
         <file>${LOG_DIR}/sfs-security.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/archived/sfs-security.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
@@ -82,7 +124,8 @@
     </appender>
 
     <!-- ── sfs-audit.log ───────────────────────────────────────── -->
-    <appender name="AUDIT_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="AUDIT_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>audit</metricCategory>
         <file>${LOG_DIR}/sfs-audit.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/archived/sfs-audit.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
@@ -99,7 +142,8 @@
     </appender>
 
     <!-- ── sfs-app.log ─────────────────────────────────────────── -->
-    <appender name="APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <appender name="APP_FILE" class="com.brandPitara.sfs.observability.InstrumentedRollingFileAppender">
+        <metricCategory>app</metricCategory>
         <file>${LOG_DIR}/sfs-app.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <fileNamePattern>${LOG_DIR}/archived/sfs-app.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
@@ -119,11 +163,18 @@
          ============================================================ -->
     <springProfile name="!local">
 
-        <!-- API requests → sfs-api.log ONLY (additivity=false) -->
+        <!-- Routine request completions (success and 4xx) → bounded async file only. -->
         <logger name="com.brandPitara.sfs.observability.api"
                 level="INFO"
                 additivity="false">
-            <appender-ref ref="API_FILE"/>
+            <appender-ref ref="API_ASYNC"/>
+        </logger>
+
+        <!-- Exceptions and HTTP 5xx bypass the lossy queue. -->
+        <logger name="com.brandPitara.sfs.observability.api.reliable"
+                level="WARN"
+                additivity="false">
+            <appender-ref ref="API_RELIABLE_FILE"/>
         </logger>
 
         <!-- Security/auth events → sfs-security.log ONLY -->
@@ -207,12 +258,19 @@
          ============================================================ -->
     <springProfile name="local">
 
-        <!-- API requests → console + sfs-api.log -->
+        <!-- Local request INFO keeps console visibility; file I/O is async. -->
         <logger name="com.brandPitara.sfs.observability.api"
                 level="INFO"
                 additivity="false">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="API_FILE"/>
+            <appender-ref ref="API_ASYNC"/>
+        </logger>
+
+        <logger name="com.brandPitara.sfs.observability.api.reliable"
+                level="WARN"
+                additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="API_RELIABLE_FILE"/>
         </logger>
 
         <!-- Security/auth events → console + sfs-security.log -->

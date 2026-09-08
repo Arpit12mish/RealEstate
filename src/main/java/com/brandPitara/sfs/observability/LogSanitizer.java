@@ -2,6 +2,7 @@ package com.brandPitara.sfs.observability;
 
 import org.springframework.stereotype.Component;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -18,12 +19,22 @@ public class LogSanitizer {
     private static final int MAX_VALUE_LENGTH   = 200;
 
     private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9\\-_]{1,80}$");
+    private static final Pattern BEARER_PATTERN =
+            Pattern.compile("(?i)\\bBearer\\s+[a-z0-9._~+/=-]+");
+    private static final Pattern JWT_PATTERN =
+            Pattern.compile("\\b[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}\\b");
+    private static final Pattern SENSITIVE_MESSAGE_VALUE_PATTERN = Pattern.compile(
+            "(?i)\\b(authorization|access[_-]?token|refresh[_-]?token|jwt|password(?:hash)?|otp|code|pin|"
+                    + "api[_-]?key|x-goog-api-key|client[_-]?secret|secret|credential)s?"
+                    + "(\\s*[=:]\\s*|\\s+)([^\\s,;]+)"
+    );
+    private static final Pattern PHONE_PATTERN = Pattern.compile("(?<!\\d)\\+?\\d{10,15}(?!\\d)");
 
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
             "authorization", "accesstoken", "refreshtoken", "token", "jwt",
             "password", "passwordhash", "otp", "code", "pin", "secret", "clientsecret",
             "payment", "card", "cvv", "upi", "address", "phone", "email",
-            "x-goog-api-key"
+            "xgoogapikey"
     );
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -72,7 +83,7 @@ public class LogSanitizer {
             }
             String key = pair.substring(0, eq);
             String val = pair.substring(eq + 1);
-            if (SENSITIVE_QUERY_KEYS.contains(key.toLowerCase())) {
+            if (isSensitiveKey(key)) {
                 sb.append(stripNewlines(key)).append("=****");
             } else {
                 sb.append(stripNewlines(key)).append("=").append(truncate(stripNewlines(val), 80));
@@ -89,7 +100,12 @@ public class LogSanitizer {
 
     public String sanitizeMessage(String message) {
         if (message == null) return null;
-        return truncate(stripNewlines(message), MAX_MESSAGE_LENGTH);
+        String sanitized = stripNewlines(message);
+        sanitized = BEARER_PATTERN.matcher(sanitized).replaceAll("Bearer ****");
+        sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("****");
+        sanitized = SENSITIVE_MESSAGE_VALUE_PATTERN.matcher(sanitized).replaceAll("$1$2****");
+        sanitized = PHONE_PATTERN.matcher(sanitized).replaceAll("****");
+        return truncate(sanitized, MAX_MESSAGE_LENGTH);
     }
 
     public String simplifyUserAgent(String ua) {
@@ -126,7 +142,7 @@ public class LogSanitizer {
         for (Map.Entry<String, String[]> entry : paramMap.entrySet()) {
             if (sb.length() > 0) sb.append("&");
             String key = entry.getKey();
-            if (SENSITIVE_QUERY_KEYS.contains(key.toLowerCase())) {
+            if (isSensitiveKey(key)) {
                 sb.append(stripNewlines(key)).append("=****");
             } else {
                 String val = entry.getValue() != null && entry.getValue().length > 0
@@ -149,6 +165,12 @@ public class LogSanitizer {
     private static String stripNewlines(String value) {
         if (value == null) return null;
         return value.replace('\n', '_').replace('\r', '_').replace('\t', ' ');
+    }
+
+    private static boolean isSensitiveKey(String key) {
+        if (key == null) return false;
+        String normalized = key.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return SENSITIVE_QUERY_KEYS.contains(normalized);
     }
 
     private static String truncate(String value, int max) {

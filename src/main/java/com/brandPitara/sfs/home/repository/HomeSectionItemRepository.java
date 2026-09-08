@@ -2,6 +2,7 @@ package com.brandPitara.sfs.home.repository;
 
 import com.brandPitara.sfs.home.entity.HomeSectionItemEntity;
 import com.brandPitara.sfs.home.enums.HomeSectionType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -10,7 +11,12 @@ public interface HomeSectionItemRepository extends JpaRepository<HomeSectionItem
 
   List<HomeSectionItemEntity> findByHomeCategory_IdAndSectionTypeAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
       Long categoryId,
-      HomeSectionType sectionType
+      HomeSectionType sectionType,
+      Pageable pageable
+  );
+  List<HomeSectionItemEntity> findByConfig_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
+      Long configId,
+      Pageable pageable
   );
   List<HomeSectionItemEntity> findByConfig_IdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(Long configId);
   List<HomeSectionItemEntity> findByHomeCategory_IdAndSectionTypeAndGroupKeyAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(
