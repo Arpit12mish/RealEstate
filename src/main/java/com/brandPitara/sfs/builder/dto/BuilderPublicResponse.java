@@ -8,6 +8,7 @@ public class BuilderPublicResponse {
 
   private Long id;
   private String name;
+  private String slug;
   private String logoUrl;
   private String description;
 

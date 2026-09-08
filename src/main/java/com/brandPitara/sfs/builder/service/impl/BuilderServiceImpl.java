@@ -11,6 +11,7 @@ import com.brandPitara.sfs.builder.repository.BuilderRepository;
 import com.brandPitara.sfs.builder.service.BuilderService;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.entity.CityEntity;
+import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 
@@ -27,6 +28,7 @@ public class BuilderServiceImpl implements BuilderService {
 
   private final BuilderRepository builderRepository;
   private final ContentVersionService contentVersionService;
+  private final TrustedMediaUrlValidator trustedMediaUrlValidator;
 
   @jakarta.persistence.PersistenceContext
   private jakarta.persistence.EntityManager em;
@@ -37,9 +39,13 @@ public class BuilderServiceImpl implements BuilderService {
   @Override
   @Transactional
   public BuilderResponse create(BuilderUpsertRequest request) {
+    String name = clean(request.getName());
+    String logoUrl = clean(request.getLogoUrl());
+    trustedMediaUrlValidator.validate(logoUrl);
     BuilderEntity entity = BuilderEntity.builder()
-        .name(clean(request.getName()))
-        .logoUrl(clean(request.getLogoUrl()))
+        .name(name)
+        .slug(generateUniqueSlug(name))
+        .logoUrl(logoUrl)
         .description(clean(request.getDescription()))
         .phone(clean(request.getPhone()))
         .whatsapp(clean(request.getWhatsapp()))
@@ -67,7 +73,11 @@ public class BuilderServiceImpl implements BuilderService {
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
 
     if (StringUtils.hasText(request.getName())) entity.setName(clean(request.getName()));
-    if (request.getLogoUrl() != null) entity.setLogoUrl(clean(request.getLogoUrl()));
+    if (request.getLogoUrl() != null) {
+      String logoUrl = clean(request.getLogoUrl());
+      trustedMediaUrlValidator.validate(logoUrl);
+      entity.setLogoUrl(logoUrl);
+    }
     if (request.getDescription() != null) entity.setDescription(clean(request.getDescription()));
 
     if (request.getPhone() != null) entity.setPhone(clean(request.getPhone()));
@@ -97,7 +107,9 @@ public class BuilderServiceImpl implements BuilderService {
     BuilderEntity entity = builderRepository.findByIdAndDeletedFalse(id)
         .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + id));
 
-    entity.setLogoUrl(clean(request.getLogoUrl()));
+    String logoUrl = clean(request.getLogoUrl());
+    trustedMediaUrlValidator.validate(logoUrl);
+    entity.setLogoUrl(logoUrl);
     BuilderEntity saved = builderRepository.save(entity);
 
     contentVersionService.bump(KEY_BUILDERS);
@@ -180,7 +192,32 @@ public class BuilderServiceImpl implements BuilderService {
     return BuilderMapper.toPublicResponse(entity);
   }
 
+  @Override
+  @Transactional(readOnly = true)
+  public BuilderPublicResponse publicGetBySlug(String slug) {
+    BuilderEntity entity = builderRepository.findBySlugAndPublishedTrueAndActiveTrueAndDeletedFalse(slug)
+        .orElseThrow(() -> new EntityNotFoundException("Builder not found: " + slug));
+    return BuilderMapper.toPublicResponse(entity);
+  }
+
   // -------- helpers --------
+
+  private String generateUniqueSlug(String name) {
+    String base = slugify(name);
+    String candidate = base;
+    int suffix = 2;
+    while (builderRepository.findBySlug(candidate).isPresent()) {
+      candidate = base + "-" + suffix++;
+    }
+    return candidate;
+  }
+
+  private String slugify(String input) {
+    String base = input == null ? "" : input.toLowerCase(java.util.Locale.ROOT).trim()
+        .replaceAll("[^a-z0-9]+", "-")
+        .replaceAll("(^-+|-+$)", "");
+    return base.isEmpty() ? "builder" : base;
+  }
 
   private CityEntity resolveCity(Long cityId) {
     if (cityId == null) return null;

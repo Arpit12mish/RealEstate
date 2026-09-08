@@ -11,6 +11,9 @@ import lombok.*;
     indexes = {
         @Index(name = "idx_builder_city_id", columnList = "city_id"),
         @Index(name = "idx_builder_public",  columnList = "published,active,deleted")
+    },
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_builder_slug", columnNames = "slug")
     }
 )
 @Getter
@@ -26,6 +29,9 @@ public class BuilderEntity extends BaseEntity {
 
   @Column(nullable = false, length = 150)
   private String name;
+
+  @Column(nullable = false, length = 180)
+  private String slug;
 
   @Column(name = "logo_url")
   private String logoUrl;

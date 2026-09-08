@@ -41,6 +41,7 @@ public class BuilderMapper {
     return BuilderPublicResponse.builder()
         .id(e.getId())
         .name(e.getName())
+        .slug(e.getSlug())
         .logoUrl(e.getLogoUrl())
         .description(e.getDescription())
         .addressLine(e.getAddressLine())

@@ -26,6 +26,14 @@ public class CompanyPublicServiceImpl implements CompanyPublicService {
   }
 
   @Override
+  public CompanyResponse publicGetBySlug(String slug) {
+    CompanyEntity c = companyRepo.findBySlugAndActiveTrueAndPublishedTrueAndDeletedFalse(slug)
+        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Company not found"));
+
+    return toResponse(c);
+  }
+
+  @Override
   public Page<CompanyResponse> publicList(String companyType, Pageable pageable) {
     Page<CompanyEntity> page = (companyType == null || companyType.isBlank())
         ? companyRepo.findByActiveTrueAndPublishedTrueAndDeletedFalse(pageable)

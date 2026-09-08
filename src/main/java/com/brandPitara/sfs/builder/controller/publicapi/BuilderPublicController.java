@@ -26,4 +26,16 @@ public class BuilderPublicController {
   public BuilderPublicResponse get(@PathVariable Long id) {
     return builderService.publicGetById(id);
   }
+
+  // Canonical slug-based detail lookup. The path constraint requires at least one
+  // alphabetic character, so a purely-numeric path can never match this pattern -
+  // mirrors BrandPublicController's own slug-vs-numeric-id disambiguation approach,
+  // though here it's not strictly required for route matching (this endpoint lives
+  // under a distinct /slug/ prefix, so it can never collide with GET /{id} above);
+  // it still doubles as slug-format validation, rejecting obviously malformed input
+  // with a clean 404 before it ever reaches the service/repository layer.
+  @GetMapping("/slug/{builderSlug:[a-z0-9-]*[a-z][a-z0-9-]*}")
+  public BuilderPublicResponse getBySlug(@PathVariable String builderSlug) {
+    return builderService.publicGetBySlug(builderSlug);
+  }
 }

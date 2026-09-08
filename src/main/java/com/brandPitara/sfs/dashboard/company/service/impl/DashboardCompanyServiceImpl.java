@@ -24,10 +24,17 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class DashboardCompanyServiceImpl implements DashboardCompanyService {
+
+  // Lowercase kebab-case only: letters/digits, single hyphens as separators, no leading/
+  // trailing hyphen. Matches the shape slugify() below already always produces for an
+  // auto-generated slug - this is what a dashboard-supplied CUSTOM slug must also satisfy,
+  // since nothing enforced this before (see Phase 7B-G / GAP-003).
+  private static final Pattern CANONICAL_SLUG_PATTERN = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
 
   private final CompanyRepository companyRepository;
   private final CityRepository cityRepository;
@@ -65,6 +72,7 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
   @Transactional
   public CompanyDetailResponse create(CompanyCreateRequest request) {
     CityEntity city = resolveCity(request.getCityId());
+    boolean initiallyPublished = Boolean.TRUE.equals(request.getPublished());
 
     CompanyEntity entity = CompanyEntity.builder()
         .name(request.getName().trim())
@@ -82,7 +90,10 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
         .email(clean(request.getEmail()))
         .priority(request.getPriority() != null ? request.getPriority() : 0)
         .active(request.getActive() != null ? request.getActive() : true)
-        .published(request.getPublished() != null ? request.getPublished() : false)
+        .published(initiallyPublished)
+        // A company created already-published counts as published from the start -
+        // its slug is locked immediately, same as if it were published a moment later.
+        .everPublished(initiallyPublished)
         .deleted(false)
         .build();
 
@@ -96,6 +107,14 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
     CompanyEntity entity = companyRepository.findByIdAndDeletedFalse(companyId)
         .orElseThrow(() -> new EntityNotFoundException("Company not found: " + companyId));
 
+    // Captured before any mutation below, per this request's own starting state - not
+    // re-read mid-method - so a single request that both sets a custom slug AND publishes
+    // for the very first time is still allowed (that IS "before first publication"), while
+    // an already-ever-published company can never have its slug changed again, including
+    // via an unpublish -> edit -> republish sequence (ever_published never resets to false;
+    // see RISK-025 / Phase 7B-G).
+    boolean wasEverPublished = Boolean.TRUE.equals(entity.getEverPublished());
+
     if (request.getName() != null) {
       if (!StringUtils.hasText(request.getName())) {
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name cannot be blank");
@@ -103,6 +122,12 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
       entity.setName(request.getName().trim());
     }
     if (request.getSlug() != null) {
+      if (wasEverPublished) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "Company slug cannot be changed after the company has been published"
+        );
+      }
       entity.setSlug(resolveSlugForUpdate(request.getSlug(), companyId));
     }
     if (request.getCompanyType() != null) {
@@ -123,7 +148,13 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
     if (request.getEmail() != null) entity.setEmail(clean(request.getEmail()));
     if (request.getPriority() != null) entity.setPriority(request.getPriority());
     if (request.getActive() != null) entity.setActive(request.getActive());
-    if (request.getPublished() != null) entity.setPublished(request.getPublished());
+    if (request.getPublished() != null) {
+      entity.setPublished(request.getPublished());
+      if (Boolean.TRUE.equals(request.getPublished())) {
+        // One-way flip - see the field's own javadoc on CompanyEntity.everPublished.
+        entity.setEverPublished(true);
+      }
+    }
 
     CompanyEntity saved = companyRepository.save(entity);
     return toDetail(saved);
@@ -221,6 +252,7 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
 
   private String resolveSlugForCreate(String requestedSlug, String name) {
     if (StringUtils.hasText(requestedSlug)) {
+      requireCanonicalSlug(requestedSlug);
       companyRepository.findBySlug(requestedSlug).ifPresent(existing -> {
         throw new ResponseStatusException(HttpStatus.CONFLICT, "Company slug already exists: " + requestedSlug);
       });
@@ -233,10 +265,23 @@ public class DashboardCompanyServiceImpl implements DashboardCompanyService {
     if (!StringUtils.hasText(requestedSlug)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "slug cannot be blank");
     }
+    requireCanonicalSlug(requestedSlug);
     companyRepository.findBySlugAndIdNot(requestedSlug, companyId).ifPresent(existing -> {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "Company slug already exists: " + requestedSlug);
     });
     return requestedSlug;
+  }
+
+  // Auto-generated slugs (slugify() below) are always canonical by construction and never
+  // pass through here - this only guards a dashboard-supplied CUSTOM slug value.
+  private void requireCanonicalSlug(String slug) {
+    if (!CANONICAL_SLUG_PATTERN.matcher(slug).matches()) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST,
+          "slug must be lowercase kebab-case (letters, digits, and single hyphens only, "
+              + "no leading/trailing hyphen): " + slug
+      );
+    }
   }
 
   private String generateUniqueSlug(String name) {
