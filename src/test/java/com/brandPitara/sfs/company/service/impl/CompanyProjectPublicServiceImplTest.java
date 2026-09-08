@@ -4,9 +4,12 @@ import com.brandPitara.sfs.brand.entity.BrandCollaborationEntity;
 import com.brandPitara.sfs.brand.entity.BrandEntity;
 import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.company.dto.CompanyProjectResponse;
+import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
+import com.brandPitara.sfs.company.entity.CompanyProjectMediaEntity;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
+import com.brandPitara.sfs.company.repository.CompanyProjectMediaRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -27,10 +30,11 @@ import static org.mockito.Mockito.when;
 class CompanyProjectPublicServiceImplTest {
 
   @Mock private CompanyProjectRepository companyProjectRepository;
+  @Mock private CompanyProjectMediaRepository companyProjectMediaRepository;
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
 
   private CompanyProjectPublicServiceImpl service() {
-    return new CompanyProjectPublicServiceImpl(companyProjectRepository, brandCollaborationRepository);
+    return new CompanyProjectPublicServiceImpl(companyProjectRepository, companyProjectMediaRepository, brandCollaborationRepository);
   }
 
   @Test
@@ -65,7 +69,7 @@ class CompanyProjectPublicServiceImplTest {
         .deleted(false)
         .build();
     when(companyProjectRepository
-        .findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(88L))
+        .findPublicByIdWithCompanyAndCity(88L))
         .thenReturn(Optional.of(project));
     when(brandCollaborationRepository.findPublicByCompanyProjectId(eq(88L), org.mockito.Mockito.any(Pageable.class)))
         .thenReturn(List.of(collaboration));
@@ -93,7 +97,7 @@ class CompanyProjectPublicServiceImplTest {
         .deleted(false)
         .build();
     when(companyProjectRepository
-        .findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(88L))
+        .findPublicByIdWithCompanyAndCity(88L))
         .thenReturn(Optional.of(project));
     when(brandCollaborationRepository.findPublicByCompanyProjectId(eq(88L), org.mockito.Mockito.any(Pageable.class)))
         .thenReturn(List.of());
@@ -109,10 +113,37 @@ class CompanyProjectPublicServiceImplTest {
   @Test
   void publicGet_throwsNotFound_whenCompanyProjectIsNotPublic() {
     when(companyProjectRepository
-        .findByIdAndPublishedTrueAndActiveTrueAndDeletedFalseAndCompany_PublishedTrueAndCompany_ActiveTrueAndCompany_DeletedFalse(88L))
+        .findPublicByIdWithCompanyAndCity(88L))
         .thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service().publicGet(88L))
         .isInstanceOf(ResponseStatusException.class);
+  }
+
+  @Test
+  void publicGet_returnsEditorialJsonAndOnlyPublicMediaRepositoryResults() {
+    CompanyProjectEntity project = CompanyProjectEntity.builder()
+        .id(88L).name("Amazon Office").published(true).active(true).deleted(false)
+        .stats(List.of(CompanyProjectStatDto.builder().label("Duration").value("6 Months").build()))
+        .budget(CompanyProjectBudgetDto.builder().budgetLabel("₹180Cr").build())
+        .priceBreakdown(List.of(CompanyProjectPriceBreakdownItemDto.builder().label("Fit-Out").amountLabel("₹35Cr").build()))
+        .clientRequirements(List.of(CompanyProjectClientRequirementDto.builder().title("Storage").build()))
+        .designMaterials(CompanyProjectDesignMaterialsDto.builder().designStyle("Modern Luxury").build())
+        .build();
+    CompanyProjectMediaEntity media = CompanyProjectMediaEntity.builder()
+        .id(7L).companyProject(project).mediaUrl("gallery.jpg").mediaType("IMAGE")
+        .categoryKey("WORKSTATIONS").sortOrder(0).active(true).publicVisible(true).deleted(false).build();
+    when(companyProjectRepository.findPublicByIdWithCompanyAndCity(88L)).thenReturn(Optional.of(project));
+    when(brandCollaborationRepository.findPublicByCompanyProjectId(eq(88L), org.mockito.Mockito.any(Pageable.class))).thenReturn(List.of());
+    when(companyProjectMediaRepository.findByCompanyProject_IdAndActiveTrueAndDeletedFalseAndPublicVisibleTrueOrderBySortOrderAscIdAsc(88L)).thenReturn(List.of(media));
+
+    CompanyProjectResponse response = service().publicGet(88L);
+
+    assertThat(response.getStats()).hasSize(1);
+    assertThat(response.getBudget().getBudgetLabel()).isEqualTo("₹180Cr");
+    assertThat(response.getPriceBreakdown()).hasSize(1);
+    assertThat(response.getClientRequirements()).hasSize(1);
+    assertThat(response.getDesignMaterials().getDesignStyle()).isEqualTo("Modern Luxury");
+    assertThat(response.getMediaGallery()).extracting(CompanyProjectMediaResponse::getMediaUrl).containsExactly("gallery.jpg");
   }
 }

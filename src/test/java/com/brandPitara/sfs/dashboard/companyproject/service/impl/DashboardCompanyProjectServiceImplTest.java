@@ -4,8 +4,13 @@ import com.brandPitara.sfs.brand.repository.BrandCollaborationRepository;
 import com.brandPitara.sfs.company.entity.CompanyEntity;
 import com.brandPitara.sfs.company.entity.CompanyProjectEntity;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
+import com.brandPitara.sfs.company.repository.CompanyRepository;
+import com.brandPitara.sfs.repository.CityRepository;
 import com.brandPitara.sfs.dashboard.companyproject.dto.CompanyProjectDetailResponse;
 import com.brandPitara.sfs.dashboard.companyproject.dto.CompanyProjectListItemResponse;
+import com.brandPitara.sfs.dashboard.companyproject.dto.CompanyProjectCreateRequest;
+import com.brandPitara.sfs.dashboard.companyproject.dto.CompanyProjectUpdateRequest;
+import com.brandPitara.sfs.company.dto.*;
 import com.brandPitara.sfs.entity.CityEntity;
 import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
@@ -25,15 +30,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doAnswer;
 
 @ExtendWith(MockitoExtension.class)
 class DashboardCompanyProjectServiceImplTest {
 
   @Mock private CompanyProjectRepository companyProjectRepository;
+  @Mock private CompanyRepository companyRepository;
+  @Mock private CityRepository cityRepository;
   @Mock private BrandCollaborationRepository brandCollaborationRepository;
 
   private DashboardCompanyProjectServiceImpl service() {
-    return new DashboardCompanyProjectServiceImpl(companyProjectRepository, brandCollaborationRepository);
+    return new DashboardCompanyProjectServiceImpl(companyProjectRepository, companyRepository, cityRepository, brandCollaborationRepository);
   }
 
   private CompanyEntity company() {
@@ -123,5 +131,56 @@ class DashboardCompanyProjectServiceImplTest {
     when(companyProjectRepository.findByIdAndDeletedFalse(999L)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service().getDetail(999L)).isInstanceOf(EntityNotFoundException.class);
+  }
+
+  @Test
+  void create_persistsFullEditorialJsonContract() {
+    when(companyRepository.findByIdAndDeletedFalse(1L)).thenReturn(Optional.of(company()));
+    when(companyProjectRepository.findBySlug("amazon-office")).thenReturn(Optional.empty());
+    doAnswer(invocation -> { CompanyProjectEntity e = invocation.getArgument(0); e.setId(101L); return e; })
+        .when(companyProjectRepository).save(any(CompanyProjectEntity.class));
+    CompanyProjectCreateRequest request = CompanyProjectCreateRequest.builder()
+        .companyId(1L).name("Amazon Office").slug("amazon-office")
+        .stats(List.of(CompanyProjectStatDto.builder().label("Duration").value("6 Months").sortOrder(0).build()))
+        .budget(CompanyProjectBudgetDto.builder().totalBudget(new java.math.BigDecimal("1800000000")).currency("INR").build())
+        .priceBreakdown(List.of(CompanyProjectPriceBreakdownItemDto.builder().label("Fit-Out").amount(new java.math.BigDecimal("350000000")).build()))
+        .clientRequirements(List.of(CompanyProjectClientRequirementDto.builder().title("Easy maintenance").priority("MEDIUM").build()))
+        .designMaterials(CompanyProjectDesignMaterialsDto.builder()
+            .designStyle("Modern Luxury")
+            .colorPalette(List.of(CompanyProjectColorPaletteDto.builder().name("Night Green").hex("#0E211D").build()))
+            .materialsUsed(List.of(CompanyProjectMaterialDto.builder().name("Walnut Veneer").imageUrl("walnut.jpg").build()))
+            .build())
+        .build();
+
+    CompanyProjectDetailResponse response = service().create(request);
+
+    assertThat(response.getId()).isEqualTo(101L);
+    assertThat(response.getStats()).hasSize(1);
+    assertThat(response.getBudget().getCurrency()).isEqualTo("INR");
+    assertThat(response.getPriceBreakdown()).hasSize(1);
+    assertThat(response.getClientRequirements()).hasSize(1);
+    assertThat(response.getDesignMaterials().getMaterialsUsed()).hasSize(1);
+  }
+
+  @Test
+  void update_replacesEditorialJsonAndSoftDeleteDisablesPublication() {
+    CompanyProjectEntity entity = project(88L);
+    when(companyProjectRepository.findByIdAndDeletedFalse(88L)).thenReturn(Optional.of(entity));
+    when(companyProjectRepository.save(entity)).thenReturn(entity);
+    CompanyProjectUpdateRequest request = CompanyProjectUpdateRequest.builder()
+        .stats(List.of(CompanyProjectStatDto.builder().label("Completion").value("2020").build()))
+        .clientRequirements(List.of()).priceBreakdown(List.of())
+        .designMaterials(CompanyProjectDesignMaterialsDto.builder().designStyle("Modern").build())
+        .build();
+
+    CompanyProjectDetailResponse response = service().update(88L, request);
+    assertThat(response.getStats()).extracting(CompanyProjectStatDto::getValue).containsExactly("2020");
+    assertThat(response.getDesignMaterials().getDesignStyle()).isEqualTo("Modern");
+
+    entity.setPublished(true);
+    service().softDelete(88L);
+    assertThat(entity.getDeleted()).isTrue();
+    assertThat(entity.getActive()).isFalse();
+    assertThat(entity.getPublished()).isFalse();
   }
 }
