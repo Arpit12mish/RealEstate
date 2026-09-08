@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.dashboard.projectmeter.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.dashboard.projectmeter.dto.*;
 import com.brandPitara.sfs.projectmeter.entity.ProjectMeterSnapshotEntity;
 import com.brandPitara.sfs.dashboard.projectmeter.service.DashboardProjectMeterWriteService;
@@ -37,6 +39,7 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
     private final ProjectLocationScoreRepository locationScoreRepository;
     private final ProjectMeterSnapshotRecalculationService recalculationService;
     private final DashboardProjectMeterValidator meterValidator;
+    private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -199,7 +202,9 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
                 .categoryDisplayOrder(request.getCategoryDisplayOrder() != null ? request.getCategoryDisplayOrder() : 0)
                 .build();
 
-        return toAmenityResponse(amenityRepository.save(entity));
+        ProjectAmenityProgressEntity saved = amenityRepository.save(entity);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.AMENITIES_CHANGED);
+        return toAmenityResponse(saved);
     }
 
     @Override
@@ -225,7 +230,9 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
         if (request.getActive() != null) entity.setActive(request.getActive());
         if (request.getCategoryDisplayOrder() != null) entity.setCategoryDisplayOrder(request.getCategoryDisplayOrder());
 
-        return toAmenityResponse(amenityRepository.save(entity));
+        ProjectAmenityProgressEntity saved = amenityRepository.save(entity);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.AMENITIES_CHANGED);
+        return toAmenityResponse(saved);
     }
 
     @Override
@@ -234,6 +241,7 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
         ProjectAmenityProgressEntity entity = amenityRepository.findByIdAndProjectId(amenityId, projectId)
                 .orElseThrow(() -> new NotFoundException("Amenity item not found: " + amenityId));
         amenityRepository.delete(entity);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.AMENITIES_CHANGED);
     }
 
     @Override
@@ -543,6 +551,7 @@ public class DashboardProjectMeterWriteServiceImpl implements DashboardProjectMe
         snapshot.setPriceAppreciationPercent(calculatePriceAppreciationPercent(launchPrice, currentPrice));
 
         projectMeterSnapshotRepository.save(snapshot);
+        cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.ANALYTICS_CHANGED);
 
         return DashboardProjectMeterWriteResponse.builder()
                 .projectId(projectId)
