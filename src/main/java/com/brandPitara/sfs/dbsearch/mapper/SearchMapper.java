@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.text.DecimalFormat;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class SearchMapper {
@@ -54,7 +55,7 @@ public class SearchMapper {
                 .startedOn(p.getStartDate())
                 .possessionDate(p.getPossessionDate())
                 .status(p.getStatus())
-                .propertyTypes(p.getPropertyTypes())
+                .propertyTypes(p.getPropertyTypes() == null ? Set.of() : Set.copyOf(p.getPropertyTypes()))
                 .constructionProgressPercent(snapshot != null ? snapshot.getConstructionProgressPercent() : null)
                 .appreciationPercent(snapshot != null ? snapshot.getPriceAppreciationPercent() : null)
                 .reraNumber(p.getReraNumber())

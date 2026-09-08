@@ -13,6 +13,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.enums.ProjectStatus;
 import com.brandPitara.sfs.project.enums.PropertyType;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.project.service.ProjectFavoriteService;
 import com.brandPitara.sfs.projectmeter.repository.ProjectMeterSnapshotRepository;
 import com.brandPitara.sfs.repository.CityRepository;
@@ -47,6 +48,7 @@ class SearchServiceImplTest {
     @Mock private BuilderSearchRepository builderSearchRepository;
     @Mock private CompanySearchRepository companySearchRepository;
     @Mock private ProjectMediaRepository projectMediaRepository;
+    @Mock private ProjectRepository projectRepository;
     @Mock private SearchMapper searchMapper;
     @Mock private ProjectFavoriteService projectFavoriteService;
     @Mock private CityRepository cityRepository;

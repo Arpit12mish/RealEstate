@@ -1,10 +1,13 @@
 package com.brandPitara.sfs.dashboard.city.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.dashboard.city.dto.DashboardCityUpsertRequest;
 import com.brandPitara.sfs.dashboard.city.service.DashboardCityService;
 import com.brandPitara.sfs.dto.CityResponse;
 import com.brandPitara.sfs.entity.CityEntity;
 import com.brandPitara.sfs.mapper.CityMapper;
+import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.repository.CityRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +26,8 @@ import java.util.Objects;
 public class DashboardCityServiceImpl implements DashboardCityService {
 
     private final CityRepository cityRepository;
+    private final ProjectRepository projectRepository;
+    private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
     @Override
     @Transactional
@@ -70,7 +75,9 @@ public class DashboardCityServiceImpl implements DashboardCityService {
         if (request.getDisplayOrder() != null) entity.setDisplayOrder(request.getDisplayOrder());
         if (request.getGrowthPercent() != null) entity.setGrowthPercent(request.getGrowthPercent());
 
-        return CityMapper.toResponse(cityRepository.save(entity));
+        CityEntity saved = cityRepository.save(entity);
+        evictAffectedProjects(cityId);
+        return CityMapper.toResponse(saved);
     }
 
     @Override
@@ -89,7 +96,9 @@ public class DashboardCityServiceImpl implements DashboardCityService {
         if (!cityRepository.existsById(cityId)) {
             throw new EntityNotFoundException("City not found: " + cityId);
         }
+        List<Long> affectedProjectIds = projectRepository.findIdsByCityIdAndDeletedFalse(cityId);
         cityRepository.deleteById(cityId);
+        cacheEvictionPublisher.publishAll(affectedProjectIds, ProjectCacheEvictionReason.CITY_CHANGED);
     }
 
     @Override
@@ -141,5 +150,12 @@ public class DashboardCityServiceImpl implements DashboardCityService {
                     "City slug already exists: " + slug + " cityId=" + existing.getId()
             );
         });
+    }
+
+    private void evictAffectedProjects(Long cityId) {
+        cacheEvictionPublisher.publishAll(
+                projectRepository.findIdsByCityIdAndDeletedFalse(cityId),
+                ProjectCacheEvictionReason.CITY_CHANGED
+        );
     }
 }
