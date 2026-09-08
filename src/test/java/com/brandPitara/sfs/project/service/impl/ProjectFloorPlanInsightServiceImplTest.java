@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.project.service.impl;
 
+import com.brandPitara.sfs.builder.entity.BuilderEntity;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.dashboard.common.enums.ReviewStatus;
 import com.brandPitara.sfs.exception.NotFoundException;
@@ -64,6 +66,7 @@ class ProjectFloorPlanInsightServiceImplTest {
     s3Properties.setBucket("sfs-s3bucket");
     s3Properties.setRegion("ap-south-1");
     TrustedMediaUrlValidator trustedMediaUrlValidator = new TrustedMediaUrlValidator(s3Properties);
+    ProjectPublicCacheEvictionPublisher cacheEvictionPublisher = mock(ProjectPublicCacheEvictionPublisher.class);
 
     service = new ProjectFloorPlanInsightServiceImpl(
         projectRepository,
@@ -73,7 +76,8 @@ class ProjectFloorPlanInsightServiceImplTest {
         visualAnalysisRepository,
         contentVersionService,
         new ProjectPublicVisibilityPolicy(),
-        trustedMediaUrlValidator);
+        trustedMediaUrlValidator,
+        cacheEvictionPublisher);
 
     when(roomRepository.findByFloorPlanIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(FLOOR_PLAN_ID))
         .thenReturn(List.of());
@@ -88,6 +92,16 @@ class ProjectFloorPlanInsightServiceImplTest {
         .active(true)
         .deleted(false)
         .reviewStatus(ReviewStatus.APPROVED)
+        .builder(publiclyAvailableBuilder())
+        .build();
+  }
+
+  private BuilderEntity publiclyAvailableBuilder() {
+    return BuilderEntity.builder()
+        .id(1L)
+        .published(true)
+        .active(true)
+        .deleted(false)
         .build();
   }
 

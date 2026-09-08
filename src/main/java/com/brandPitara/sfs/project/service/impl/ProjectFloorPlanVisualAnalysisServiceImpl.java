@@ -2,7 +2,6 @@ package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.exception.NotFoundException;
-import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanVisualAnalysisResponse;
 import com.brandPitara.sfs.project.dto.ProjectFloorPlanVisualAnalysisUpsertRequest;
 import com.brandPitara.sfs.project.dto.VisualAnalysisTagUpsertRequest;
@@ -31,7 +30,6 @@ public class ProjectFloorPlanVisualAnalysisServiceImpl implements ProjectFloorPl
   private final ProjectFloorPlanRepository floorPlanRepository;
   private final ProjectFloorPlanVisualAnalysisRepository visualAnalysisRepository;
   private final ContentVersionService contentVersionService;
-  private final TrustedMediaUrlValidator trustedMediaUrlValidator;
 
   @Override
   @Transactional(readOnly = true)
@@ -46,12 +44,6 @@ public class ProjectFloorPlanVisualAnalysisServiceImpl implements ProjectFloorPl
   @Transactional
   public ProjectFloorPlanVisualAnalysisResponse upsert(Long projectId, Long floorPlanId, ProjectFloorPlanVisualAnalysisUpsertRequest request) {
     ProjectFloorPlanEntity floorPlan = resolveFloorPlan(projectId, floorPlanId);
-
-    // GAP-028: format/host validation happens before anything is persisted -
-    // an invalid mediaUrl must never reach the entity, let alone the public
-    // read endpoint.
-    trustedMediaUrlValidator.validate(request.getMediaUrl());
-    trustedMediaUrlValidator.validateMediaTypeCompatibility(request.getMediaType(), request.getMediaUrl());
 
     ProjectFloorPlanVisualAnalysisEntity entity = visualAnalysisRepository
         .findByFloorPlanIdAndDeletedFalse(floorPlanId)

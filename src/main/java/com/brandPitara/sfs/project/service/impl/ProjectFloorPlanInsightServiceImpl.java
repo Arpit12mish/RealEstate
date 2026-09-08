@@ -1,5 +1,7 @@
 package com.brandPitara.sfs.project.service.impl;
 
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.media.validator.TrustedMediaUrlValidator;
@@ -39,6 +41,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
   private final ContentVersionService contentVersionService;
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   private final TrustedMediaUrlValidator trustedMediaUrlValidator;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   @Override
   @Transactional
@@ -49,6 +52,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
         .floorPlan(floorPlan)
         .insightType(request.getInsightType())
         .title(request.getTitle().trim())
+        .dimensionText(clean(request.getDimensionText()))
         .summary(clean(request.getSummary()))
         .detailedText(clean(request.getDetailedText()))
         .unitValue(request.getUnitValue())
@@ -72,6 +76,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
     return ProjectFloorPlanInsightMapper.toResponse(saved);
   }
 
@@ -85,6 +90,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     if (request.getInsightType() != null) entity.setInsightType(request.getInsightType());
     if (request.getTitle() != null) entity.setTitle(request.getTitle().trim());
+    if (request.getDimensionText() != null) entity.setDimensionText(clean(request.getDimensionText()));
     if (request.getSummary() != null) entity.setSummary(clean(request.getSummary()));
     if (request.getDetailedText() != null) entity.setDetailedText(clean(request.getDetailedText()));
     if (request.getUnitValue() != null) entity.setUnitValue(request.getUnitValue());
@@ -106,6 +112,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
     return ProjectFloorPlanInsightMapper.toResponse(saved);
   }
 
@@ -124,6 +131,7 @@ public class ProjectFloorPlanInsightServiceImpl implements ProjectFloorPlanInsig
 
     recalculateInsightsAvailable(floorPlan);
     contentVersionService.bump("PROJECTS");
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.FLOOR_PLAN_CHANGED);
   }
 
   @Override
