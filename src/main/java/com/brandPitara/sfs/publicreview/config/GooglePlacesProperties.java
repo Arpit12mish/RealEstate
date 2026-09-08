@@ -30,4 +30,14 @@ public class GooglePlacesProperties {
     /** Upper bound for the complete HTTP exchange. */
     @Min(1)
     private int requestTimeoutMs = 8000;
+
+    /**
+     * How long a place may stay reserved (fetchStatus=FETCHING) before a
+     * later sync attempt is allowed to reclaim it. Must comfortably exceed
+     * requestTimeoutMs so a normal slow-but-legitimate call is never
+     * mistaken for an abandoned one (e.g. after a process crash/restart with
+     * the Google result never persisted) - default is ~22x requestTimeoutMs.
+     */
+    @Min(1)
+    private int fetchLeaseSeconds = 180;
 }

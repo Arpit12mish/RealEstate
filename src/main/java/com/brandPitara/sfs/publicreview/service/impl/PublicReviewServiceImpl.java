@@ -12,6 +12,7 @@ import com.brandPitara.sfs.project.entity.ProjectEntity;
 import com.brandPitara.sfs.project.policy.ProjectPublicVisibilityPolicy;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
 import com.brandPitara.sfs.publicreview.client.GooglePlaceDetailsResponse;
+import com.brandPitara.sfs.publicreview.config.GooglePlacesProperties;
 import com.brandPitara.sfs.publicreview.dto.*;
 import com.brandPitara.sfs.publicreview.provider.ReviewPlaceProvider;
 import com.brandPitara.sfs.publicreview.entity.ProjectReviewEntity;
@@ -39,9 +40,12 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -67,6 +71,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     private final ReviewPlaceProvider reviewPlaceProvider;
     private final ContentVersionService contentVersionService;
     private final ExternalProviderTransactions externalProviderTransactions;
+    private final GooglePlacesProperties googlePlacesProperties;
 
     // =========================================================================
     // Existing methods (unchanged public contract)
@@ -139,7 +144,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
         Long targetId,
         Long reviewPlaceId
     ) {
-        GoogleSyncPreparation preparation = externalProviderTransactions.read(
+        GoogleSyncPreparation preparation = externalProviderTransactions.write(
             () -> prepareGoogleSync(targetType, targetId, reviewPlaceId)
         );
         if (preparation.existingResponse() != null) {
@@ -372,13 +377,19 @@ public class PublicReviewServiceImpl implements PublicReviewService {
         List<ProjectReviewEntity> reviews = projectReviewRepository
             .findByUserIdAndDeletedFalseOrderByCreatedAtDesc(currentUser.getId());
 
+        // Batched instead of one findByIdAndDeletedFalse per review (N+1):
+        // a user viewing dozens of submitted reviews previously issued that
+        // many individual project lookups.
+        List<Long> projectIds = reviews.stream()
+            .map(ProjectReviewEntity::getProjectId)
+            .distinct()
+            .toList();
+        Map<Long, String> projectNamesById = projectRepository.findByIdInAndDeletedFalse(projectIds).stream()
+            .collect(Collectors.toMap(ProjectEntity::getId, ProjectEntity::getName));
+
         return reviews.stream()
-            .map(review -> {
-                String projectName = projectRepository.findByIdAndDeletedFalse(review.getProjectId())
-                    .map(ProjectEntity::getName)
-                    .orElse(null);
-                return PublicReviewMapper.toMySubmittedReviewResponse(review, projectName);
-            })
+            .map(review -> PublicReviewMapper.toMySubmittedReviewResponse(
+                review, projectNamesById.get(review.getProjectId())))
             .toList();
     }
 
@@ -386,6 +397,23 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     // Private helpers
     // =========================================================================
 
+    /**
+     * Checks whether this place still needs a Google fetch AND reserves the
+     * attempt (fetchStatus -> FETCHING, fetchStartedAt -> now) atomically
+     * under the place row's PESSIMISTIC_WRITE lock, before the Google call
+     * ever happens. Concurrent admin sync requests for the same place are
+     * serialized by that lock: the loser re-reads the winner's committed
+     * FETCHING/FETCHED state here and is correctly short-circuited or
+     * rejected, instead of both proceeding to call Google and both trying to
+     * create the (unique-per-place) summary row.
+     * <p>
+     * A FETCHING reservation is a lease, not a permanent lock: if the process
+     * crashes/restarts after committing FETCHING but before persisting a
+     * result (success or failure), fetchStartedAt lets a later sync attempt
+     * tell that apart from a genuinely in-flight one and reclaim it once
+     * googlePlacesProperties.fetchLeaseSeconds has elapsed - otherwise the
+     * row would be stuck rejecting every future sync attempt forever.
+     */
     private GoogleSyncPreparation prepareGoogleSync(
         PublicReviewTargetType targetType,
         Long targetId,
@@ -393,13 +421,43 @@ public class PublicReviewServiceImpl implements PublicReviewService {
     ) {
         validateTargetExistsForAdmin(targetType, targetId);
         PublicReviewPlaceEntity place = placeRepository
-            .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
+            .findByIdAndTargetTypeAndTargetIdAndDeletedFalseForUpdate(reviewPlaceId, targetType, targetId)
             .orElseThrow(() -> new NotFoundException("Review place not found: " + reviewPlaceId));
         PublicReviewSummaryEntity summary = summaryRepository.findByReviewPlaceId(place.getId()).orElse(null);
-        SyncGooglePublicReviewsResponse existing = isGoogleFetchCompleted(place, summary)
-            ? returnExistingGoogleFetch(place, summary, targetType)
-            : null;
-        return new GoogleSyncPreparation(place.getGooglePlaceId(), existing);
+
+        if (isGoogleFetchCompleted(place, summary)) {
+            return new GoogleSyncPreparation(
+                place.getGooglePlaceId(),
+                returnExistingGoogleFetch(place, summary, targetType)
+            );
+        }
+
+        if (place.getFetchStatus() == GoogleReviewFetchStatus.FETCHING && !isReservationStale(place)) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Google review sync is already in progress for this place"
+            );
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        place.setFetchStatus(GoogleReviewFetchStatus.FETCHING);
+        place.setFetchStartedAt(now);
+        placeRepository.save(place);
+
+        return new GoogleSyncPreparation(place.getGooglePlaceId(), null);
+    }
+
+    private boolean isReservationStale(PublicReviewPlaceEntity place) {
+        OffsetDateTime startedAt = place.getFetchStartedAt();
+        if (startedAt == null) {
+            // FETCHING with no recorded start (shouldn't happen going forward,
+            // but could for a row already FETCHING before this column
+            // existed) - treat as immediately reclaimable rather than a
+            // permanent lock with no way out.
+            return true;
+        }
+        Duration lease = Duration.ofSeconds(googlePlacesProperties.getFetchLeaseSeconds());
+        return Duration.between(startedAt, OffsetDateTime.now()).compareTo(lease) >= 0;
     }
 
     private SyncGooglePublicReviewsResponse persistGoogleSync(
@@ -476,6 +534,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
 
         place.setOneTimeFetched(true);
         place.setFetchStatus(GoogleReviewFetchStatus.FETCHED);
+        place.setFetchStartedAt(null);
         place.setDisplayMode(GoogleReviewDisplayMode.RATING_AND_REVIEWS);
         place.setDisplayGoogleReviews(true);
         placeRepository.save(place);
@@ -503,6 +562,7 @@ public class PublicReviewServiceImpl implements PublicReviewService {
                 .findByIdAndTargetTypeAndTargetIdAndDeletedFalse(reviewPlaceId, targetType, targetId)
                 .ifPresent(place -> {
                     place.setFetchStatus(GoogleReviewFetchStatus.FAILED);
+                    place.setFetchStartedAt(null);
                     placeRepository.save(place);
                 }));
         } catch (RuntimeException statusFailure) {
