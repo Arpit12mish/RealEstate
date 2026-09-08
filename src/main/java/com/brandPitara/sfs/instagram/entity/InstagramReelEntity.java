@@ -69,6 +69,9 @@ public class InstagramReelEntity extends BaseEntity {
     @Column(name = "preview_video_url", length = 1000)
     private String previewVideoUrl;
 
+    @Column(name = "preview_image_url", length = 1000)
+    private String previewImageUrl;
+
     @Column(name = "media_type", length = 50)
     private String mediaType;
 

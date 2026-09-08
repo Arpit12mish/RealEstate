@@ -59,6 +59,7 @@ public class InstagramReelMapper {
             .lastSyncStatus(entity.getLastSyncStatus())
             .lastSyncError(entity.getLastSyncError())
             .previewVideoUrl(entity.getPreviewVideoUrl())
+            .previewImageUrl(entity.getPreviewImageUrl())
             .mediaType(entity.getMediaType())
             .mediaProductType(entity.getMediaProductType())
             .publishedAt(entity.getPublishedAt())
