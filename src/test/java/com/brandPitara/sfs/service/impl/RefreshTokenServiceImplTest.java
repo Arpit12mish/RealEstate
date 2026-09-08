@@ -29,12 +29,14 @@ class RefreshTokenServiceImplTest {
 
     @Mock
     private RefreshTokenRepository refreshTokenRepository;
+    @Mock
+    private RefreshTokenFamilyRevoker refreshTokenFamilyRevoker;
 
     private RefreshTokenServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new RefreshTokenServiceImpl(refreshTokenRepository);
+        service = new RefreshTokenServiceImpl(refreshTokenRepository, refreshTokenFamilyRevoker);
         ReflectionTestUtils.setField(service, "refreshExpirationDays", 30L);
     }
 
@@ -71,7 +73,12 @@ class RefreshTokenServiceImplTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reuse");
 
-        verify(refreshTokenRepository).revokeActiveByUserIdAndDeviceId(5L, "ios-1");
+        // Routed through RefreshTokenFamilyRevoker (its own REQUIRES_NEW
+        // transaction) rather than called directly, so this revocation
+        // commits even though rotateRefreshToken's own transaction is about
+        // to roll back from the exception it just threw. See
+        // RefreshTokenFamilyRevoker's javadoc.
+        verify(refreshTokenFamilyRevoker).revokeFamily(5L, "ios-1");
         verify(refreshTokenRepository, never()).save(any(RefreshToken.class));
     }
 
@@ -84,7 +91,7 @@ class RefreshTokenServiceImplTest {
         assertThatThrownBy(() -> service.rotateRefreshToken("raw-token"))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        verify(refreshTokenRepository).revokeAllByUserId(5L);
+        verify(refreshTokenFamilyRevoker).revokeFamily(5L, null);
     }
 
     @Test

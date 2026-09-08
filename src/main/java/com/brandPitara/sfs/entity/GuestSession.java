@@ -20,7 +20,7 @@ public class GuestSession {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 120)
+    @Column(nullable = false, length = 120)
     private String installationId;
 
     @Column(length = 100)

@@ -85,7 +85,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "sfs.authentication.identity-cache.dashboard.enabled=true",
                 "sfs.authentication.identity-cache.dashboard.maximum-size=100",
                 "sfs.authentication.identity-cache.dashboard.expire-after-write=30s",
-                "app.logging.path=target/test-logs"
+                "sfs.log.dir=target/test-logs"
         }
 )
 @ActiveProfiles("test")

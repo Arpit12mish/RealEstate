@@ -92,6 +92,14 @@ public class DashboardRefreshTokenService {
         });
     }
 
+    @Transactional
+    public int revokeAllForUser(Long dashboardUserId) {
+        return refreshTokenRepository.revokeAllActiveByDashboardUserId(
+                dashboardUserId,
+                OffsetDateTime.now()
+        );
+    }
+
     private String generateSecureToken() {
         byte[] bytes = new byte[64];
         secureRandom.nextBytes(bytes);

@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.security.identity;
 
 import com.brandPitara.sfs.dashboard.common.enums.DashboardRole;
+import com.brandPitara.sfs.dashboard.common.enums.DashboardPermission;
 import com.brandPitara.sfs.dashboard.user.repository.DashboardUserRepository;
 import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.repository.UserRepository;
@@ -156,14 +157,66 @@ class AuthenticationIdentityCacheTest {
     }
 
     @Test
+    void disabledDashboardUserIsDeniedAfterCacheInvalidation() {
+        DashboardUserRepository repository = mock(DashboardUserRepository.class);
+        when(repository.findAuthenticationRowsById(22L))
+                .thenReturn(List.of(new DashboardAuthenticationUserRow(
+                        22L, "writer@example.com", "Writer", DashboardRole.CONTENT_STAFF, true,
+                        DashboardPermission.CMS_CONTENT_CREATE
+                )))
+                .thenReturn(List.of(new DashboardAuthenticationUserRow(
+                        22L, "writer@example.com", "Writer", DashboardRole.CONTENT_STAFF, false,
+                        DashboardPermission.CMS_CONTENT_CREATE
+                )));
+        DashboardAuthenticationIdentityCache dashboard = new DashboardAuthenticationIdentityCache(
+                repository, namespace(10, Duration.ofMinutes(1)), new SimpleMeterRegistry(), Ticker.systemTicker()
+        );
+        AuthenticationIdentityCacheInvalidator invalidator = new AuthenticationIdentityCacheInvalidator(
+                mock(MobileAuthenticationIdentityCache.class), dashboard
+        );
+
+        assertThat(dashboard.get(22L).active()).isTrue();
+        invalidator.invalidateDashboardAfterCommit(22L);
+
+        assertThatThrownBy(() -> dashboard.get(22L)).isInstanceOf(DisabledException.class);
+        verify(repository, times(2)).findAuthenticationRowsById(22L);
+    }
+
+    @Test
+    void dashboardPermissionChangesAreVisibleAfterCacheInvalidation() {
+        DashboardUserRepository repository = mock(DashboardUserRepository.class);
+        when(repository.findAuthenticationRowsById(23L))
+                .thenReturn(List.of(new DashboardAuthenticationUserRow(
+                        23L, "staff@example.com", "Staff", DashboardRole.CONTENT_STAFF, true,
+                        DashboardPermission.CMS_CONTENT_CREATE
+                )))
+                .thenReturn(List.of(new DashboardAuthenticationUserRow(
+                        23L, "staff@example.com", "Staff", DashboardRole.CONTENT_STAFF, true,
+                        DashboardPermission.CMS_CONTENT_PUBLISH
+                )));
+        DashboardAuthenticationIdentityCache dashboard = new DashboardAuthenticationIdentityCache(
+                repository, namespace(10, Duration.ofMinutes(1)), new SimpleMeterRegistry(), Ticker.systemTicker()
+        );
+        AuthenticationIdentityCacheInvalidator invalidator = new AuthenticationIdentityCacheInvalidator(
+                mock(MobileAuthenticationIdentityCache.class), dashboard
+        );
+
+        assertThat(dashboard.get(23L).permissions())
+                .containsExactly(DashboardPermission.CMS_CONTENT_CREATE);
+        invalidator.invalidateDashboardAfterCommit(23L);
+        assertThat(dashboard.get(23L).permissions())
+                .containsExactly(DashboardPermission.CMS_CONTENT_PUBLISH);
+    }
+
+    @Test
     void mobileAndDashboardNamespacesAreIsolated() {
         UserRepository mobileRepository = mock(UserRepository.class);
         DashboardUserRepository dashboardRepository = mock(DashboardUserRepository.class);
         when(mobileRepository.findAuthenticationSnapshotById(5L))
                 .thenReturn(Optional.of(mobile(5L, true, Role.CUSTOMER)));
-        when(dashboardRepository.findAuthenticationSnapshotById(5L))
-                .thenReturn(Optional.of(new DashboardAuthenticationUserSnapshot(
-                        5L, "admin@example.com", "Admin", DashboardRole.ADMIN, true
+        when(dashboardRepository.findAuthenticationRowsById(5L))
+                .thenReturn(List.of(new DashboardAuthenticationUserRow(
+                        5L, "admin@example.com", "Admin", DashboardRole.ADMIN, true, null
                 )));
         AuthenticationIdentityCacheProperties.Namespace config = namespace(10, Duration.ofMinutes(1));
         MobileAuthenticationIdentityCache mobile = mobileCache(mobileRepository, config, Ticker.systemTicker());
@@ -176,7 +229,7 @@ class AuthenticationIdentityCacheTest {
         mobile.invalidate(5L);
 
         assertThat(dashboard.get(5L).role()).isEqualTo(DashboardRole.ADMIN);
-        verify(dashboardRepository).findAuthenticationSnapshotById(5L);
+        verify(dashboardRepository).findAuthenticationRowsById(5L);
     }
 
     @Test

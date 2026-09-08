@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.jpa.hibernate.ddl-auto=create-drop",
                 "spring.flyway.enabled=false",
                 "jwt.refresh.expiration.days=30",
-                "app.logging.path=target/test-logs"
+                "sfs.log.dir=target/test-logs"
         }
 )
 @ActiveProfiles("test")
@@ -144,8 +144,19 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
         Long activeSameUserOtherDeviceTokens = countTokens(user.getId(), "android-secondary", false);
         Long activeOtherUserTokens = countTokens(unrelatedUser.getId(), "ios-primary", false);
 
-        assertThat(revokedOldPrimaryTokens).isEqualTo(1L);
-        assertThat(activePrimaryReplacementTokens).isEqualTo(1L);
+        // The loser's "already revoked" branch revokes the WHOLE active
+        // family for this device, not just the one replayed token - so the
+        // winner's brand-new replacement is collateral damage too, leaving
+        // 2 revoked rows (the original + the winner's replacement) and 0
+        // still-active for "ios-primary". This is intentional: the backend
+        // cannot distinguish "two legitimate concurrent calls raced" from
+        // "an attacker replayed an already-superseded token", and the
+        // standard defense is to always assume compromise. A well-behaved
+        // client avoids ever triggering this by single-flighting its own
+        // refresh calls (as this project's mobile client does) rather than
+        // relying on the backend to tell the two cases apart.
+        assertThat(revokedOldPrimaryTokens).isEqualTo(2L);
+        assertThat(activePrimaryReplacementTokens).isEqualTo(0L);
         assertThat(activeSameUserOtherDeviceTokens).isEqualTo(1L);
         assertThat(activeOtherUserTokens).isEqualTo(1L);
     }
@@ -201,7 +212,7 @@ class RefreshTokenRotationConcurrencyIntegrationTest {
                     pattern = "com\\.brandPitara\\.sfs\\.repository\\.(?!(RefreshTokenRepository|UserRepository)$).*"
             )
     )
-    @Import(RefreshTokenServiceImpl.class)
+    @Import({RefreshTokenServiceImpl.class, RefreshTokenFamilyRevoker.class})
     static class TestApplication {
     }
 }
