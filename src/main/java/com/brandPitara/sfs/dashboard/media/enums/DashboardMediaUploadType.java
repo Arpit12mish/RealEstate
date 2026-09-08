@@ -42,7 +42,11 @@ public enum DashboardMediaUploadType {
 
     // Phase 4.8B - company certificate image (separate from BRAND_CERTIFICATE_FILE,
     // which allows PDF; this one is image-only, matching COMPANY_MEDIA_IMAGE).
-    COMPANY_CERTIFICATE_IMAGE;
+    COMPANY_CERTIFICATE_IMAGE,
+
+    // Floor Plan Insights - Visual Analysis media (image/video/Lottie JSON),
+    // one per floor plan. Project-scoped like FLOOR_PLAN_IMAGE.
+    FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -69,9 +73,15 @@ public enum DashboardMediaUploadType {
         return this == BRAND_PROMO_MEDIA;
     }
 
+    // FLOOR_PLAN_INSIGHT_VISUAL_MEDIA is the only upload type that accepts image, video,
+    // or Lottie JSON, since the Visual Analysis media slot supports all three.
+    public boolean allowsImageOrVideoOrLottie() {
+        return this == FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
+    }
+
     public boolean requiresImage() {
         return !requiresPdf() && !requiresVideo() && !requiresLottieJson()
-                && !allowsImageOrPdf() && !allowsImageOrVideo();
+                && !allowsImageOrPdf() && !allowsImageOrVideo() && !allowsImageOrVideoOrLottie();
     }
 
     public boolean isProjectScoped() {
@@ -79,7 +89,8 @@ public enum DashboardMediaUploadType {
                 || this == FLOOR_PLAN_IMAGE
                 || this == MASTER_PLAN_IMAGE
                 || this == CONNECTIVITY_MAP
-                || this == BROCHURE_PDF;
+                || this == BROCHURE_PDF
+                || this == FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
     }
 
     public boolean isBuilderScoped() {

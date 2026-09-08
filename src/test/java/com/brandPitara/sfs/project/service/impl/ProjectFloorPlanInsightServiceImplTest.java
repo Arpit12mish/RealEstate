@@ -214,6 +214,37 @@ class ProjectFloorPlanInsightServiceImplTest {
     assertThat(response.getSourceLabel()).isEqualTo("Sample content");
   }
 
+  // 6b. Visual analysis absent but a room carries authored Space Comparison
+  // data -> demo must be false. Guards against regressing to the
+  // visual-analysis-only demo check that predates combining the two
+  // stabilized contracts (Visual Analysis + Space Comparison) into one
+  // composer.
+  @Test
+  void publicGetDetailComputesDemoFalseWhenOnlyRoomComparisonDataIsAuthored() {
+    ProjectEntity project = approvedProject();
+    ProjectFloorPlanEntity floorPlan = activeFloorPlan(project);
+    when(projectRepository.findByIdAndDeletedFalse(PROJECT_ID)).thenReturn(Optional.of(project));
+    when(floorPlanRepository.findByIdAndDeletedFalse(FLOOR_PLAN_ID)).thenReturn(Optional.of(floorPlan));
+    when(visualAnalysisRepository.findByFloorPlanIdAndActiveTrueAndDeletedFalse(FLOOR_PLAN_ID))
+        .thenReturn(Optional.empty());
+
+    ProjectFloorPlanRoomDimensionEntity room = ProjectFloorPlanRoomDimensionEntity.builder()
+        .id(9001L).floorPlan(floorPlan).roomType(com.brandPitara.sfs.project.enums.FloorPlanRoomType.MASTER_BEDROOM)
+        .label("Master Bedroom").areaSqft(java.math.BigDecimal.valueOf(168))
+        .averageAreaSqft(java.math.BigDecimal.valueOf(149))
+        .differencePercent(java.math.BigDecimal.valueOf(13))
+        .active(true).deleted(false).sortOrder(1).build();
+    when(roomRepository.findByFloorPlanIdAndActiveTrueAndDeletedFalseOrderBySortOrderAscIdAsc(FLOOR_PLAN_ID))
+        .thenReturn(List.of(room));
+
+    ProjectFloorPlanInsightDetailResponse response = service.publicGetDetail(PROJECT_ID, FLOOR_PLAN_ID);
+
+    assertThat(response.getVisualAnalysis()).isNull();
+    assertThat(response.getRooms().get(0).isHasComparisonData()).isTrue();
+    assertThat(response.isDemo()).isFalse();
+    assertThat(response.getSourceLabel()).isEqualTo("Verified floor-plan intelligence");
+  }
+
   // 7. IMAGE response mapping.
   @Test
   void publicGetDetailMapsImageMediaTypeCorrectly() {

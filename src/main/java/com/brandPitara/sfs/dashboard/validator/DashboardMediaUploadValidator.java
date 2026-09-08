@@ -66,6 +66,12 @@ public class DashboardMediaUploadValidator {
                     uploadType + " supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4"
             );
         }
+        boolean isLottieJson = APPLICATION_JSON.equals(contentType);
+        if (uploadType.allowsImageOrVideoOrLottie() && !isVideo && !isSupportedImage && !isLottieJson) {
+            throw new IllegalArgumentException(
+                    uploadType + " supports only image/jpeg, image/jpg, image/png, image/webp, video/mp4, application/json"
+            );
+        }
     }
 
     public void validateFileSize(DashboardMediaUploadType uploadType, String contentType, long fileSizeBytes) {
@@ -96,6 +102,11 @@ public class DashboardMediaUploadValidator {
         }
         if (uploadType == DashboardMediaUploadType.BRAND_PRODUCT_CATEGORY_IMAGE) {
             return MAX_BRAND_PRODUCT_CATEGORY_IMAGE_BYTES;
+        }
+        if (uploadType.allowsImageOrVideoOrLottie()) {
+            if (VIDEO_MP4.equals(contentType)) return MAX_VIDEO_BYTES;
+            if (APPLICATION_JSON.equals(contentType)) return MAX_JSON_BYTES;
+            return MAX_IMAGE_BYTES;
         }
         if (uploadType.requiresPdf()) {
             return MAX_PDF_BYTES;

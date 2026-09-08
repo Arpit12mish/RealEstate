@@ -22,6 +22,18 @@ public class FloorPlanRoomDimensionResponse {
   private String dimensionText;
   private String iconKey;
   private String notes;
+
+  // Space Comparison — populated only when a dashboard user has authored
+  // comparison data for this room; hasComparisonData tells the client
+  // whether to render the badge/summary block or omit it gracefully.
+  private BigDecimal averageAreaSqft;
+  private String comparisonContextLabel;
+  private BigDecimal differencePercent;
+  private String comparisonLabel;
+  private String summary;
+  private boolean comparisonVerified;
+  private boolean hasComparisonData;
+
   private boolean active;
   private int sortOrder;
 }
