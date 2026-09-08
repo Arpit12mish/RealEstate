@@ -5,23 +5,30 @@ import com.brandPitara.sfs.dbsearch.dto.SearchEntityType;
 import com.brandPitara.sfs.dbsearch.dto.SearchItemDto;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.enums.FavoriteTargetType;
+import com.brandPitara.sfs.enums.Role;
 import com.brandPitara.sfs.home.dto.GenericCardDto;
 import com.brandPitara.sfs.home.enums.HomeSectionItemType;
 import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
+import com.brandPitara.sfs.project.dto.ProjectFavoriteOverlayItemResponse;
 import com.brandPitara.sfs.project.repository.ProjectMediaRepository;
 import com.brandPitara.sfs.project.repository.ProjectRepository;
+import com.brandPitara.sfs.project.service.reader.ProjectFavoriteMembershipReader;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import com.brandPitara.sfs.repository.UserFavoriteRepository;
 import com.brandPitara.sfs.repository.UserRepository;
+import com.brandPitara.sfs.security.identity.MobileAuthenticationUserSnapshot;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -30,6 +37,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 class ProjectFavoriteServiceImplTest {
 
@@ -37,17 +46,32 @@ class ProjectFavoriteServiceImplTest {
     private final UserRepository userRepository = mock(UserRepository.class);
     private final ProjectRepository projectRepository = mock(ProjectRepository.class);
     private final ProjectMediaRepository projectMediaRepository = mock(ProjectMediaRepository.class);
+    private final ProjectFavoriteMembershipReader favoriteMembershipReader =
+            mock(ProjectFavoriteMembershipReader.class);
 
     private final ProjectFavoriteServiceImpl service = new ProjectFavoriteServiceImpl(
             userFavoriteRepository,
             userRepository,
             projectRepository,
-            projectMediaRepository
+            projectMediaRepository,
+            favoriteMembershipReader
     );
 
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void anonymousMembershipResolutionDoesNotOpenATransaction() throws Exception {
+        Transactional boundary = ProjectFavoriteServiceImpl.class
+                .getMethod("isCurrentViewerFavorite", Long.class)
+                .getAnnotation(Transactional.class);
+
+        assertThat(boundary.propagation()).isEqualTo(Propagation.NOT_SUPPORTED);
+        assertThat(ProjectFavoriteMembershipReader.class
+                .getMethod("isFavorite", Long.class, Long.class)
+                .getAnnotation(Transactional.class).readOnly()).isTrue();
     }
 
     @Test
@@ -72,6 +96,99 @@ class ProjectFavoriteServiceImplTest {
         verify(userFavoriteRepository).countByTargetTypeAndTargetIds(eq(FavoriteTargetType.PROJECT), anyCollection());
         verify(userFavoriteRepository, never()).findFavoritedTargetIds(any(), any(), anyCollection());
         verify(userRepository, never()).findByPhoneNumber(anyString());
+    }
+
+    @Test
+    void currentViewerMembershipUsesJwtSnapshotUserIdWithoutReloadingUserByPhone() {
+        MobileAuthenticationUserSnapshot snapshot = new MobileAuthenticationUserSnapshot(
+                77L,
+                "+919999999999",
+                Role.CUSTOMER,
+                true
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(snapshot, null, snapshot.getAuthorities())
+        );
+        when(favoriteMembershipReader.isFavorite(77L, 27L)).thenReturn(true);
+
+        boolean favorite = service.isCurrentViewerFavorite(27L);
+
+        assertThat(favorite).isTrue();
+        verify(favoriteMembershipReader).isFavorite(77L, 27L);
+        verify(userRepository, never()).findByPhoneNumber(anyString());
+    }
+
+    @Test
+    void currentViewerMembershipIsFalseWithoutAuthenticationAndDoesNotQueryDatabase() {
+        assertThat(service.isCurrentViewerFavorite(27L)).isFalse();
+
+        verifyNoInteractions(favoriteMembershipReader);
+        verify(userRepository, never()).findByPhoneNumber(anyString());
+    }
+
+    @Test
+    void favoriteOverlayUsesSnapshotUserIdAndOneBulkQueryWithExplicitFalseValues() {
+        authenticateSnapshot(77L, true);
+        when(userFavoriteRepository.findFavoritedTargetIds(
+                77L,
+                FavoriteTargetType.PROJECT,
+                List.of(27L, 28L, 99999L)
+        )).thenReturn(List.of(27L));
+
+        var response = service.getCurrentViewerFavoriteOverlay(List.of(27L, 28L, 27L, 99999L));
+
+        assertThat(response.items()).containsExactly(
+                new ProjectFavoriteOverlayItemResponse(27L, true),
+                new ProjectFavoriteOverlayItemResponse(28L, false),
+                new ProjectFavoriteOverlayItemResponse(99999L, false)
+        );
+        verify(userFavoriteRepository, times(1)).findFavoritedTargetIds(
+                77L,
+                FavoriteTargetType.PROJECT,
+                List.of(27L, 28L, 99999L)
+        );
+        verify(userRepository, never()).findByPhoneNumber(anyString());
+        verifyNoInteractions(projectRepository);
+    }
+
+    @Test
+    void favoriteOverlayRejectsEmptyInvalidAndOversizedInputsBeforeQuerying() {
+        authenticateSnapshot(77L, true);
+
+        assertThatThrownBy(() -> service.getCurrentViewerFavoriteOverlay(List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.getCurrentViewerFavoriteOverlay(List.of(0L)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.getCurrentViewerFavoriteOverlay(
+                java.util.stream.LongStream.rangeClosed(1, 101).boxed().toList()))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(userFavoriteRepository, never()).findFavoritedTargetIds(any(), any(), anyCollection());
+    }
+
+    @Test
+    void favoriteOverlayRequiresEnabledSnapshotAndNeverFallsBackToPhoneLookup() {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("+919999999999", null, List.of())
+        );
+
+        assertThatThrownBy(() -> service.getCurrentViewerFavoriteOverlay(List.of(27L)))
+                .isInstanceOf(org.springframework.security.core.AuthenticationException.class);
+
+        verify(userRepository, never()).findByPhoneNumber(anyString());
+        verify(userFavoriteRepository, never()).findFavoritedTargetIds(any(), any(), anyCollection());
+    }
+
+    private void authenticateSnapshot(Long userId, boolean enabled) {
+        MobileAuthenticationUserSnapshot snapshot = new MobileAuthenticationUserSnapshot(
+                userId,
+                "+919999999999",
+                Role.CUSTOMER,
+                enabled
+        );
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(snapshot, null, snapshot.getAuthorities())
+        );
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.brandPitara.sfs.project.dto.ProjectCardDto;
 import com.brandPitara.sfs.project.dto.ProjectNearbyListingCardDto;
 import com.brandPitara.sfs.project.dto.ProjectPublicResponse;
 import com.brandPitara.sfs.project.dto.ProjectResponse;
+import com.brandPitara.sfs.project.dto.ProjectFavoriteOverlayResponse;
 import com.brandPitara.sfs.projectmeter.dto.ProjectMeterCardResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +21,12 @@ public interface ProjectFavoriteService {
     boolean isProjectFavorite(Long projectId);
 
     long getProjectFavoriteCount(Long projectId);
+
+    /** Optional-viewer membership only; anonymous callers receive false. */
+    boolean isCurrentViewerFavorite(Long projectId);
+
+    /** Bulk, authenticated viewer overlay. Preserves first-requested ID order. */
+    ProjectFavoriteOverlayResponse getCurrentViewerFavoriteOverlay(List<Long> projectIds);
 
     Page<ProjectResponse> listMyFavoriteProjects(Pageable pageable);
 

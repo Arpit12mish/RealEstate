@@ -1,0 +1,15 @@
+package com.brandPitara.sfs.cdn.event;
+
+public enum ProjectCacheEvictionReason {
+    PROJECT_UPDATED,
+    VISIBILITY_CHANGED,
+    PROJECT_DELETED,
+    BUILDER_CHANGED,
+    CITY_CHANGED,
+    MEDIA_CHANGED,
+    FLOOR_PLAN_CHANGED,
+    MASTER_PLAN_CHANGED,
+    CONNECTIVITY_CHANGED,
+    AMENITIES_CHANGED,
+    ANALYTICS_CHANGED
+}
