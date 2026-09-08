@@ -47,4 +47,26 @@ class ProjectDateContractTest {
     assertThat(json).contains("\"startDate\":\"2023-04-01\"");
     assertThat(json).contains("\"projectStartDate\":\"2023-04-01\"");
   }
+
+  @Test
+  void publicResponseKeepsLegacyFavoriteAndNestedFieldNames() throws Exception {
+    ProjectPublicResponse response = ProjectPublicResponse.builder()
+        .id(41L)
+        .favoriteCount(12L)
+        .isFavorite(true)
+        .pricing(ProjectPricingSummaryResponse.builder().averageAreaPrice(9000L).build())
+        .location(ProjectLocationResponse.builder().cityName("Gurugram").build())
+        .floorPlanGroups(java.util.List.of())
+        .glimpses(java.util.List.of())
+        .build();
+
+    var json = objectMapper.readTree(objectMapper.writeValueAsBytes(response));
+
+    assertThat(json.has("favoriteCount")).isTrue();
+    assertThat(json.has("isFavorite")).isTrue();
+    assertThat(json.has("pricing")).isTrue();
+    assertThat(json.has("location")).isTrue();
+    assertThat(json.has("floorPlanGroups")).isTrue();
+    assertThat(json.has("glimpses")).isTrue();
+  }
 }

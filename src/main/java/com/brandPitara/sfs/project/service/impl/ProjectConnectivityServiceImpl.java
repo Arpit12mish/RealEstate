@@ -1,6 +1,8 @@
 package com.brandPitara.sfs.project.service.impl;
 
 import com.brandPitara.sfs.common.contentVersion.service.ContentVersionService;
+import com.brandPitara.sfs.cdn.event.ProjectCacheEvictionReason;
+import com.brandPitara.sfs.cdn.event.ProjectPublicCacheEvictionPublisher;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.integration.ExternalProviderTransactions;
 import com.brandPitara.sfs.project.connectivity.provider.NearbyPlaceProvider;
@@ -37,6 +39,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
   private final ProjectPublicVisibilityPolicy projectPublicVisibilityPolicy;
   private final NearbyPlaceProvider nearbyPlaceProvider;
   private final ExternalProviderTransactions externalProviderTransactions;
+  private final ProjectPublicCacheEvictionPublisher cacheEvictionPublisher;
 
   private static final String KEY_PROJECTS = "PROJECTS";
   private static final String KEY_HOME = "HOME";
@@ -93,6 +96,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     List<ProjectConnectivityPlaceEntity> places = placeRepository.findByProjectIdAndDeletedFalseOrderBySortOrderAscIdAsc(projectId);
     return ProjectConnectivityMapper.toResponse(entity, project, places);
@@ -141,6 +145,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -183,6 +188,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -200,6 +206,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
     if (Boolean.TRUE.equals(entity.getProject().getPublished()) && Boolean.TRUE.equals(entity.getProject().getActive())) {
       contentVersionService.bump(KEY_HOME);
     }
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
 
     return ProjectConnectivityMapper.toPlaceResponse(saved);
   }
@@ -224,6 +231,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
 
     contentVersionService.bump(KEY_PROJECTS);
     contentVersionService.bump(KEY_HOME);
+    cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
   }
 
   @Override
@@ -456,6 +464,7 @@ public class ProjectConnectivityServiceImpl implements ProjectConnectivityServic
       if (Boolean.TRUE.equals(project.getPublished()) && Boolean.TRUE.equals(project.getActive())) {
         contentVersionService.bump(KEY_HOME);
       }
+      cacheEvictionPublisher.publish(projectId, ProjectCacheEvictionReason.CONNECTIVITY_CHANGED);
     }
 
     return ProjectConnectivityPlaceBulkSaveResponse.builder()
