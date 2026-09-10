@@ -21,12 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Runs the actual V144 migration SQL (read from the classpath, not
+ * Runs the actual V166 migration SQL (read from the classpath, not
  * copy-pasted) against a minimal reconstructed `company` table - the same
- * "run the real file" discipline as BuilderSlugMigrationTest (V143) and
+ * "run the real file" discipline as BuilderSlugMigrationTest (V165) and
  * PhoneNumberCheckConstraintMigrationTest (V110). Originally authored as
- * V137, renumbered when merged past the immutable V140/V141 repair
- * checkpoint.
+ * V137, then V144, renumbered again to V166 to move it past V147-V164/V170 -
+ * never applied to any environment under any of its prior numbers.
  *
  * Amended Phase 7B-GA (migration safety audit): the original version of
  * this test class (and the migration it exercises) treated a pre-existing
@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Per Phase 7B-G's own Migration Safety instruction: GAP-035 (an unrelated
  * business/city seed-ordering break at V6) already prevents a complete
  * fresh Flyway replay of this worktree's full migration history from ever
- * reaching V144 - so this test does NOT attempt a full bootstrap. It tests
+ * reaching V166 - so this test does NOT attempt a full bootstrap. It tests
  * the migration file in isolation against the minimum prerequisite Company
  * schema (the columns the migration itself reads/writes: id, slug,
  * published - plus active/deleted, added this phase purely so the
@@ -78,7 +78,7 @@ class CompanySlugConstraintsMigrationTest {
 
   private String migrationSql() throws IOException {
     ClassPathResource resource = new ClassPathResource(
-        "db/migration/V144__add_company_ever_published_and_reassert_slug_constraints.sql");
+        "db/migration/V166__add_company_ever_published_and_reassert_slug_constraints.sql");
     return Files.readString(resource.getFile().toPath(), StandardCharsets.UTF_8);
   }
 

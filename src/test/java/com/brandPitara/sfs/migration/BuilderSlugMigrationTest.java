@@ -23,11 +23,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Runs the actual V143 migration SQL (read from the classpath, not
+ * Runs the actual V165 migration SQL (read from the classpath, not
  * copy-pasted) against a minimal reconstructed `builder` table, proving the
  * real backfill/collision/constraint behavior described in
- * V143__add_builder_slug.sql (originally authored as V136, renumbered when
- * merged past the immutable V140/V141 repair checkpoint) - the same "run the
+ * V165__add_builder_slug.sql (originally authored as V136, then V143,
+ * renumbered again to V165 to move it past V147-V164/V170 - never applied
+ * to any environment under any of its prior numbers) - the same "run the
  * real file" discipline as
  * PhoneNumberCheckConstraintMigrationTest (V110), but each test method here
  * drops and recreates its own `builder` table first so the shared static
@@ -55,7 +56,7 @@ class BuilderSlugMigrationTest {
             """;
 
     private String migrationSql() throws IOException {
-        ClassPathResource resource = new ClassPathResource("db/migration/V143__add_builder_slug.sql");
+        ClassPathResource resource = new ClassPathResource("db/migration/V165__add_builder_slug.sql");
         return Files.readString(resource.getFile().toPath(), StandardCharsets.UTF_8);
     }
 
