@@ -6,6 +6,7 @@ import com.brandPitara.sfs.dashboard.auth.security.DashboardJwtAuthenticationFil
 import com.brandPitara.sfs.ratelimit.filter.RateLimitingFilter;
 import com.brandPitara.sfs.ratelimit.filter.PreAuthenticationAbuseFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -14,12 +15,18 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+/**
+ * {@code @ConditionalOnWebApplication(SERVLET)}: both beans here need a real {@code HttpSecurity},
+ * which Spring Security only supplies for a servlet web application context. Deliberately does
+ * NOT gate {@link PasswordEncoderConfig} - split into its own class precisely so it survives a
+ * non-servlet boot (see {@code WordPressProductionImportCli}, which boots the full {@code
+ * SfsApplication} context as {@code WebApplicationType.NONE} and needs no HTTP filter chain).
+ */
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @RequiredArgsConstructor
 @EnableMethodSecurity
 public class SecurityConfig {
@@ -216,10 +223,5 @@ public class SecurityConfig {
         );
 
         return http.build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
     }
 }

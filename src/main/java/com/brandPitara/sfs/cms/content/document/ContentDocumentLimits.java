@@ -30,6 +30,13 @@ public final class ContentDocumentLimits {
     public static final int MAX_LAYOUT_CHILDREN = 12;
     public static final int MAX_TABLE_TITLE_CHARACTERS = 120;
 
+    // v5: IMAGE_GALLERY (see ContentBlock.Gallery). Column range is one wider than LAYOUT's
+    // (up to 4) since a gallery is a dedicated, denser photo grid rather than a general content
+    // section. 40 images is generous headroom over every real gallery observed so far (max 6).
+    public static final int MIN_GALLERY_COLUMNS = 1;
+    public static final int MAX_GALLERY_COLUMNS = 4;
+    public static final int MAX_GALLERY_IMAGES = 40;
+
     private ContentDocumentLimits() {
     }
 }

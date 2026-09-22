@@ -105,7 +105,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("156");
+                .isEqualTo("173");
 
         assertThat(number("""
                 SELECT count(*)
@@ -236,6 +236,161 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
     }
 
     @Test
+    void wordPressMigrationMappingEnforcesUniqueSourceKeyValidStatesAndNullsTargetOnPostDeletion()
+            throws Exception {
+        assertThat(flyway(null).migrate().success).isTrue();
+
+        execute("""
+                INSERT INTO dashboard_users (id, name, email, password_hash, role, active, created_at, updated_at)
+                VALUES (9701, 'Migration Writer', 'migration-writer@example.com', 'encoded', 'CONTENT_STAFF', true, now(), now());
+
+                INSERT INTO content_post (
+                    id, content_type, status, title, slug,
+                    content_owner_dashboard_user_id,
+                    created_by_dashboard_user_id,
+                    updated_by_dashboard_user_id,
+                    robots_index, robots_follow,
+                    content_document, content_document_schema_version,
+                    created_at, updated_at, version
+                ) VALUES (
+                    9701, 'BLOG', 'DRAFT', 'Imported Post', 'imported-post',
+                    9701, 9701, 9701,
+                    TRUE, TRUE,
+                    '{"schemaVersion":5,"blocks":[]}'::jsonb, 5,
+                    now(), now(), 0
+                );
+
+                INSERT INTO wordpress_migration_mapping (
+                    source_system, source_post_id, target_content_id, source_fingerprint, migration_state
+                ) VALUES (
+                    'wordpress', 640, 9701, repeat('a', 64), 'PUBLISHED'
+                );
+                """);
+
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO wordpress_migration_mapping (
+                    source_system, source_post_id, source_fingerprint, migration_state
+                ) VALUES ('wordpress', 640, repeat('b', 64), 'DRAFT')
+                """))
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23505");
+
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO wordpress_migration_mapping (
+                    source_system, source_post_id, source_fingerprint, migration_state
+                ) VALUES ('wordpress', 8886, repeat('c', 64), 'UNKNOWN_STATE')
+                """))
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23514");
+
+        // A blocked source post never gets a content_post row, so its mapping has no target id.
+        execute("""
+                INSERT INTO wordpress_migration_mapping (
+                    source_system, source_post_id, target_content_id, source_fingerprint, migration_state, error_code
+                ) VALUES ('wordpress', 8886, NULL, repeat('d', 64), 'BLOCKED', 'BLOCKED_SOURCE_CONTENT')
+                """);
+        assertThat(number("""
+                SELECT count(*) FROM wordpress_migration_mapping
+                WHERE source_post_id = 8886 AND target_content_id IS NULL AND migration_state = 'BLOCKED'
+                """)).isOne();
+
+        execute("DELETE FROM content_post WHERE id = 9701");
+        assertThat(number("""
+                SELECT count(*) FROM wordpress_migration_mapping
+                WHERE source_post_id = 640 AND target_content_id IS NULL
+                """)).isOne();
+
+        assertIndex("uk_wordpress_migration_mapping_source");
+        assertIndex("idx_wordpress_migration_mapping_target");
+        assertConstraint("wordpress_migration_mapping", "u");
+        assertConstraint("wordpress_migration_mapping", "c");
+    }
+
+    @Test
+    void wordPressMigrationMediaMappingEnforcesUniqueAttachmentValidStatesAndProtectsSharedAssets()
+            throws Exception {
+        assertThat(flyway(null).migrate().success).isTrue();
+
+        execute("""
+                INSERT INTO dashboard_users (id, name, email, password_hash, role, active, created_at, updated_at)
+                VALUES (9801, 'Media Migration Writer', 'media-migration-writer@example.com', 'encoded',
+                        'CONTENT_STAFF', true, now(), now());
+
+                INSERT INTO cms_media_asset (
+                    id, media_type, status, storage_bucket, storage_key, original_filename,
+                    content_type, declared_size_bytes, size_bytes, width, height,
+                    created_by_dashboard_user_id, ready_at, created_at, updated_at, version
+                ) VALUES (
+                    9801, 'IMAGE', 'READY', 'private', 'cms/images/wordpress/2026/09/wp-abc123.jpg', 'wp-abc123.jpg',
+                    'image/jpeg', 12345, 12345, 100, 50, 9801, now(), now(), now(), 0
+                );
+
+                INSERT INTO wordpress_migration_media_mapping (
+                    source_system, wordpress_attachment_id, cms_media_asset_id, source_upload_path,
+                    source_sha256, source_size_bytes, object_key, migration_state
+                ) VALUES (
+                    'wordpress', 481, 9801, '2026/09/skyline.jpg', repeat('a', 64), 12345,
+                    'cms/images/wordpress/2026/09/wp-abc123.jpg', 'COMPLETED'
+                );
+                """);
+
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO wordpress_migration_media_mapping (
+                    source_system, wordpress_attachment_id, source_upload_path, source_sha256,
+                    source_size_bytes, object_key, migration_state
+                ) VALUES ('wordpress', 481, '2026/09/skyline-again.jpg', repeat('b', 64), 999,
+                          'cms/images/wordpress/2026/09/wp-def456.jpg', 'FAILED')
+                """))
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23505");
+
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO wordpress_migration_media_mapping (
+                    source_system, wordpress_attachment_id, source_upload_path, source_sha256,
+                    source_size_bytes, object_key, migration_state
+                ) VALUES ('wordpress', 482, '2026/09/other.jpg', repeat('c', 64), 999,
+                          'cms/images/wordpress/2026/09/wp-def456.jpg', 'UNKNOWN_STATE')
+                """))
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23514");
+
+        assertThatThrownBy(() -> execute("""
+                INSERT INTO wordpress_migration_media_mapping (
+                    source_system, wordpress_attachment_id, source_upload_path, source_sha256,
+                    source_size_bytes, object_key, migration_state
+                ) VALUES ('wordpress', 483, '2026/09/nope.jpg', repeat('d', 64), 999,
+                          'cms/images/wordpress/2026/09/wp-nope.jpg', 'COMPLETED')
+                """))
+                .as("COMPLETED without a cms_media_asset_id must be rejected")
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23514");
+
+        // A failed attempt never creates a media row - no target id required.
+        execute("""
+                INSERT INTO wordpress_migration_media_mapping (
+                    source_system, wordpress_attachment_id, source_upload_path, source_sha256,
+                    source_size_bytes, object_key, migration_state, error_code
+                ) VALUES ('wordpress', 484, '2026/09/broken.jpg', repeat('e', 64), 999,
+                          'cms/images/wordpress/2026/09/wp-broken.jpg', 'FAILED', 'UPLOAD_FAILED')
+                """);
+        assertThat(number("""
+                SELECT count(*) FROM wordpress_migration_media_mapping
+                WHERE wordpress_attachment_id = 484 AND cms_media_asset_id IS NULL AND migration_state = 'FAILED'
+                """)).isOne();
+
+        // A shared media asset (referenced by a COMPLETED mapping) must never be deletable out from under it.
+        assertThatThrownBy(() -> execute("DELETE FROM cms_media_asset WHERE id = 9801"))
+                .isInstanceOf(SQLException.class)
+                .extracting(e -> ((SQLException) e).getSQLState()).isEqualTo("23503");
+
+        assertIndex("uk_wordpress_migration_media_mapping_source");
+        assertIndex("idx_wordpress_migration_media_mapping_asset");
+        assertConstraint("wordpress_migration_media_mapping", "u");
+        assertConstraint("wordpress_migration_media_mapping", "c");
+        assertConstraint("wordpress_migration_media_mapping", "f");
+    }
+
+    @Test
     void contentPostMigrationEnforcesSlugDomainAndHistoricalUserReferences()
             throws Exception {
 
@@ -255,11 +410,15 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                     content_owner_dashboard_user_id,
                     created_by_dashboard_user_id,
                     updated_by_dashboard_user_id,
-                    robots_index, robots_follow, created_at, updated_at, version
+                    robots_index, robots_follow,
+                    content_document, content_document_schema_version,
+                    created_at, updated_at, version
                 ) VALUES (
                     9501, 'ARTICLE', 'DRAFT', 'Gurgaon Market Guide',
                     'gurgaon-market-guide', 9501, 9501, 9501,
-                    TRUE, TRUE, now(), now(), 0
+                    TRUE, TRUE,
+                    '{"schemaVersion":5,"blocks":[]}'::jsonb, 5,
+                    now(), now(), 0
                 );
                 """);
 
@@ -269,10 +428,12 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                     content_owner_dashboard_user_id,
                     created_by_dashboard_user_id,
                     updated_by_dashboard_user_id,
+                    content_document, content_document_schema_version,
                     created_at, updated_at
                 ) VALUES (
                     'BLOG', 'DRAFT', 'Another Market Guide',
-                    'gurgaon-market-guide', 9501, 9501, 9501, now(), now()
+                    'gurgaon-market-guide', 9501, 9501, 9501,
+                    '{"schemaVersion":5,"blocks":[]}'::jsonb, 5, now(), now()
                 )
                 """))
                 .isInstanceOf(SQLException.class)
@@ -285,10 +446,12 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                     content_owner_dashboard_user_id,
                     created_by_dashboard_user_id,
                     updated_by_dashboard_user_id,
-                    canonical_url, created_at, updated_at
+                    canonical_url, content_document, content_document_schema_version,
+                    created_at, updated_at
                 ) VALUES (
                     'NEWS', 'PUBLISHED', 'Unsafe Content Post', 'unsafe-content-post',
-                    9501, 9501, 9501, 'javascript:alert(1)', now(), now()
+                    9501, 9501, 9501, 'javascript:alert(1)',
+                    '{"schemaVersion":5,"blocks":[]}'::jsonb, 5, now(), now()
                 )
                 """))
                 .isInstanceOf(SQLException.class)
@@ -307,7 +470,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 SELECT content_document ->> 'schemaVersion'
                 FROM content_post
                 WHERE id = 9501
-                """)).isEqualTo("3");
+                """)).isEqualTo("5");
         assertThat(text("""
                 SELECT jsonb_typeof(content_document -> 'blocks')
                 FROM content_post
@@ -401,6 +564,56 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 UPDATE content_post
                 SET content_document_schema_version = 4
                 WHERE id = 9702
+                """))
+                .isInstanceOf(SQLException.class)
+                .extracting(exception -> ((SQLException) exception).getSQLState())
+                .isEqualTo("23514");
+    }
+
+    @Test
+    void documentV5MigrationPreservesStoredV4DocumentsAndAllowsAllFiveVersions() throws Exception {
+        Flyway throughV164 = flyway(MigrationVersion.fromVersion("164"));
+        assertThat(throughV164.migrate().success).isTrue();
+        execute("""
+                INSERT INTO dashboard_users (id, name, email, password_hash, role, active, created_at, updated_at)
+                VALUES (9703, 'Document Writer Three', 'document-writer-3@example.com', 'encoded',
+                        'CONTENT_STAFF', true, now(), now());
+                INSERT INTO content_post (
+                    id, content_type, status, title, slug,
+                    content_owner_dashboard_user_id, created_by_dashboard_user_id,
+                    updated_by_dashboard_user_id, robots_index, robots_follow,
+                    content_document, content_document_schema_version,
+                    created_at, updated_at, version
+                ) VALUES (
+                    9703, 'ARTICLE', 'DRAFT', 'Existing V4', 'existing-v4',
+                    9703, 9703, 9703, true, true,
+                    '{"schemaVersion":4,"blocks":[]}'::jsonb, 4,
+                    now(), now(), 0
+                );
+                """);
+
+        assertThat(flyway(null).migrate().success).isTrue();
+        assertThat(text("SELECT content_document ->> 'schemaVersion' FROM content_post WHERE id = 9703"))
+                .isEqualTo("4");
+
+        execute("""
+                UPDATE content_post
+                SET content_document = '{"schemaVersion":5,"blocks":[
+                        {"type":"IMAGE_GALLERY","columns":2,"images":[
+                            {"mediaAssetId":1,"decorative":false,"altText":"Tower A","caption":[]},
+                            {"mediaAssetId":2,"decorative":false,"altText":"Tower B","caption":[]}
+                        ]}
+                    ]}'::jsonb,
+                    content_document_schema_version = 5
+                WHERE id = 9703
+                """);
+        assertThat(text("SELECT content_document ->> 'schemaVersion' FROM content_post WHERE id = 9703"))
+                .isEqualTo("5");
+
+        assertThatThrownBy(() -> execute("""
+                UPDATE content_post
+                SET content_document_schema_version = 6
+                WHERE id = 9703
                 """))
                 .isInstanceOf(SQLException.class)
                 .extracting(exception -> ((SQLException) exception).getSQLState())
@@ -833,7 +1046,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("156");
+                .isEqualTo("173");
 
         assertIndex("uk_company_project_slug");
     }
@@ -903,7 +1116,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("156");
+                .isEqualTo("173");
     }
 
     @Test

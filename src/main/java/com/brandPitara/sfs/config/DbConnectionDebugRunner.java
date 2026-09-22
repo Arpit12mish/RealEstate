@@ -2,11 +2,13 @@ package com.brandPitara.sfs.config;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(prefix = "sfs.debug.db-connection-runner", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class DbConnectionDebugRunner implements CommandLineRunner {
 
     private final JdbcTemplate jdbcTemplate;

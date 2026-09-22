@@ -9,6 +9,7 @@ import java.util.*;
 public interface CmsPublicAuthorRepository extends JpaRepository<CmsPublicAuthorEntity, Long> {
     boolean existsBySlug(String slug);
     boolean existsBySlugAndIdNot(String slug, Long id);
+    Optional<CmsPublicAuthorEntity> findBySlug(String slug);
     @EntityGraph(attributePaths = "profileMediaAsset")
     Optional<CmsPublicAuthorEntity> findWithProfileMediaById(Long id);
     @EntityGraph(attributePaths = "profileMediaAsset")

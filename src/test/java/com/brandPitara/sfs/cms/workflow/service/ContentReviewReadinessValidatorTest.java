@@ -144,6 +144,18 @@ class ContentReviewReadinessValidatorTest {
         verify(mediaReferenceService).validateAndResolve(document, Map.of(90L, CmsMediaType.IMAGE));
     }
 
+    @Test
+    void galleryOnlyDocumentIsMeaningfulJustLikeAStandaloneImage() {
+        ContentDocument document = new ContentDocument(5, List.of(new ContentBlock.Gallery(3, List.of(
+                new ContentBlock.GalleryImage(77L, false, "Clubhouse exterior", List.of()),
+                new ContentBlock.GalleryImage(78L, false, "Rooftop pool", List.of())
+        ))));
+
+        assertThatCode(() -> validator.validate(post(document))).doesNotThrowAnyException();
+
+        verify(mediaReferenceService).validateAndResolve(document, Map.of(90L, CmsMediaType.IMAGE));
+    }
+
     private void rejected(ContentDocument document) {
         assertThatThrownBy(() -> validator.validate(post(document)))
                 .isInstanceOf(CmsContentApiException.class)

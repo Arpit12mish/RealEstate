@@ -511,7 +511,7 @@ class ForwardOnlyFlywayApplicationStartupIntegrationTest {
                                  "seoTitle":"Certified Market Guide","seoDescription":"Certified CMS response.",
                                  "robotsIndex":true,"robotsFollow":true,"publicAuthorId":%d,
                                  "categoryId":%d,"tagIds":[%d],"coverMediaAssetId":%d,
-                                 "coverAltText":"Gurgaon skyline at sunset"}
+                                 "coverAltText":"Gurgaon skyline at sunset","readingTimeMinutes":6}
                                 """.formatted(slug, authorId, categoryId, tagId, cover.getId())))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("DRAFT"))
                 .andReturn().getResponse().getContentAsString());
@@ -695,7 +695,7 @@ class ForwardOnlyFlywayApplicationStartupIntegrationTest {
                  "slug":"%s","excerpt":"%s","seoTitle":"Certified Market Guide",
                  "seoDescription":"Certified CMS response.","robotsIndex":true,"robotsFollow":true,
                  "publicAuthorId":%d,"categoryId":%d,"tagIds":[%d],"coverMediaAssetId":%d,
-                 "coverAltText":"Gurgaon skyline at sunset"}
+                 "coverAltText":"Gurgaon skyline at sunset","readingTimeMinutes":6}
                 """.formatted(version, slug, excerpt, authorId, categoryId, tagId, coverId);
     }
 

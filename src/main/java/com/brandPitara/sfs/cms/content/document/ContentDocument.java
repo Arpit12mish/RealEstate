@@ -9,9 +9,9 @@ public record ContentDocument(
         List<ContentBlock> blocks
 ) {
     public static final int MINIMUM_READABLE_SCHEMA_VERSION = 1;
-    /** v4 adds LAYOUT (see ContentBlock.Layout) and TABLE.title — every earlier document
-     * remains readable unchanged; only a document that actually uses these declares v4. */
-    public static final int CURRENT_SCHEMA_VERSION = 4;
+    /** v5 adds IMAGE_GALLERY (see ContentBlock.Gallery) — every earlier document remains
+     * readable unchanged; only a document that actually uses it declares v5. */
+    public static final int CURRENT_SCHEMA_VERSION = 5;
 
     public static ContentDocument empty() {
         return new ContentDocument(CURRENT_SCHEMA_VERSION, List.of());

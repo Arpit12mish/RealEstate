@@ -799,6 +799,136 @@ class ContentDocumentValidatorTest {
         assertThat(layoutCount).isGreaterThan(0);
     }
 
+    // ── IMAGE_GALLERY (v5) ────────────────────────────────────────────────────
+
+    private ContentDocument v5Document(ContentBlock... blocks) {
+        return new ContentDocument(ContentDocument.CURRENT_SCHEMA_VERSION, List.of(blocks));
+    }
+
+    private ContentBlock.GalleryImage galleryImage(String alt) {
+        return new ContentBlock.GalleryImage(1L, false, alt, List.of());
+    }
+
+    @Test
+    void galleryAcceptsImagesWithAndWithoutColumnsAndRoundTrips() throws Exception {
+        ContentDocument withColumns = v5Document(new ContentBlock.Gallery(3, List.of(
+                new ContentBlock.GalleryImage(1L, false, "Tower A", text("Front elevation")),
+                new ContentBlock.GalleryImage(2L, true, null, List.of())
+        )));
+
+        ContentDocument normalized = validator.validateAndNormalize(withColumns);
+        ContentBlock.Gallery gallery = (ContentBlock.Gallery) normalized.blocks().get(0);
+        assertThat(gallery.columns()).isEqualTo(3);
+        assertThat(gallery.images()).hasSize(2);
+        assertThat(gallery.images().get(0).altText()).isEqualTo("Tower A");
+        assertThat(gallery.images().get(1).altText()).isNull();
+        assertThat(objectMapper.readValue(objectMapper.writeValueAsBytes(normalized), ContentDocument.class))
+                .isEqualTo(normalized);
+
+        ContentDocument withoutColumns = v5Document(new ContentBlock.Gallery(
+                null, List.of(new ContentBlock.GalleryImage(1L, false, "Tower A", List.of()))
+        ));
+        assertThat(((ContentBlock.Gallery) validator.validateAndNormalize(withoutColumns).blocks().get(0)).columns())
+                .isNull();
+    }
+
+    @Test
+    void galleryRejectsEmptyOrNullImages() {
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of()))),
+                "CONTENT_DOCUMENT_INVALID");
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, null))),
+                "CONTENT_DOCUMENT_INVALID");
+    }
+
+    @Test
+    void galleryEnforcesMaxImagesAtBoundaryAndOneOver() {
+        List<ContentBlock.GalleryImage> maxImages = new ArrayList<>();
+        for (int i = 0; i < ContentDocumentLimits.MAX_GALLERY_IMAGES; i++) maxImages.add(galleryImage("Image " + i));
+        assertThat(validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(3, maxImages)))).isNotNull();
+
+        List<ContentBlock.GalleryImage> overImages = new ArrayList<>(maxImages);
+        overImages.add(galleryImage("One too many"));
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(3, overImages))),
+                "CONTENT_DOCUMENT_INVALID");
+    }
+
+    @Test
+    void galleryRejectsColumnsOutsideOneToFourButAllowsNull() {
+        assertThat(validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(1, List.of(galleryImage("A")))))).isNotNull();
+        assertThat(validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(4, List.of(galleryImage("A")))))).isNotNull();
+        assertThat(validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(null, List.of(galleryImage("A")))))).isNotNull();
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(0, List.of(galleryImage("A"))))),
+                "CONTENT_DOCUMENT_INVALID");
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(5, List.of(galleryImage("A"))))),
+                "CONTENT_DOCUMENT_INVALID");
+    }
+
+    @Test
+    void galleryImagesAreValidatedUnderTheExactSameAccessibilityRulesAsTopLevelImage() {
+        // A non-decorative image with no alt text is invalid at top level - it must be exactly
+        // as invalid inside a gallery, never a looser nested path (same philosophy as LAYOUT).
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(1L, false, null, List.of()), galleryImage("ok")
+        )))), "CONTENT_DOCUMENT_INVALID");
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(1L, true, "not decorative", List.of())
+        )))), "CONTENT_DOCUMENT_INVALID");
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(null, false, "Missing media id", List.of())
+        )))), "CONTENT_DOCUMENT_INVALID");
+        assertCode(() -> validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(1L, false, "Safe", text("x".repeat(ContentDocumentLimits.MAX_CAPTION_CHARACTERS + 1)))
+        )))), "CONTENT_DOCUMENT_INVALID");
+    }
+
+    @Test
+    void galleryRequiresSchemaVersionFiveAndOlderDocumentsRejectIt() {
+        assertCode(() -> validator.validateAndNormalize(new ContentDocument(4, List.of(
+                new ContentBlock.Gallery(2, List.of(galleryImage("A"), galleryImage("B")))
+        ))), "CONTENT_DOCUMENT_SCHEMA_UNSUPPORTED");
+        // v5 (CURRENT_SCHEMA_VERSION) accepts it.
+        assertThat(validator.validateAndNormalize(v5Document(new ContentBlock.Gallery(2, List.of(galleryImage("A"), galleryImage("B"))))))
+                .isNotNull();
+    }
+
+    @Test
+    void preV5DocumentsWithoutGalleryRemainValidAndUnaffected() throws Exception {
+        ContentDocument document = mediaDocument(new ContentBlock.Image(
+                1L, false, "Standalone image", List.of(), ImageLayout.STANDARD, null
+        ));
+        ContentDocument normalized = validator.validateAndNormalize(document);
+        assertThat(normalized.schemaVersion()).isEqualTo(ContentDocument.CURRENT_SCHEMA_VERSION);
+        assertThat(normalized.blocks()).hasSize(1).allMatch(ContentBlock.Image.class::isInstance);
+        assertThat(objectMapper.readValue(objectMapper.writeValueAsBytes(normalized), ContentDocument.class))
+                .isEqualTo(normalized);
+    }
+
+    @Test
+    void galleryContributesToWordCountThroughImageCaptionsExactlyLikeTopLevelImage() {
+        ContentDocument standalone = v5Document(new ContentBlock.Image(
+                1L, false, "alt text ignored", text("Front elevation view"), ImageLayout.STANDARD, null
+        ));
+        ContentDocument insideGallery = v5Document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(1L, false, "alt text ignored", text("Front elevation view"))
+        )));
+
+        int standaloneCount = new ContentDocumentWordCounter().count(validator.validateAndNormalize(standalone));
+        int galleryCount = new ContentDocumentWordCounter().count(validator.validateAndNormalize(insideGallery));
+
+        assertThat(galleryCount).isEqualTo(standaloneCount);
+        assertThat(galleryCount).isGreaterThan(0);
+    }
+
+    @Test
+    void galleryImageUnknownPropertyFailsJsonParsingSafely() {
+        String json = documentJson("""
+                {"type":"IMAGE_GALLERY","columns":2,"images":[
+                    {"mediaAssetId":1,"decorative":false,"altText":"x","caption":[],"extra":true}
+                ]}
+                """);
+        assertThatThrownBy(() -> objectMapper.readValue(json, ContentDocument.class)).isInstanceOf(Exception.class);
+    }
+
     // ── Security (reuses the same safe-plain-text / link-safety pipeline) ─────
 
     @Test

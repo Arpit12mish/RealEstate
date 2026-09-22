@@ -118,6 +118,12 @@ public class CmsMediaReferenceService {
             if (video.posterMediaAssetId() != null) {
                 add(expected, video.posterMediaAssetId(), CmsMediaType.IMAGE);
             }
+        } else if (block instanceof ContentBlock.Gallery gallery && gallery.images() != null) {
+            for (ContentBlock.GalleryImage galleryImage : gallery.images()) {
+                if (galleryImage != null) {
+                    add(expected, galleryImage.mediaAssetId(), CmsMediaType.IMAGE);
+                }
+            }
         } else if (block instanceof ContentBlock.Layout layout && layout.children() != null) {
             // LAYOUT children are IMAGE/TABLE only (LayoutChildBlock) - only IMAGE ever
             // contributes a media reference, but this dispatches through the same

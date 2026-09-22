@@ -105,7 +105,7 @@ GET response:
   "version": 8,
   "updatedAt": "2026-08-19T16:00:00+05:30",
   "document": {
-    "schemaVersion": 3,
+    "schemaVersion": 5,
     "blocks": [
       {"type":"PARAGRAPH","content":[{"type":"TEXT","text":"Hello world","marks":[{"type":"BOLD"}]}]}
     ]
@@ -121,7 +121,7 @@ PUT request:
 {
   "version": 8,
   "document": {
-    "schemaVersion": 3,
+    "schemaVersion": 5,
     "blocks": [
       {"type":"HEADING","level":"H2","content":[{"type":"TEXT","text":"Overview","marks":[]}]},
       {"type":"IMAGE","mediaAssetId":481,"decorative":false,"altText":"Apartment clubhouse","caption":[],"layout":"WIDE"},
@@ -134,9 +134,11 @@ PUT request:
 
 The editor adapter must translate frontend-editor state into these semantic nodes and back. Never send HTML or editor-library internals. Render CMS previews with an explicit block switch, escaped text, derived link attributes, canonical YouTube IDs, and trusted media preview data. Never pass content text to `dangerouslySetInnerHTML`.
 
-### Schema version 3 (current write version)
+### Schema version 5 (current write version)
 
-Documents stored with `schemaVersion` 1 or 2 remain fully readable — GET returns the raw stored document as-is. Any PUT (whatever `schemaVersion` the request body declares) is re-validated, canonicalized, and re-saved as `schemaVersion` 3. There is no bulk/eager rewrite of old rows; upcast only happens the next time a document is saved. The dashboard editor never needs to think about this — it always reads whatever `schemaVersion` GET returns and always sends new writes with the current block vocabulary below.
+Documents stored with `schemaVersion` 1, 2, 3, or 4 remain fully readable — GET returns the raw stored document as-is. Any PUT (whatever `schemaVersion` the request body declares) is re-validated, canonicalized, and re-saved as `schemaVersion` 5. There is no bulk/eager rewrite of old rows; upcast only happens the next time a document is saved.
+
+**This is not purely informational** — the validator gates each schema generation's new block types behind the *declared* `schemaVersion` of the PUT body, not the server's own current version. Concretely: a `LAYOUT` block or a `TABLE.title` in the request needs `schemaVersion: 4`, and an `IMAGE_GALLERY` needs `schemaVersion: 5` — each is rejected with `400 CONTENT_DOCUMENT_SCHEMA_UNSUPPORTED` if the request declares an older version, even though 5 is already the server's current version. So the dashboard's own "current schema version" constant must track the block vocabulary its editor actually authors, not just mirror whatever this doc last said — bumping this doc's number without also bumping that constant (and vice versa) reproduces exactly this failure the moment an editor uses the new block. Short of that pitfall, the dashboard editor doesn't need to think further about versioning: it always reads whatever `schemaVersion` GET returns and always sends new writes with the current block vocabulary below.
 
 v3 adds three blocks on top of the v2 set (`PARAGRAPH`, `HEADING`, `BULLET_LIST`, `ORDERED_LIST`, `BLOCKQUOTE`, `DIVIDER`, `IMAGE`, `VIDEO`, `EMBED`): `CHECK_LIST`, `CALLOUT`, `TABLE`.
 
@@ -180,6 +182,48 @@ v3 adds three blocks on top of the v2 set (`PARAGRAPH`, `HEADING`, `BULLET_LIST`
 Cells reuse `InlineNode` directly — the same `TEXT`/`HARD_BREAK` nodes and `BOLD`/`ITALIC`/`UNDERLINE`/`LINK` marks used everywhere else. No block content (images, nested tables, embeds) is representable inside a cell.
 
 None of these three blocks introduce media references, so they never appear in the `media` map.
+
+### Schema version 4 additions: `TABLE.title` and `LAYOUT`
+
+v4 adds one field on top of v3's `TABLE` and one new block, `LAYOUT`. Both require the request to declare `schemaVersion: 4` (see the callout above) — sending either one with `schemaVersion: 3` fails with `400 CONTENT_DOCUMENT_SCHEMA_UNSUPPORTED`.
+
+**`TABLE.title`** — an optional short heading (max 120 chars) rendered *above* the table, distinct from the pre-existing `caption` which stays a small annotation rendered *below*. `null`/absent on any table authored before this field existed; never defaulted server-side.
+
+```json
+{"type":"TABLE","title":"Interior Packages","caption":null,"columns":[
+  {"label":"Package"},{"label":"Price/sqft"}
+],"rows":[
+  {"rowType":"NORMAL","cells":[[{"type":"TEXT","text":"Essential","marks":[]}],[{"type":"TEXT","text":"₹1,200","marks":[]}]]}
+]}
+```
+
+**`LAYOUT`** — a responsive multi-column grid grouping existing `IMAGE`/`TABLE` blocks (no wrapper types; each child is validated exactly as strictly as a standalone top-level block of the same type, and each `IMAGE` child's `mediaAssetId` appears in the `media` map same as any top-level `IMAGE`). `columns` is the desktop column count, 1–3; `children` is 1–12 items and auto-wraps into additional rows once it exceeds `columns` (CSS Grid semantics — there is no separate "row" concept). No nested `LAYOUT`, and no `gap`/spacing field (the renderer owns one consistent spacing value).
+
+```json
+{"type":"LAYOUT","columns":2,"children":[
+  {"type":"IMAGE","mediaAssetId":481,"decorative":false,"altText":"Express Zenith – Alpha Tower","caption":[],"layout":"STANDARD","link":null},
+  {"type":"IMAGE","mediaAssetId":482,"decorative":false,"altText":"Skyline Innovation","caption":[],"layout":"STANDARD","link":null}
+]}
+```
+
+Full rendering contract (responsive column→breakpoint mapping, table-vs-card semantics, accessibility) is in `docs/CMS_LAYOUT_RENDERING_CONTRACT.md` — read it before building the editor UI or preview renderer for this block, not just this summary. As of that doc, the **public website has no `LAYOUT` renderer yet**: a published post containing one will not display correctly there until one is built.
+
+### Schema version 5 addition: `IMAGE_GALLERY`
+
+v5 adds one new block, `IMAGE_GALLERY`. Requires the request to declare `schemaVersion: 5` (see the callout above) — sending it with `schemaVersion: 4` fails with `400 CONTENT_DOCUMENT_SCHEMA_UNSUPPORTED`.
+
+**`IMAGE_GALLERY`** — an editorial photo gallery, deliberately its own block rather than a `LAYOUT` of `IMAGE` children: a gallery is one cohesive tile set with lightbox/carousel semantics that `LAYOUT`'s generic grid doesn't provide. `columns` is an optional 1–4 desktop column hint — omit it to let the renderer choose a sensible default (e.g. 3). `images` is 1–40 entries, each `{mediaAssetId,decorative,altText,caption}` — the exact same accessibility shape as a top-level `IMAGE` (decorative/alt-text mutual exclusivity, same caption limits), validated exactly as strictly as a standalone `IMAGE` would be. There is no `layout`/`link` per tile — a gallery tile isn't independently placed or linked. Every `images[].mediaAssetId` appears in the `media` map the same way any top-level `IMAGE`'s does.
+
+```json
+{"type":"IMAGE_GALLERY","columns":3,"images":[
+  {"mediaAssetId":601,"decorative":false,"altText":"Clubhouse exterior","caption":[]},
+  {"mediaAssetId":602,"decorative":false,"altText":"Rooftop pool","caption":[{"type":"TEXT","text":"Infinity pool, level 40","marks":[]}]}
+]}
+```
+
+As with `LAYOUT`, the **public website has no `IMAGE_GALLERY` renderer yet** (confirmed absent as of this doc): a published post containing one will not display correctly there until one is built.
+
+> **PRODUCTION-READINESS BLOCKER**: Do not publish migrated gallery posts in production until the website renderer safely renders `IMAGE_GALLERY` and the dashboard can at minimum read/display existing gallery blocks without corrupting or deleting them. This is a hard dependency for the WordPress migration's production import checklist, not just a cosmetic gap.
 
 ## Autosave and concurrency
 

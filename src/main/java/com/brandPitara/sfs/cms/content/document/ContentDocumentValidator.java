@@ -131,7 +131,50 @@ public class ContentDocumentValidator {
         if (block instanceof ContentBlock.Layout layout) {
             return normalizeLayout(layout, counters);
         }
+        if (sourceSchemaVersion < 5) {
+            throw CmsContentApiException.documentSchemaUnsupported(sourceSchemaVersion);
+        }
+        if (block instanceof ContentBlock.Gallery gallery) {
+            return normalizeGallery(gallery, counters);
+        }
         throw CmsContentApiException.documentInvalid("Unsupported content block.");
+    }
+
+    private ContentBlock.Gallery normalizeGallery(ContentBlock.Gallery gallery, Counters counters) {
+        if (gallery.images() == null || gallery.images().isEmpty()) {
+            throw CmsContentApiException.documentInvalid("Gallery must contain at least one image.");
+        }
+        if (gallery.images().size() > ContentDocumentLimits.MAX_GALLERY_IMAGES) {
+            throw CmsContentApiException.documentInvalid(
+                    "Gallery exceeds the maximum of " + ContentDocumentLimits.MAX_GALLERY_IMAGES + " images."
+            );
+        }
+        if (gallery.columns() != null && (gallery.columns() < ContentDocumentLimits.MIN_GALLERY_COLUMNS
+                || gallery.columns() > ContentDocumentLimits.MAX_GALLERY_COLUMNS)) {
+            throw CmsContentApiException.documentInvalid(
+                    "Gallery columns must be between " + ContentDocumentLimits.MIN_GALLERY_COLUMNS
+                            + " and " + ContentDocumentLimits.MAX_GALLERY_COLUMNS + "."
+            );
+        }
+        List<ContentBlock.GalleryImage> images = new ArrayList<>(gallery.images().size());
+        for (ContentBlock.GalleryImage image : gallery.images()) {
+            if (image == null) {
+                throw CmsContentApiException.documentInvalid("Gallery images cannot be null.");
+            }
+            images.add(normalizeGalleryImage(image, counters));
+        }
+        return new ContentBlock.Gallery(gallery.columns(), List.copyOf(images));
+    }
+
+    private ContentBlock.GalleryImage normalizeGalleryImage(ContentBlock.GalleryImage image, Counters counters) {
+        Long mediaAssetId = requirePositiveId(image.mediaAssetId(), "Gallery image media asset");
+        String altText = normalizeAltText(image.decorative(), image.altText());
+        return new ContentBlock.GalleryImage(
+                mediaAssetId,
+                image.decorative(),
+                altText,
+                normalizeCaption(image.caption(), "Gallery image caption", counters)
+        );
     }
 
     private ContentBlock.Layout normalizeLayout(ContentBlock.Layout layout, Counters counters) {
@@ -292,31 +335,41 @@ public class ContentDocumentValidator {
         return normalized;
     }
 
-    private ContentBlock.Image normalizeImage(ContentBlock.Image image, Counters counters) {
-        Long mediaAssetId = requirePositiveId(image.mediaAssetId(), "Image media asset");
-        String altText = image.altText() == null ? null : image.altText().trim();
-        if (image.decorative()) {
+    /**
+     * Shared decorative/alt-text mutual-exclusivity and bounded-length rule for any image-like
+     * block ({@link ContentBlock.Image}, {@link ContentBlock.GalleryImage}) - a gallery tile
+     * must be exactly as accessible as a standalone image, never a looser nested path (same
+     * philosophy as {@link #normalizeLayout}'s children reusing this top-level normalization).
+     */
+    private String normalizeAltText(boolean decorative, String rawAltText) {
+        String altText = rawAltText == null ? null : rawAltText.trim();
+        if (decorative) {
             if (StringUtils.hasText(altText)) {
                 throw CmsContentApiException.documentInvalid(
                         "Decorative images must not have alt text."
                 );
             }
-            altText = null;
-        } else if (!StringUtils.hasText(altText)) {
+            return null;
+        }
+        if (!StringUtils.hasText(altText)) {
             throw CmsContentApiException.documentInvalid(
                     "Non-decorative images require meaningful alt text."
             );
         }
-        if (altText != null) {
-            if (altText.length() > ContentDocumentLimits.MAX_ALT_TEXT_CHARACTERS
-                    || altText.codePoints().anyMatch(Character::isISOControl)) {
-                throw CmsContentApiException.documentInvalid(
-                        "Image alt text must be at most "
-                                + ContentDocumentLimits.MAX_ALT_TEXT_CHARACTERS
-                                + " characters without control characters."
-                );
-            }
+        if (altText.length() > ContentDocumentLimits.MAX_ALT_TEXT_CHARACTERS
+                || altText.codePoints().anyMatch(Character::isISOControl)) {
+            throw CmsContentApiException.documentInvalid(
+                    "Image alt text must be at most "
+                            + ContentDocumentLimits.MAX_ALT_TEXT_CHARACTERS
+                            + " characters without control characters."
+            );
         }
+        return altText;
+    }
+
+    private ContentBlock.Image normalizeImage(ContentBlock.Image image, Counters counters) {
+        Long mediaAssetId = requirePositiveId(image.mediaAssetId(), "Image media asset");
+        String altText = normalizeAltText(image.decorative(), image.altText());
         ContentLink link = image.link() == null ? null : new ContentLink(
                 normalizeLink(image.link().href()),
                 image.link().openInNewTab(),

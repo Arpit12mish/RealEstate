@@ -132,6 +132,35 @@ class CmsMediaReferenceServiceTest {
     }
 
     @Test
+    void findsImageMediaReferencesInsideAGallery() {
+        CmsMediaAssetEntity first = asset(10L, CmsMediaType.IMAGE, CmsMediaStatus.READY);
+        CmsMediaAssetEntity second = asset(11L, CmsMediaType.IMAGE, CmsMediaStatus.READY);
+        when(repository.findAllByIdIn(any())).thenReturn(List.of(first, second));
+
+        ContentDocument document = document(new ContentBlock.Gallery(2, List.of(
+                new ContentBlock.GalleryImage(10L, false, "Tower A", List.of()),
+                new ContentBlock.GalleryImage(11L, false, "Tower B", List.of())
+        )));
+        Map<Long, CmsMediaAssetEntity> resolved = service.validateAndResolve(document);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Collection<Long>> ids = ArgumentCaptor.forClass(Collection.class);
+        verify(repository).findAllByIdIn(ids.capture());
+        assertThat(ids.getValue()).containsExactlyInAnyOrder(10L, 11L);
+        assertThat(resolved).containsOnlyKeys(10L, 11L);
+    }
+
+    @Test
+    void galleryImageThatIsNotReadyFailsMediaResolution() {
+        when(repository.findAllByIdIn(any())).thenReturn(List.of(
+                asset(10L, CmsMediaType.IMAGE, CmsMediaStatus.PENDING_UPLOAD)
+        ));
+        assertCode(() -> service.validateAndResolve(document(new ContentBlock.Gallery(
+                null, List.of(new ContentBlock.GalleryImage(10L, false, "Tower A", List.of()))
+        ))), "CONTENT_MEDIA_NOT_READY");
+    }
+
+    @Test
     void layoutWithOnlyTableChildrenDoesNotQueryMedia() {
         ContentDocument document = document(new ContentBlock.Layout(2, List.of(
                 new ContentBlock.Table(

@@ -25,6 +25,9 @@ public interface CmsMediaAssetRepository extends JpaRepository<CmsMediaAssetEnti
     @Query("select m from CmsMediaAssetEntity m where m.id = :id")
     Optional<CmsMediaAssetEntity> findByIdForUpdate(@Param("id") Long id);
 
+    /** Physical-object dedup lookup: reused when a content-addressed storage key already exists. */
+    Optional<CmsMediaAssetEntity> findByStorageKey(String storageKey);
+
     @EntityGraph(attributePaths = "createdBy")
     @Query("""
             select m from CmsMediaAssetEntity m

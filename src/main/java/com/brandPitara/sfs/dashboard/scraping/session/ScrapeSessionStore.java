@@ -55,7 +55,7 @@ public class ScrapeSessionStore {
         }
     }
 
-    @Scheduled(fixedDelay = 60_000)
+    @Scheduled(fixedDelayString = "${sfs.scrape-session.cleanup-delay-ms:60000}")
     public void cleanupExpired() {
         OffsetDateTime now = OffsetDateTime.now();
         sessions.entrySet().removeIf(entry -> {

@@ -46,6 +46,14 @@ public class ContentDocumentWordCounter {
             return countText(callout.title()) + countInline(callout.content());
         } else if (block instanceof ContentBlock.Table table) {
             return countTable(table);
+        } else if (block instanceof ContentBlock.Gallery gallery) {
+            int total = 0;
+            if (gallery.images() != null) {
+                for (ContentBlock.GalleryImage image : gallery.images()) {
+                    total += countInline(image.caption());
+                }
+            }
+            return total;
         } else if (block instanceof ContentBlock.Layout layout) {
             // Same per-type counting a top-level IMAGE/TABLE gets - a layout child's caption/
             // cell text must contribute identically, not silently disappear from reading time.

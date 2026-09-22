@@ -48,7 +48,7 @@ public class ContentReviewReadinessValidator {
 
     private boolean meaningful(ContentBlock block) {
         if (block instanceof ContentBlock.Image || block instanceof ContentBlock.Video
-                || block instanceof ContentBlock.Embed) return true;
+                || block instanceof ContentBlock.Embed || block instanceof ContentBlock.Gallery) return true;
         if (block instanceof ContentBlock.Paragraph paragraph) return visible(paragraph.content());
         if (block instanceof ContentBlock.Heading heading) return visible(heading.content());
         if (block instanceof ContentBlock.Blockquote quote) return visible(quote.content());

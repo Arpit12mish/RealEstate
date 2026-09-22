@@ -21,7 +21,8 @@ import java.util.List;
         @JsonSubTypes.Type(value = ContentBlock.CheckList.class, name = "CHECK_LIST"),
         @JsonSubTypes.Type(value = ContentBlock.Callout.class, name = "CALLOUT"),
         @JsonSubTypes.Type(value = ContentBlock.Table.class, name = "TABLE"),
-        @JsonSubTypes.Type(value = ContentBlock.Layout.class, name = "LAYOUT")
+        @JsonSubTypes.Type(value = ContentBlock.Layout.class, name = "LAYOUT"),
+        @JsonSubTypes.Type(value = ContentBlock.Gallery.class, name = "IMAGE_GALLERY")
 })
 public sealed interface ContentBlock permits
         ContentBlock.Paragraph,
@@ -36,7 +37,8 @@ public sealed interface ContentBlock permits
         ContentBlock.CheckList,
         ContentBlock.Callout,
         ContentBlock.Table,
-        ContentBlock.Layout {
+        ContentBlock.Layout,
+        ContentBlock.Gallery {
 
     @JsonAnySetter
     default void rejectUnknownProperty(String property, Object ignored) {
@@ -155,6 +157,33 @@ public sealed interface ContentBlock permits
      */
     @JsonTypeName("LAYOUT")
     record Layout(int columns, List<LayoutChildBlock> children) implements ContentBlock {
+    }
+
+    /**
+     * Editorial photo gallery (WordPress "gallery" block equivalent). Reuses the CMS
+     * media-asset-ID model, never a permanent external image URL. {@code columns} is an
+     * optional desktop column-count hint (the renderer chooses a sensible default, e.g. 3,
+     * when absent) — same "optional, never server-defaulted" treatment as {@link Table#title()}.
+     * Deliberately its own block rather than a {@link Layout} of {@link Image} children:
+     * a gallery is a single cohesive tile set with lightbox/carousel semantics, which LAYOUT's
+     * generic multi-column grid does not provide and was never meant to (see
+     * {@link LayoutChildBlock}'s v1-scope note).
+     */
+    @JsonTypeName("IMAGE_GALLERY")
+    record Gallery(Integer columns, List<GalleryImage> images) implements ContentBlock {
+    }
+
+    /**
+     * A single tile in a {@link Gallery}. Mirrors {@link Image}'s accessibility shape
+     * (decorative/altText mutual exclusivity, same caption treatment) minus {@code layout} and
+     * {@code link}, which describe a standalone image's page placement and don't apply to a
+     * grid tile.
+     */
+    record GalleryImage(Long mediaAssetId, boolean decorative, String altText, List<InlineNode> caption) {
+        @JsonAnySetter
+        public void rejectUnknownProperty(String property, Object ignored) {
+            throw new IllegalArgumentException("Unknown gallery-image property: " + property);
+        }
     }
 
     record TableColumn(String label) {
