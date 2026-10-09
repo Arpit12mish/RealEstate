@@ -53,6 +53,7 @@ public class HomeFeedServiceImpl implements HomeFeedService {
       Map.entry("CONNECTED_BRANDS", 50),
       Map.entry("TRENDING_CITIES", 60),
       Map.entry("SMART_CALCULATORS", 70),
+      Map.entry("MARKETPLACE_DEALERS", 75),
       Map.entry("INSTAGRAM_REELS", 80),
       Map.entry("QUICK_SQUARE", 90),
       Map.entry("ARCHITECTS", 100),

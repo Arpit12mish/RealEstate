@@ -44,8 +44,27 @@ public record DashboardPresignUploadRequest(
         Long promoBannerId,
 
         // Required for COMPANY_PROJECT_MEDIA_IMAGE.
-        Long companyProjectId
+        Long companyProjectId,
+
+        // Required for DEALER_MEDIA_IMAGE - the dealer (business) must already exist.
+        Long dealerId
 ) {
+    public DashboardPresignUploadRequest(
+            DashboardMediaUploadType uploadType,
+            String contentType,
+            Long fileSizeBytes,
+            Long projectId,
+            Long builderId,
+            Long cityId,
+            Long brandId,
+            Long companyId,
+            Long promoBannerId,
+            Long companyProjectId
+    ) {
+        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId,
+                promoBannerId, companyProjectId, null);
+    }
+
     public DashboardPresignUploadRequest(
             DashboardMediaUploadType uploadType,
             String contentType,
@@ -56,7 +75,7 @@ public record DashboardPresignUploadRequest(
             Long brandId,
             Long companyId
     ) {
-        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, null, null);
+        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, null, null, null);
     }
 
     public DashboardPresignUploadRequest(
@@ -70,6 +89,6 @@ public record DashboardPresignUploadRequest(
             Long companyId,
             Long promoBannerId
     ) {
-        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, promoBannerId, null);
+        this(uploadType, contentType, fileSizeBytes, projectId, builderId, cityId, brandId, companyId, promoBannerId, null, null);
     }
 }

@@ -4788,6 +4788,151 @@ PUT ownership check applies (DATA_ENTRY can only edit their own projects). No DE
 
 **`demo`/`sourceLabel` on the public response:** `ProjectFloorPlanInsightDetailResponse.demo` is `true` only when neither this Visual Analysis block nor any room's Space Comparison data (§17.4) has been authored yet.
 
+## 18. Marketplace Dealers & Allied Services Workers
+
+Management APIs for the data behind the Marketplace dealer and Allied Services worker screens. Every change is written to the dashboard audit log. Role key: **A** = ADMIN, **R** = REVIEWER, **DE** = DATA_ENTRY.
+
+### 18.1 Dealers
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| `GET` | `/api/dashboard/dealers?q=&page=&size=` | A, R, DE | Search dealers (worker listings excluded) |
+| `GET` | `/api/dashboard/dealers/{dealerId}` | A, R, DE | Full dealer incl. hours, products, services, media, worker links |
+| `POST` | `/api/dashboard/dealers` | A, DE | Create (starts `active: false`) |
+| `PATCH` | `/api/dashboard/dealers/{dealerId}` | A, DE | Partial update of profile fields |
+| `PUT` | `/api/dashboard/dealers/{dealerId}/opening-hours` | A, DE | Replace the weekly schedule |
+| `PUT` | `/api/dashboard/dealers/{dealerId}/products` | A, DE | Replace product groups |
+| `PUT` | `/api/dashboard/dealers/{dealerId}/services` | A, DE | Replace service groups |
+| `POST` | `/api/dashboard/dealers/{dealerId}/media` | A, DE | Register an uploaded image |
+| `PATCH` | `/api/dashboard/dealers/{dealerId}/media/{mediaId}` | A, DE | Change usage, alt text, order, active |
+| `DELETE` | `/api/dashboard/dealers/{dealerId}/media/{mediaId}` | A | Soft-delete |
+| `POST` | `/api/dashboard/dealers/{dealerId}/workers` | A, DE | Connect a worker (optional recommendation note) |
+| `PATCH` | `/api/dashboard/dealers/{dealerId}/workers/{linkId}` | A, DE | Status, order, or recommendation note |
+| `DELETE` | `/api/dashboard/dealers/{dealerId}/workers/{linkId}` | A | Remove the link |
+| `PATCH` | `/api/dashboard/dealers/{dealerId}/workers/{linkId}/recommendation` | A, R | Verify or reject the store's recommendation |
+
+**Create** — `POST /api/dashboard/dealers`
+
+```json
+{ "name": "Gupta Colour House", "categoryId": 8, "cityId": 11 }
+```
+
+**Update** — `PATCH /api/dashboard/dealers/{dealerId}`. `null` leaves a field unchanged; `""` clears an optional text field.
+
+```json
+{
+  "description": "A neighbourhood paint and hardware supplier ...",
+  "locality": "Sector 26",
+  "primaryPhone": "0124 4567890",
+  "whatsappPhone": "+91 99000 00101",
+  "establishedYear": 2008,
+  "timezone": "Asia/Kolkata",
+  "active": true
+}
+```
+
+- `primaryPhone` accepts a mobile number or an Indian STD landline; `whatsappPhone` must be a mobile number. Both are stored normalised to E.164 (`400` otherwise).
+- `timezone` must be an IANA zone id. `establishedYear` cannot be in the future.
+- Ratings and review counts are not editable; they are recomputed from approved reviews.
+
+**Opening hours** — `PUT /api/dashboard/dealers/{dealerId}/opening-hours`
+
+```json
+{
+  "intervals": [
+    { "dayOfWeek": 1, "opensAt": "09:00", "closesAt": "13:00" },
+    { "dayOfWeek": 1, "opensAt": "16:00", "closesAt": "22:00" },
+    { "dayOfWeek": 5, "opensAt": "18:00", "closesAt": "02:00" },
+    { "dayOfWeek": 6, "opensAt": "00:00", "closesAt": "00:00" }
+  ]
+}
+```
+
+- `dayOfWeek` 1 = Monday … 7 = Sunday; omit a day to mark it closed. At most 21 intervals.
+- `closesAt` earlier than `opensAt` is an overnight interval ending the next day; equal times mean open 24 hours.
+- Overlapping intervals (including Sunday-overnight into Monday) are rejected with `400`.
+- An empty list clears the schedule; the dealer then shows `UNKNOWN` status unless it still has the legacy single open/close time.
+
+**Products / services** — `PUT /api/dashboard/dealers/{dealerId}/products` (same body for `/services`)
+
+```json
+{
+  "groups": [
+    { "title": "Paints", "items": ["Interior Paint", "Exterior Paint", "Wall Putty", "Primers"] },
+    { "title": "Hardware", "items": ["Door Hardware", "Locks", "Fasteners", "Hand Tools"] }
+  ]
+}
+```
+
+Order is preserved. At most 20 groups and 40 items per group; duplicate titles or duplicate items within a group (case-insensitive) return `400`. Services are shown as one flat checklist, so a single `"Services"` group is usual.
+
+**Media** — upload first with `POST /api/dashboard/media/presign-upload` using `uploadType: "DEALER_MEDIA_IMAGE"` and `dealerId` (the dealer must exist), PUT the file to `uploadUrl`, then register it:
+
+```json
+{ "usageType": "HERO", "mediaUrl": "https://cdn.example.com/dashboard/dealers/1/media/abc.jpg",
+  "storageKey": "dashboard/dealers/1/media/abc.jpg", "altText": "Store front", "sortOrder": 0 }
+```
+
+`usageType` `HERO` feeds the top gallery; `GALLERY` feeds Store Photos. `mediaUrl` must be `https://`. At most 40 images per dealer.
+
+**Worker links and recommendations**
+
+```json
+POST /api/dashboard/dealers/{dealerId}/workers
+{ "workerId": 1, "recommendationNote": "Recommended for interior painting.", "sortOrder": 0 }
+```
+
+- The worker must be a WORKER provider and cannot be linked to its own listing; a duplicate link returns `409`. The database enforces the same rules.
+- A link appears under the dealer's Connected Workers once the worker is VERIFIED and the link is `ACTIVE`.
+- A note creates a recommendation in `PENDING` state. It only appears on the worker's public "Recommended by" after a reviewer verifies it:
+
+```json
+PATCH /api/dashboard/dealers/{dealerId}/workers/{linkId}/recommendation
+{ "status": "VERIFIED" }
+```
+
+`VERIFIED` and `REJECTED` record the reviewer and time; `PENDING` re-opens it. Changing the note through the link `PATCH` sends a verified recommendation back to `PENDING`; an empty note withdraws it (`NONE`).
+
+### 18.2 Workers
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| `GET` | `/api/dashboard/workers?q=&page=&size=` | A, R, DE | Search workers |
+| `GET` | `/api/dashboard/workers/{workerId}` | A, R, DE | Worker incl. verification, listing contact, areas, services, rates |
+| `PATCH` | `/api/dashboard/workers/{workerId}` | A, DE | `displayName`, `headline`, `bio`, `experienceYears`, `availability` |
+| `PATCH` | `/api/dashboard/workers/{workerId}/verification` | A, R | `{ "status": "VERIFIED" }` — only VERIFIED workers are public |
+| `PUT` | `/api/dashboard/workers/{workerId}/services` | A, DE | `{ "services": ["Interior Painting", "Waterproofing"] }` (max 30) |
+| `PUT` | `/api/dashboard/workers/{workerId}/rates` | A, DE | Replace typed charges |
+
+```json
+PUT /api/dashboard/workers/{workerId}/rates
+{
+  "rates": [
+    { "type": "VISITING_CHARGE", "amount": 150.00, "currency": "INR", "unit": "PER_VISIT" },
+    { "type": "MATERIAL_COST", "amount": 18.50, "unit": "PER_SQFT", "note": "Primer and two coats" }
+  ]
+}
+```
+
+One rate per `type`; `amount` is 0–9,999,999.99 with at most 2 decimals; `currency` defaults to `INR` and must be a valid ISO code.
+
+Workers can maintain the same fields themselves from the app (`WORKER` role): `GET /api/providers/me/offerings`, `PUT /api/providers/me/services`, `PUT /api/providers/me/rates`, `PATCH /api/providers/me/availability` (`{ "status": "AVAILABLE" }`). Verification and recommendations are never self-editable.
+
+### 18.3 Dealer Review Moderation
+
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| `GET` | `/api/dashboard/dealer-reviews?status=PENDING&page=&size=` | A, R | Moderation queue, oldest first |
+| `PATCH` | `/api/dashboard/dealer-reviews/{reviewId}/moderation` | A, R | Approve or reject |
+
+```json
+{ "status": "APPROVED", "note": "Genuine purchase confirmed." }
+```
+
+Approving or rejecting recomputes the dealer's `avg_rating` and `total_ratings` from approved reviews under a row lock.
+
+Each queue item and moderation response includes `dealerId` and `dealerName` (the store the review is for), plus `reviewerName`, `reviewerLocation`, `rating`, `reviewText`, `status`, `moderationNote`, `moderatedByDashboardUserId`, `moderatedAt` and `createdAt`.
+
 ---
 
 ## Quick Reference: Who Can Do What

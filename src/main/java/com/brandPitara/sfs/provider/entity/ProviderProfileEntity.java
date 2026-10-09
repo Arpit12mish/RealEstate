@@ -5,9 +5,12 @@ import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.entity.CategoryEntity;
 import com.brandPitara.sfs.entity.User;
 import com.brandPitara.sfs.provider.enums.ProviderType;
+import com.brandPitara.sfs.provider.enums.WorkerAvailabilityStatus;
 import com.brandPitara.sfs.provider.enums.VerificationStatus;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(
@@ -63,4 +66,13 @@ public class ProviderProfileEntity extends BaseEntity {
     @Column(name = "is_featured", nullable = false)
     @Builder.Default
     private boolean featured = false;
+
+    /** Worker availability; independent of any store's opening hours. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "availability_status", nullable = false, length = 20)
+    @Builder.Default
+    private WorkerAvailabilityStatus availabilityStatus = WorkerAvailabilityStatus.UNKNOWN;
+
+    @Column(name = "availability_updated_at")
+    private OffsetDateTime availabilityUpdatedAt;
 }

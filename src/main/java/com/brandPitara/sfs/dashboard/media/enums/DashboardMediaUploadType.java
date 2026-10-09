@@ -49,7 +49,11 @@ public enum DashboardMediaUploadType {
 
     // Floor Plan Insights redesign - Visual Analysis media (image/video/Lottie JSON),
     // one per floor plan. Project-scoped like FLOOR_PLAN_IMAGE.
-    FLOOR_PLAN_INSIGHT_VISUAL_MEDIA;
+    FLOOR_PLAN_INSIGHT_VISUAL_MEDIA,
+
+    // Marketplace dealer hero/gallery images (business_media; usage HERO/GALLERY is chosen at
+    // the CRUD layer, like COMPANY_MEDIA_IMAGE).
+    DEALER_MEDIA_IMAGE;
 
     public boolean requiresPdf() {
         return this == BROCHURE_PDF;
@@ -126,6 +130,10 @@ public enum DashboardMediaUploadType {
 
     public boolean isCompanyProjectScoped() {
         return this == COMPANY_PROJECT_MEDIA_IMAGE;
+    }
+
+    public boolean isDealerScoped() {
+        return this == DEALER_MEDIA_IMAGE;
     }
 
     public boolean isPromoBannerScoped() {

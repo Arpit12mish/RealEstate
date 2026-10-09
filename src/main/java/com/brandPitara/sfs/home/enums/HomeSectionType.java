@@ -34,6 +34,9 @@ public enum HomeSectionType {
 
   COMPARE_PROPERTIES,
 
+  // Marketplace dealer cards (home "Marketplace" carousel); opens dealer details by id.
+  MARKETPLACE_DEALERS,
+
   //Builder screen
   BUILDER_HERO,
   BUILDER_STATS,

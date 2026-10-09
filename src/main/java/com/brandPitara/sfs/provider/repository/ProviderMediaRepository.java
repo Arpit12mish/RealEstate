@@ -16,4 +16,7 @@ public interface ProviderMediaRepository extends JpaRepository<ProviderMediaEnti
     Optional<ProviderMediaEntity> findFirstByProviderIdAndMediaType(Long providerId, ProviderMediaType type);
 
     void deleteByProviderIdAndMediaType(Long providerId, ProviderMediaType type);
+
+    List<ProviderMediaEntity> findByProviderIdInAndMediaTypeOrderBySortOrderAscIdAsc(
+            java.util.Collection<Long> providerIds, ProviderMediaType type);
 }

@@ -103,7 +103,7 @@ class HomeFeedServiceImplTest {
   }
 
   @Test
-  void getHomeAppliesCanonicalOrderAcrossAllElevenSections() {
+  void getHomeAppliesCanonicalOrderAcrossAllSections() {
     ContentVersionRepository contentVersionRepository = mock(ContentVersionRepository.class);
     HomeSectionConfigRepository homeSectionConfigRepository = mock(HomeSectionConfigRepository.class);
     PromoBannerSlotConfigRepository promoBannerSlotConfigRepository = mock(PromoBannerSlotConfigRepository.class);
@@ -115,6 +115,7 @@ class HomeFeedServiceImplTest {
     List<HomeSectionType> dbOrder = List.of(
         HomeSectionType.DESIGNERS,
         HomeSectionType.INSTAGRAM_REELS,
+        HomeSectionType.MARKETPLACE_DEALERS,
         HomeSectionType.ARCHITECTS,
         HomeSectionType.SMART_CALCULATORS,
         HomeSectionType.TRENDING_CITIES,
@@ -155,6 +156,7 @@ class HomeFeedServiceImplTest {
         HomeSectionType.CONNECTED_BRANDS,
         HomeSectionType.TRENDING_CITIES,
         HomeSectionType.SMART_CALCULATORS,
+        HomeSectionType.MARKETPLACE_DEALERS,
         HomeSectionType.INSTAGRAM_REELS,
         HomeSectionType.ARCHITECTS,
         HomeSectionType.DESIGNERS
