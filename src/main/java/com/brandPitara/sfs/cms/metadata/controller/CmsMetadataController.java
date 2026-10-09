@@ -18,15 +18,20 @@ public class CmsMetadataController {
     private final CmsMetadataService service;
     private final DashboardActionAuditService audit;
 
-    // Taxonomy MANAGEMENT (create/update) stays ADMIN-only. Taxonomy READ (list/by-id) is
-    // granted to any authenticated CMS content-staff member via CMS_CONTENT_PREVIEW — see
-    // CmsContentAccessPolicy#canReadTaxonomy for why that permission was chosen. Every
-    // method below carries its own @PreAuthorize deliberately (no class-level default):
-    // Spring Security fully overrides a class-level @PreAuthorize with a method-level one
-    // rather than combining them, so a shared class-level annotation would silently stop
-    // applying to any new method that forgot its own — explicit per-method is the fail-loud
-    // choice, and matches this module's other CMS controllers (ContentPostController,
-    // CmsMediaController), which never use a class-level @PreAuthorize either.
+    // Author management stays ADMIN-only (a byline identity, not a per-post editorial
+    // choice). Category/tag CREATE is open to any content-staff member — WRITER, EDITOR, and
+    // PUBLISHER all carry CMS_CONTENT_PREVIEW (see CmsContentAccessPolicy#canReadTaxonomy for
+    // why that's the right "is a legitimate content-staff member" check), so a writer isn't
+    // blocked mid-draft waiting on an admin to add a category/tag that doesn't exist yet.
+    // Category/tag UPDATE (renaming/retiring a shared taxonomy term that other posts already
+    // reference) stays ADMIN-only, same as author management. Taxonomy READ (list/by-id) is
+    // granted to any authenticated CMS content-staff member the same way. Every method below
+    // carries its own @PreAuthorize deliberately (no class-level default): Spring Security
+    // fully overrides a class-level @PreAuthorize with a method-level one rather than
+    // combining them, so a shared class-level annotation would silently stop applying to any
+    // new method that forgot its own — explicit per-method is the fail-loud choice, and
+    // matches this module's other CMS controllers (ContentPostController, CmsMediaController),
+    // which never use a class-level @PreAuthorize either.
 
     @PostMapping("/authors") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
     public CmsAuthorResponse createAuthor(@Valid @RequestBody CmsAuthorRequest r){var v=service.createAuthor(r);audit.record(DashboardAuditAction.CMS_AUTHOR_CREATED,ReviewEntityType.CMS_PUBLIC_AUTHOR,v.id(),null);return v;}
@@ -37,7 +42,7 @@ public class CmsMetadataController {
     @GetMapping("/authors") @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public Page<CmsAuthorResponse> authors(@RequestParam(required=false)Boolean active,@RequestParam(required=false)String search,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int size){return service.authors(active,search,page(page,size,"displayName"));}
 
-    @PostMapping("/categories") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/categories") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public CmsCategoryResponse createCategory(@Valid @RequestBody CmsCategoryRequest r){var v=service.createCategory(r);audit.record(DashboardAuditAction.CMS_CATEGORY_CREATED,ReviewEntityType.CMS_CONTENT_CATEGORY,v.id(),null);return v;}
     @GetMapping("/categories/{id}") @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public CmsCategoryResponse category(@PathVariable Long id){return service.getCategory(id);}
@@ -46,7 +51,7 @@ public class CmsMetadataController {
     @GetMapping("/categories") @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public Page<CmsCategoryResponse> categories(@RequestParam(required=false)Boolean active,@RequestParam(required=false)String search,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int size){return service.categories(active,search,page(page,size,"name"));}
 
-    @PostMapping("/tags") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/tags") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public CmsTagResponse createTag(@Valid @RequestBody CmsTagRequest r){var v=service.createTag(r);audit.record(DashboardAuditAction.CMS_TAG_CREATED,ReviewEntityType.CMS_CONTENT_TAG,v.id(),null);return v;}
     @GetMapping("/tags/{id}") @PreAuthorize("@cmsContentAccessPolicy.canReadTaxonomy(authentication)")
     public CmsTagResponse tag(@PathVariable Long id){return service.getTag(id);}
