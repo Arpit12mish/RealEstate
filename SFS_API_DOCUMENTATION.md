@@ -2772,6 +2772,127 @@ Every `mediaAssetId` an `IMAGE`/`VIDEO` block references resolves through the de
 
 ---
 
+### Marketplace Dealers & Allied Services Workers
+
+Detail APIs for the Marketplace dealer screen and the Allied Services worker screen.
+
+- A **dealer** is an active `business` that is not a worker's own linked listing. Inactive dealers and worker listings return `404`.
+- A **worker** is a `provider_profile` with `providerType = WORKER` and `verificationStatus = VERIFIED` whose linked listing is active. Any other provider returns `404`.
+- Lists are paginated (`page` from 0, `size` default 10, max 20) and return the standard `PageResponse` (`content`, `page`, `size`, `totalElements`, `totalPages`, `last`). Ordering is deterministic.
+- All `GET` endpoints below are public (no token).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| `GET` | `/api/public/dealers?cityId=&categoryId=&page=&size=` | — | Dealer cards for a city (optional category, also matches child categories) |
+| `GET` | `/api/public/dealers/{dealerId}` | — | Dealer details |
+| `GET` | `/api/public/dealers/{dealerId}/similar` | — | Same city, same or sibling category; exact category first, then rating, then id |
+| `GET` | `/api/public/dealers/{dealerId}/workers` | — | Connected workers (active links to verified workers only) |
+| `GET` | `/api/public/dealers/{dealerId}/reviews` | — | Approved reviews, newest first |
+| `POST` | `/api/dealers/{dealerId}/reviews` | Signed in, not guest | Submit a review (starts `PENDING`) |
+| `GET` | `/api/dealers/{dealerId}/reviews/me` | Signed in, not guest | Caller's own review in any state; `204` if none |
+| `GET` | `/api/public/workers/{workerId}` | — | Worker details |
+| `GET` | `/api/public/workers/{workerId}/recommendations` | — | Stores whose recommendation of this worker a reviewer has `VERIFIED` |
+
+**Field rules**
+
+- `contact` fields are validated server-side: mobile numbers are normalised to E.164; an Indian STD landline is callable but never offered on WhatsApp. A `null` `callUrl`/`whatsappUrl` means the action is unavailable — hide or disable it.
+- `openingHours` is evaluated in the dealer's own `timezone`. `status` is `OPEN`, `CLOSED`, or `UNKNOWN` (no schedule entered). `statusText`/`todayText` are ready to display; refresh when `nextChangeAt` passes. In `weekly`, a day with `closed: true` has no hours; `overnight: true` closes the next day; `fullDay: true` is 24 hours.
+- Worker `availability` (`AVAILABLE`, `BUSY`, `UNAVAILABLE`, `UNKNOWN`) is reported by the worker or ops and is unrelated to any store's opening hours.
+- Worker `rates` are typed: `VISITING_CHARGE`, `SERVICE_FEE`, `MATERIAL_COST`, `HOURLY_RATE`, `DAILY_RATE`. Each has an exact `amount` (2 decimals), ISO `currency`, and `unit` (`PER_VISIT`, `PER_HOUR`, `PER_DAY`, `PER_SQFT`, `PER_JOB`). Always display `label`; never relabel one charge as another. Cards show `primaryRate` (the visiting charge if present, otherwise the first rate).
+- `rating` is computed only from `APPROVED` reviews; no API accepts it as input.
+- Public worker responses never include `userId`, GST number, or verification internals. Public review responses never include `userId` or moderation notes.
+
+**Example — `GET /api/public/dealers/1`** (abridged)
+
+```json
+{
+  "id": 1,
+  "name": "Gupta Colour House",
+  "categoryId": 8,
+  "categoryName": "Paints & Finishes",
+  "tags": ["Paints & Finishes", "Paints", "Hardware"],
+  "locality": "Sector 26",
+  "cityName": "Gurugram",
+  "locationText": "Sector 26, Gurugram",
+  "description": "A neighbourhood paint and hardware supplier ...",
+  "heroMedia": [{ "id": 11, "url": "https://cdn.example.com/dealers/1/hero-1.jpg", "altText": "Store front" }],
+  "galleryMedia": [{ "id": 15, "url": "https://cdn.example.com/dealers/1/g-1.jpg", "altText": null }],
+  "openingHours": {
+    "timezone": "Asia/Kolkata",
+    "hasSchedule": true,
+    "status": "OPEN",
+    "statusText": "Closes at 10:00 PM",
+    "todayText": "9:00 am to 10:00 pm",
+    "nextChangeAt": "2026-10-07T22:00:00+05:30",
+    "weekly": [
+      { "dayOfWeek": 1, "label": "Mon", "closed": false,
+        "windows": [{ "opensAt": "09:00", "closesAt": "22:00", "overnight": false, "fullDay": false }] },
+      { "dayOfWeek": 7, "label": "Sun", "closed": true, "windows": [] }
+    ]
+  },
+  "establishedYear": 2008,
+  "yearsInBusiness": 18,
+  "productGroups": [
+    { "id": 3, "title": "Paints", "items": [{ "id": 9, "name": "Interior Paint" }, { "id": 10, "name": "Exterior Paint" }] }
+  ],
+  "services": [{ "id": 21, "name": "Color Consultation" }, { "id": 22, "name": "Home Delivery" }],
+  "contact": {
+    "phone": "+919900000101",
+    "callUrl": "tel:+919900000101",
+    "whatsappPhone": "+919900000101",
+    "whatsappUrl": "https://wa.me/919900000101"
+  },
+  "rating": { "average": 4.5, "count": 12 }
+}
+```
+
+**Example — dealer / worker cards** (items in `/similar`, `/workers`)
+
+```json
+{
+  "id": 2, "name": "Kapoor Paint Studio", "coverImageUrl": "https://cdn.example.com/dealers/2/hero.jpg",
+  "photoCount": 2, "productChips": ["Texture Coats", "Sealants", "Varnishes"],
+  "locationText": "Sector 14, Gurugram", "openStatus": "OPEN", "openStatusText": "Closes at 7:45 PM",
+  "yearsInBusiness": 12,
+  "contact": { "phone": "+911244567890", "callUrl": "tel:+911244567890", "whatsappPhone": null, "whatsappUrl": null }
+}
+```
+
+```json
+{
+  "id": 1, "displayName": "Rohit Yadav", "initials": "RY", "avatarUrl": null, "trade": "Painters",
+  "availability": "AVAILABLE",
+  "primaryRate": { "type": "VISITING_CHARGE", "label": "Visiting Charge", "amount": 150.00,
+                   "currency": "INR", "unit": "PER_VISIT", "note": null },
+  "experienceYears": 11,
+  "contact": { "phone": "+919910000001", "callUrl": "tel:+919910000001",
+               "whatsappPhone": "+919910000001", "whatsappUrl": "https://wa.me/919910000001" }
+}
+```
+
+**Example — `GET /api/public/workers/1`** (abridged): the card fields plus `tradeCategoryId`, `headline`, `bio`, `areaSummary` (`"Serves Sector 14 & nearby"`), `availabilityUpdatedAt`, all `rates`, `services: [{id, name}]`, and `serviceAreas: [{cityId, cityName, locality, label}]`.
+
+**Example — `GET /api/public/workers/1/recommendations`** (item)
+
+```json
+{ "dealerId": 1, "dealerName": "Gupta Colour House", "dealerImageUrl": "https://cdn.example.com/dealers/1/hero-1.jpg",
+  "locationText": "Sector 26, Gurugram",
+  "note": "This professional is recommended by the store based on their local referral network." }
+```
+
+**Submitting a review — `POST /api/dealers/{dealerId}/reviews`**
+
+```json
+{ "rating": 5, "reviewerName": "Rahul Mehta", "reviewerLocation": "Gurugram",
+  "reviewText": "Helpful staff and genuine products." }
+```
+
+- `rating` 1–5; `reviewerName` required (max 255); `reviewerLocation` optional (max 120); `reviewText` 10–3000 characters.
+- `201` returns the review with `status: "PENDING"` and `message: "Review submitted successfully and is pending moderation."` It appears publicly only after a dashboard reviewer approves it.
+- Errors: `401` without a signed-in non-guest user, `404` if the dealer is unavailable, `409` if the user already reviewed this dealer.
+
+---
+
 ## 6. Review System — Complete Guide
 
 ### Review Types

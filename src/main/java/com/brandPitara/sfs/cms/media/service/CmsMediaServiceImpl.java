@@ -58,6 +58,8 @@ public class CmsMediaServiceImpl implements CmsMediaService {
                     asset.getCreatedAt().plusHours(properties.getPendingRetentionHours()), upload.requiredHeaders()
             );
         } catch (RuntimeException failure) {
+            log.warn("CMS media presign failed for asset {} (bucket={}, key={}): {}",
+                    asset.getId(), bucket, key, failure.toString(), failure);
             persistence.markFailed(asset.getId(), "PRESIGN_FAILED");
             metrics.uploadRequested(request.mediaType(), "failed");
             auditService.record(DashboardAuditAction.CMS_MEDIA_FAILED,

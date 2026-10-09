@@ -77,14 +77,15 @@ public class CmsContentAccessPolicy {
     }
 
     /**
-     * Read access to the authors/categories/tags lookup APIs (CmsMetadataController's
-     * GET endpoints). CMS_CONTENT_PREVIEW is already granted to every content-staff
-     * profile (WRITER, EDITOR, PUBLISHER — see CmsPermissionProfile) and ADMIN
-     * implicitly holds every DashboardPermission (DashboardAuthenticationUserSnapshot
-     * #getAuthorities), so it's the narrowest existing permission that already means
-     * "this is a legitimate CMS content-staff member" without granting any
-     * taxonomy-management authority — mutation stays on hasRole('ADMIN') directly on
-     * the controller and is untouched by this check.
+     * Read access to the authors/categories/tags lookup APIs, and — for categories/tags
+     * only, not authors — create access too (CmsMetadataController's GET and category/tag
+     * POST endpoints). CMS_CONTENT_PREVIEW is already granted to every content-staff
+     * profile (WRITER, EDITOR, PUBLISHER — see CmsPermissionProfile) and ADMIN implicitly
+     * holds every DashboardPermission (DashboardAuthenticationUserSnapshot#getAuthorities),
+     * so it's the narrowest existing permission that already means "this is a legitimate
+     * CMS content-staff member." Category/tag UPDATE and all of author management
+     * (create/update) stay on hasRole('ADMIN') directly on the controller and are untouched
+     * by this check.
      */
     public boolean canReadTaxonomy(Authentication authentication) {
         return has(authentication, DashboardPermission.CMS_CONTENT_PREVIEW);

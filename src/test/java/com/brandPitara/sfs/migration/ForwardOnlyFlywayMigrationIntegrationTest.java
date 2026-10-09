@@ -105,7 +105,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("173");
+                .isEqualTo("175");
 
         assertThat(number("""
                 SELECT count(*)
@@ -1046,7 +1046,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("173");
+                .isEqualTo("175");
 
         assertIndex("uk_company_project_slug");
     }
@@ -1116,7 +1116,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 ORDER BY installed_rank DESC
                 LIMIT 1
                 """))
-                .isEqualTo("173");
+                .isEqualTo("175");
     }
 
     @Test

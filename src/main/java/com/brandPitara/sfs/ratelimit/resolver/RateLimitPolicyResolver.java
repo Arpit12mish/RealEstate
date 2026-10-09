@@ -74,6 +74,9 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.DELETE, "/api/project-favorites/**", RateLimitPolicy.MOBILE_FAVORITE_WRITE),
 
             new Route(HttpMethod.POST, "/api/projects/*/reviews", RateLimitPolicy.MOBILE_REVIEW_WRITE),
+            // Marketplace dealer reviews reuse the project review policies (same action shape).
+            new Route(HttpMethod.POST, "/api/dealers/*/reviews", RateLimitPolicy.MOBILE_REVIEW_WRITE),
+            new Route(HttpMethod.GET, "/api/dealers/*/reviews/me", RateLimitPolicy.MOBILE_REVIEW_READ),
 
             // Specific presign route must precede the broad /api/providers/me/** write
             // rule below (both are POST and would otherwise both match).
@@ -95,6 +98,9 @@ public class RateLimitPolicyResolver {
             new Route(HttpMethod.POST, "/api/onboarding/provider-profile", RateLimitPolicy.MOBILE_ONBOARDING_WRITE),
             new Route(HttpMethod.POST, "/api/businesses/*/events", RateLimitPolicy.PUBLIC_BUSINESS_EVENT_WRITE),
             new Route(HttpMethod.GET, "/api/public/companies/**", RateLimitPolicy.PUBLIC_COMPANY_READ),
+            // Dealer details are business reads; worker details are provider reads.
+            new Route(HttpMethod.GET, "/api/public/dealers/**", RateLimitPolicy.PUBLIC_BUSINESS_READ),
+            new Route(HttpMethod.GET, "/api/public/workers/**", RateLimitPolicy.PUBLIC_PROVIDER_READ),
             new Route(HttpMethod.GET, "/api/public/company-projects/**", RateLimitPolicy.PUBLIC_COMPANY_READ),
             new Route(HttpMethod.GET, "/api/public/architect-designers/**", RateLimitPolicy.PUBLIC_ARCHITECT_DESIGNER_READ),
             new Route(HttpMethod.GET, "/api/public/instagram-reels/**", RateLimitPolicy.PUBLIC_INSTAGRAM_REELS_READ),

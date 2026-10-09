@@ -32,11 +32,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Mandatory security matrix for CmsMetadataController (SFS CMS BACKEND — DASHBOARD
- * INTEGRATION FIX 2, "TAXONOMY LOOKUP READ AUTHORIZATION"): GET (list + by-id) for
- * authors/categories/tags is allowed to any authenticated CMS content-staff member
- * (WRITER/EDITOR/PUBLISHER/ADMIN, via CMS_CONTENT_PREVIEW — see
- * CmsContentAccessPolicy#canReadTaxonomy); POST/PUT remain ADMIN-only, unchanged.
+ * Mandatory security matrix for CmsMetadataController: GET (list + by-id) for
+ * authors/categories/tags, and POST for categories/tags specifically, are allowed to any
+ * authenticated CMS content-staff member (WRITER/EDITOR/PUBLISHER/ADMIN, via
+ * CMS_CONTENT_PREVIEW — see CmsContentAccessPolicy#canReadTaxonomy) so a writer can add a
+ * category/tag a draft needs without waiting on an admin. Author management (POST/PUT) and
+ * category/tag UPDATE remain ADMIN-only.
  *
  * Calls the real controller bean from a minimal @EnableMethodSecurity context (same
  * pattern as ContentPostControllerTest) so @PreAuthorize is genuinely enforced by
@@ -135,18 +136,42 @@ class CmsMetadataControllerSecurityTest {
     }
 
     @Test
-    void onlyAdminCanCreateOrUpdateCategoriesAndTags() {
-        SecurityContextHolder.getContext().setAuthentication(
-                authentication(11L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.WRITER.permissions()));
-        assertThatThrownBy(() -> controller.createCategory(categoryRequest())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.updateCategory(1L, categoryRequest())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.createTag(tagRequest())).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> controller.updateTag(1L, tagRequest())).isInstanceOf(AccessDeniedException.class);
+    void writerEditorPublisherAndAdminCanCreateCategoriesAndTags() {
+        for (Authentication staff : List.of(
+                authentication(11L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.WRITER.permissions()),
+                authentication(21L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.EDITOR.permissions()),
+                authentication(31L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.PUBLISHER.permissions()),
+                authentication(1L, DashboardRole.ADMIN, Set.of())
+        )) {
+            SecurityContextHolder.getContext().setAuthentication(staff);
+            assertThatCode(() -> controller.createCategory(categoryRequest())).doesNotThrowAnyException();
+            assertThatCode(() -> controller.createTag(tagRequest())).doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void legacyRolesWithoutCmsPermissionsCannotCreateCategoriesOrTags() {
+        for (DashboardRole role : Set.of(DashboardRole.DATA_ENTRY, DashboardRole.REVIEWER)) {
+            SecurityContextHolder.getContext().setAuthentication(authentication(41L, role, Set.of()));
+            assertThatThrownBy(() -> controller.createCategory(categoryRequest())).isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> controller.createTag(tagRequest())).isInstanceOf(AccessDeniedException.class);
+        }
+    }
+
+    @Test
+    void onlyAdminCanUpdateCategoriesAndTags() {
+        for (Authentication nonAdmin : List.of(
+                authentication(11L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.WRITER.permissions()),
+                authentication(21L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.EDITOR.permissions()),
+                authentication(31L, DashboardRole.CONTENT_STAFF, CmsPermissionProfile.PUBLISHER.permissions())
+        )) {
+            SecurityContextHolder.getContext().setAuthentication(nonAdmin);
+            assertThatThrownBy(() -> controller.updateCategory(1L, categoryRequest())).isInstanceOf(AccessDeniedException.class);
+            assertThatThrownBy(() -> controller.updateTag(1L, tagRequest())).isInstanceOf(AccessDeniedException.class);
+        }
 
         SecurityContextHolder.getContext().setAuthentication(authentication(1L, DashboardRole.ADMIN, Set.of()));
-        assertThatCode(() -> controller.createCategory(categoryRequest())).doesNotThrowAnyException();
         assertThatCode(() -> controller.updateCategory(1L, categoryRequest())).doesNotThrowAnyException();
-        assertThatCode(() -> controller.createTag(tagRequest())).doesNotThrowAnyException();
         assertThatCode(() -> controller.updateTag(1L, tagRequest())).doesNotThrowAnyException();
     }
 

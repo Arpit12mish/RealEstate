@@ -123,4 +123,17 @@ public class BusinessEntity extends BaseEntity {
     @JoinColumn(name = "owner_user_id")
     private User owner;
 
+    // Marketplace dealer details (V174)
+
+    @Column(columnDefinition = "text")
+    private String description;
+
+    @Column(length = 120)
+    private String locality;      // e.g. "Sector 26"
+
+    /** IANA zone used to evaluate opening hours and years in business. */
+    @Column(nullable = false, length = 64)
+    @Builder.Default
+    private String timezone = "Asia/Kolkata";
+
 }

@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
@@ -42,6 +43,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
   private final PublicReviewService publicReviewService;
 
   @Override
+  @Transactional(readOnly = true)
   public ArchitectDesignerDetailResponse getDetail(Long companyId) {
     CompanyEntity company = companyRepository.findByIdAndActiveTrueAndPublishedTrueAndDeletedFalse(companyId)
         .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Architect/Designer not found"));
@@ -49,6 +51,7 @@ public class ArchitectDesignerPublicServiceImpl implements ArchitectDesignerPubl
   }
 
   @Override
+  @Transactional(readOnly = true)
   public ArchitectDesignerDetailResponse getDetailBySlug(String slug, ArchitectDesignerType type) {
     // Phase 8A-G (GAP-003B): companyType is enforced in the same query as the
     // slug lookup (see CompanyRepository), not filtered afterward - a real

@@ -144,8 +144,10 @@ public final class WordPressProductionImportCli {
      * be silently outranked by profile config. Not profile-conditional: a CLI boot must behave
      * identically no matter which profile (local-staging, prod, ...) supplies the datasource, so
      * none of this is allowed to depend on ambient configuration the operator might get wrong.
+     * Package-visible so every CLI in this package (e.g. {@code WordPressMappingBackfillCli})
+     * shares exactly this one boot-safety implementation, never a second hand-copied one.
      */
-    private static void applySafetySystemProperties() {
+    static void applySafetySystemProperties() {
         System.setProperty("spring.main.banner-mode", "off");
         System.setProperty("server.port", "0");
 

@@ -9,6 +9,7 @@ import com.brandPitara.sfs.company.repository.CompanyRepository;
 import com.brandPitara.sfs.company.repository.CompanyProjectRepository;
 import com.brandPitara.sfs.dashboard.project.service.DashboardProjectOwnershipService;
 import com.brandPitara.sfs.dashboard.validator.DashboardMediaUploadValidator;
+import com.brandPitara.sfs.marketplace.repository.DealerRepository;
 import com.brandPitara.sfs.media.service.MediaStorageService;
 import com.brandPitara.sfs.media.service.PresignedUploadRequest;
 import com.brandPitara.sfs.media.service.PresignedUploadResult;
@@ -37,6 +38,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
     private final CompanyRepository companyRepository;
     private final CompanyProjectRepository companyProjectRepository;
     private final PromoBannerRepository promoBannerRepository;
+    private final DealerRepository dealerRepository;
 
     @Override
     public DashboardPresignUploadResponse createPresignedUpload(DashboardPresignUploadRequest request) {
@@ -52,11 +54,13 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         assertCompanyExistsForCompanyUpload(request.uploadType(), request.companyId());
         assertPromoBannerExistsForUpload(request.uploadType(), request.promoBannerId());
         assertCompanyProjectExistsForUpload(request.uploadType(), request.companyProjectId());
+        uploadValidator.validateDealerContext(request.uploadType(), request.dealerId());
+        assertDealerExistsForUpload(request.uploadType(), request.dealerId());
 
         String ext = extFromContentType(request.contentType());
         String key = buildKey(
                 request.uploadType(), request.projectId(), request.builderId(), request.cityId(), request.brandId(),
-                request.companyId(), request.promoBannerId(), request.companyProjectId(), ext
+                request.companyId(), request.promoBannerId(), request.companyProjectId(), request.dealerId(), ext
         );
 
         Map<String, String> requiredHeaders = Map.of(
@@ -127,11 +131,17 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
         }
     }
 
+    private void assertDealerExistsForUpload(DashboardMediaUploadType uploadType, Long dealerId) {
+        if (uploadType.isDealerScoped() && dealerRepository.findDealerForManagement(dealerId).isEmpty()) {
+            throw new EntityNotFoundException("Dealer not found: " + dealerId);
+        }
+    }
+
     // --- key building ---
 
     private String buildKey(
             DashboardMediaUploadType uploadType, Long projectId, Long builderId, Long cityId, Long brandId,
-            Long companyId, Long promoBannerId, Long companyProjectId, String ext
+            Long companyId, Long promoBannerId, Long companyProjectId, Long dealerId, String ext
     ) {
         String filename = UUID.randomUUID() + "." + ext;
         return switch (uploadType) {
@@ -163,6 +173,7 @@ public class DashboardMediaPresignServiceImpl implements DashboardMediaPresignSe
             case COMPANY_CERTIFICATE_IMAGE -> "dashboard/companies/" + companyId + "/certificates/" + filename;
             case COMPANY_PROJECT_MEDIA_IMAGE -> "dashboard/company-projects/" + companyProjectId + "/media/" + filename;
             case FLOOR_PLAN_INSIGHT_VISUAL_MEDIA -> "dashboard/projects/" + projectId + "/floor-plans/visual-analysis/" + filename;
+            case DEALER_MEDIA_IMAGE -> "dashboard/dealers/" + dealerId + "/media/" + filename;
         };
     }
 

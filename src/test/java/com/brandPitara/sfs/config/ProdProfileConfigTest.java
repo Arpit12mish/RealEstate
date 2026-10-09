@@ -150,9 +150,35 @@ class ProdProfileConfigTest {
         @Test
         void awsCredentialsAreBlankByDefaultPreferringEc2IamRole() throws IOException {
             var config = loadProdConfig();
+            String source = readClasspathResource("application-prod.yml");
 
-            assertThat(config.getProperty("aws.credentials.access-key").toString()).isEqualTo("${AWS_ACCESS_KEY_ID:}");
-            assertThat(config.getProperty("aws.credentials.secret-key").toString()).isEqualTo("${AWS_SECRET_ACCESS_KEY:}");
+            // Production resolves AWS credentials exclusively through the SDK's own
+            // default credential provider chain (see AwsS3Config#awsCredentialsProvider,
+            // which wraps DefaultCredentialsProvider - the EC2 instance role in
+            // production). No aws.credentials.* property is bound to any bean, so the
+            // safe/expected state is that it's entirely absent from
+            // application-prod.yml - getProperty() legitimately returns null here, and
+            // that must not be treated as a bug in this test (a bare .toString() on
+            // that null used to NPE it). If the key is present anyway, it must never
+            // resolve to anything but a blank env-var placeholder - never a literal
+            // credential.
+            assertAbsentOrBlankPlaceholder(config, "aws.credentials.access-key", "AWS_ACCESS_KEY_ID");
+            assertAbsentOrBlankPlaceholder(config, "aws.credentials.secret-key", "AWS_SECRET_ACCESS_KEY");
+
+            // Defense in depth: no literal AWS access key ID (the "AKIA" prefix is
+            // reserved by AWS for long-lived IAM user access keys) ever appears in this
+            // file under any property name a future edit might introduce.
+            assertThat(source).doesNotContainPattern("(?i)akia[0-9a-z]{16}");
+        }
+
+        private void assertAbsentOrBlankPlaceholder(
+                org.springframework.core.env.PropertySource<?> config, String property, String envVar
+        ) {
+            Object value = config.getProperty(property);
+            assertThat(value == null || value.toString().equals("${" + envVar + ":}"))
+                    .as("%s must be either absent (preferred - nothing binds it) or a blank "
+                            + "'${%s:}' placeholder; never a literal AWS credential", property, envVar)
+                    .isTrue();
         }
 
         @Test

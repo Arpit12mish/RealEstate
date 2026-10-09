@@ -31,7 +31,12 @@ public enum ReviewEntityType {
     CMS_MEDIA_ASSET,
     CMS_PUBLIC_AUTHOR,
     CMS_CONTENT_CATEGORY,
-    CMS_CONTENT_TAG;
+    CMS_CONTENT_TAG,
+    DEALER,
+    DEALER_MEDIA,
+    DEALER_WORKER_LINK,
+    DEALER_REVIEW,
+    WORKER;
 
     public boolean isProjectRelated() {
         return this == PROJECT

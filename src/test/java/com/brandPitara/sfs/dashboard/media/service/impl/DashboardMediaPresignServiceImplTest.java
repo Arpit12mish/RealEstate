@@ -212,8 +212,9 @@ class DashboardMediaPresignServiceImplTest {
                 mock(BrandRepository.class),
                 mock(CompanyRepository.class),
                 mock(com.brandPitara.sfs.company.repository.CompanyProjectRepository.class),
-                promoBannerRepository
-        );
+                promoBannerRepository,
+        mock(com.brandPitara.sfs.marketplace.repository.DealerRepository.class)
+);
 
         DashboardPresignUploadResponse response = service.createPresignedUpload(new DashboardPresignUploadRequest(
                 DashboardMediaUploadType.HOME_PROMO_BANNER_VIDEO,
@@ -253,8 +254,9 @@ class DashboardMediaPresignServiceImplTest {
                 mock(BrandRepository.class),
                 mock(CompanyRepository.class),
                 companyProjectRepository,
-                mock(PromoBannerRepository.class)
-        );
+                mock(PromoBannerRepository.class),
+        mock(com.brandPitara.sfs.marketplace.repository.DealerRepository.class)
+);
 
         DashboardPresignUploadRequest request = new DashboardPresignUploadRequest(
                 DashboardMediaUploadType.COMPANY_PROJECT_MEDIA_IMAGE,
@@ -624,7 +626,8 @@ class DashboardMediaPresignServiceImplTest {
                 brandRepository,
                 mock(CompanyRepository.class),
                 mock(com.brandPitara.sfs.company.repository.CompanyProjectRepository.class),
-                mock(PromoBannerRepository.class)
-        );
+                mock(PromoBannerRepository.class),
+        mock(com.brandPitara.sfs.marketplace.repository.DealerRepository.class)
+);
     }
 }

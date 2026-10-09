@@ -194,4 +194,10 @@ public class DashboardMediaUploadValidator {
             throw new IllegalArgumentException(uploadType + " requires companyProjectId");
         }
     }
+
+    public void validateDealerContext(DashboardMediaUploadType uploadType, Long dealerId) {
+        if (uploadType.isDealerScoped() && dealerId == null) {
+            throw new IllegalArgumentException(uploadType + " requires dealerId");
+        }
+    }
 }
