@@ -10,9 +10,12 @@
 --     mobile your company controls - whoever owns it can sign in as that worker. A worker without
 --     a number (or whose number already has an account) is skipped.
 --
--- Insert-once: does nothing if any demo row (business.website tag) already exists, so restarts
--- never duplicate or reset it and later dashboard edits are kept. The five older V6 sample stores
--- are matched by name in New Delhi and only decorated while they have no photos, hours or offerings.
+-- Stores are created once: nothing about them is re-created or overwritten when demo rows
+-- (business.website tag) already exist, so restarts never duplicate or reset them and dashboard
+-- edits are kept. The five older V6 sample stores are matched by name in New Delhi and only
+-- decorated while they have no photos, hours or offerings.
+-- Later starts only fill in what is still missing: the contact number on demo stores/workers that
+-- have none, and demo workers (with their charges, areas and connections) not created yet.
 -- The runner executes this file in ONE transaction, after creating the demo_cfg and
 -- demo_worker_phone temp tables.
 --
@@ -268,7 +271,8 @@ INSERT INTO w_src VALUES
 UPDATE w_src SET login_phone = wp.phone FROM demo_worker_phone wp WHERE wp.ord = w_src.ord;
 DELETE FROM w_src
 WHERE login_phone IS NULL
-   OR NOT EXISTS (SELECT 1 FROM seed_go)
+   OR NOT EXISTS (SELECT 1 FROM city WHERE slug = 'new-delhi')
+   OR EXISTS (SELECT 1 FROM users u WHERE u.email = w_src.key || '@fixtures.sfs.local')
    OR NOT EXISTS (SELECT 1 FROM category c WHERE c.slug = w_src.cat)
    OR EXISTS (SELECT 1 FROM users u WHERE u.phone_number = w_src.login_phone);
 
@@ -317,6 +321,32 @@ FROM (VALUES
 JOIN fx ON fx.key = r.key;
 
 -- ---------- dealer <-> worker connections ("Connected Worker" + "Recommended by") ----------
+-- Dealers and workers are resolved whether they were created now or on an earlier start; a
+-- connection is only added when the dealer or the worker is new, so links removed later in the
+-- dashboard are not brought back.
+CREATE TEMP TABLE dk ON COMMIT DROP AS
+SELECT k.key, min(b.id) AS id
+FROM (VALUES
+    ('d_main', 'Sharma Paints & Hardware', TRUE),
+    ('d_elite', 'Elite Home Solutions', TRUE),
+    ('d_propaint', 'ProPaint Colour Studio', TRUE),
+    ('d_hardware', 'Delhi Tools & Hardware Mart', TRUE),
+    ('d_brightshine', 'Bright Shine Plumbing Services', FALSE),
+    ('d_superfix', 'SuperFix Plumbing', FALSE),
+    ('d_master_elec', 'Delhi Master Electricians', FALSE),
+    ('d_tilezone', 'TileZone Studio', FALSE),
+    ('d_trimurti', 'Trimurti Wall Care Products Pvt Ltd', FALSE)
+) AS k(key, name, demo)
+JOIN business b ON b.name = k.name AND b.city_id = (SELECT city_id FROM seed_ref)
+               AND (NOT k.demo OR b.website = 'https://fixtures.sfs.local/marketplace')
+GROUP BY k.key;
+
+CREATE TEMP TABLE wk ON COMMIT DROP AS
+SELECT k.key, p.id
+FROM (VALUES ('w_manish'), ('w_rakesh'), ('w_anil'), ('w_suresh')) AS k(key)
+JOIN users u ON u.email = k.key || '@fixtures.sfs.local'
+JOIN provider_profile p ON p.user_id = u.id;
+
 -- A VERIFIED recommendation needs a reviewing dashboard user; without one it stays a plain connection.
 INSERT INTO business_worker_link (business_id, provider_id, sort_order, recommendation_status, recommendation_note,
                                   recommendation_reviewed_by, recommendation_reviewed_at)
@@ -335,6 +365,19 @@ FROM (VALUES
     ('d_master_elec', 'w_anil', 0, 'VERIFIED', 'Certified electrician we send for all wiring jobs.'),
     ('d_tilezone', 'w_rakesh', 0, 'NONE', NULL)
 ) AS l(dkey, wkey, ord, status, note)
-JOIN fx d ON d.key = l.dkey
-JOIN fx w ON w.key = l.wkey
-CROSS JOIN seed_ref s;
+JOIN dk d ON d.key = l.dkey
+JOIN wk w ON w.key = l.wkey
+CROSS JOIN seed_ref s
+WHERE (EXISTS (SELECT 1 FROM fx WHERE fx.key = l.dkey) OR EXISTS (SELECT 1 FROM fx WHERE fx.key = l.wkey))
+ON CONFLICT (business_id, provider_id) DO NOTHING;
+
+-- ---------- contact number top-up (demo stores/workers created before a number was set) ----------
+CREATE TEMP TABLE seed_contacts ON COMMIT DROP AS SELECT 0 AS n;
+WITH upd AS (
+    UPDATE business b SET primary_phone = s.phone, whatsapp_phone = s.phone, updated_at = now()
+    FROM seed_ref s
+    WHERE b.website = 'https://fixtures.sfs.local/marketplace' AND s.phone IS NOT NULL
+      AND b.primary_phone IS NULL AND b.whatsapp_phone IS NULL
+    RETURNING 1
+)
+UPDATE seed_contacts SET n = (SELECT count(*) FROM upd);

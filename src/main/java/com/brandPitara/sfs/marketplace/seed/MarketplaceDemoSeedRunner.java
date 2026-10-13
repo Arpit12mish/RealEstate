@@ -28,9 +28,11 @@ import java.util.Set;
  * once, on startup, after Flyway. Enabled by {@code sfs.marketplace.demo-seed.enabled} (production
  * default true, off everywhere else).
  *
- * <p>The script is insert-once: it skips itself when demo rows already exist, so restarts never
- * duplicate or reset the data and dashboard edits survive. It runs in one transaction; a failure is
- * logged and rolled back and never stops the application.
+ * <p>Stores are created once and never re-created or overwritten, so restarts never duplicate or
+ * reset the data and dashboard edits survive. Later starts only fill in what is still missing: the
+ * contact number on demo stores/workers that have none, and demo workers not created yet (e.g. once
+ * their login numbers are configured). It runs in one transaction; a failure is logged and rolled
+ * back and never stops the application.
  */
 @Slf4j
 @Component
@@ -59,11 +61,12 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             Result result = seed();
-            if (result.inserted() == 0) {
+            if (result.inserted() == 0 && result.contactsUpdated() == 0) {
                 log.info("Marketplace demo seed: nothing to do (already loaded, or New Delhi reference data missing)");
             } else {
-                log.info("Marketplace demo seed: loaded {} demo stores/workers (contact number {})",
-                        result.inserted(), result.contactConfigured() ? "configured" : "not set - Call/WhatsApp hidden");
+                log.info("Marketplace demo seed: loaded {} demo stores/workers, added the contact number to {} existing ones (contact number {})",
+                        result.inserted(), result.contactsUpdated(),
+                        result.contactConfigured() ? "configured" : "not set - Call/WhatsApp hidden");
             }
         } catch (Exception e) {
             log.error("Marketplace demo seed failed and was rolled back; the application continues", e);
@@ -109,12 +112,15 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
                 ScriptUtils.executeSqlScript(connection,
                         new EncodedResource(new ClassPathResource(SCRIPT), StandardCharsets.UTF_8));
                 int inserted;
-                try (Statement st = connection.createStatement(); ResultSet rs = st.executeQuery("SELECT count(*) FROM fx")) {
+                int contactsUpdated;
+                try (Statement st = connection.createStatement();
+                     ResultSet rs = st.executeQuery("SELECT (SELECT count(*) FROM fx), (SELECT n FROM seed_contacts)")) {
                     rs.next();
                     inserted = rs.getInt(1);
+                    contactsUpdated = rs.getInt(2);
                 }
                 connection.commit();
-                return new Result(inserted, phone != null);
+                return new Result(inserted, contactsUpdated, phone != null);
             } catch (SQLException | RuntimeException e) {
                 connection.rollback();
                 throw e;
@@ -155,6 +161,6 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
         return out;
     }
 
-    public record Result(int inserted, boolean contactConfigured) {
+    public record Result(int inserted, int contactsUpdated, boolean contactConfigured) {
     }
 }

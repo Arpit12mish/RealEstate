@@ -145,7 +145,13 @@ After the restart, check the log once:
 sudo journalctl -u sfs --since "10 min ago" --no-pager | grep -E "now at version|Marketplace demo seed"
 ```
 
-Expected: `now at version v175` and `Marketplace demo seed: loaded 13 demo stores/workers (contact number configured)`
+Expected: `now at version v175` and `Marketplace demo seed: loaded 13 demo stores/workers, added the contact number to 0 existing ones (contact number configured)`
 (13 = 4 new stores + 5 V6 sample stores decorated + 4 workers; fewer if some V6 stores are missing
 or were already edited, or a worker number was not set). Later restarts log
 `Marketplace demo seed: nothing to do`.
+
+If the numbers were missing or invalid on that first start, the stores still load without
+Call/WhatsApp and the workers are skipped. Put the real numbers in `/etc/sfs-app.env` and restart
+(`sudo systemctl restart sfs`): the next start adds the missing workers and their connections and
+puts the contact number on the demo stores, logging e.g.
+`loaded 4 demo stores/workers, added the contact number to 4 existing ones`.
