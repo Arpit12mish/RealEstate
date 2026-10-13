@@ -126,7 +126,7 @@ class ProjectMeterPagePerformanceIntegrationTest {
             }
             CityEntity city = CityEntity.builder().name("Gurugram").slug("meter-gurugram").active(true).build();
             entityManager.persist(city);
-            BuilderEntity builder = BuilderEntity.builder().name("Meter Builder").city(city)
+            BuilderEntity builder = BuilderEntity.builder().name("Meter Builder").slug("meter-builder").city(city)
                 .active(true).published(true).deleted(false).build();
             entityManager.persist(builder);
             ProjectEntity project = ProjectEntity.builder()

@@ -245,6 +245,16 @@ sfs:
     dir: ${SFS_LOG_DIR:/var/log/sfs/app}
   search:
     enabled: ${SFS_SEARCH_ENABLED:false}
+  # Marketplace demo stores/workers (marketplace/demo-seed.sql), loaded once on startup and
+  # skipped on every later restart. All demo stores and workers share one contact number;
+  # leave it empty to hide their Call/WhatsApp buttons. Each demo worker also needs its own
+  # login account: four comma-separated company-controlled mobiles (Manish, Rakesh, Anil,
+  # Suresh); a worker without one is skipped.
+  marketplace:
+    demo-seed:
+      enabled: ${SFS_MARKETPLACE_DEMO_SEED_ENABLED:true}
+      contact-phone: ${SFS_DEMO_CONTACT_PHONE:}
+      worker-login-phones: ${SFS_DEMO_WORKER_LOGIN_PHONES:}
   # Production-hardening pass: this contract used to exist only in the gitignored
   # base application.yml, which a clean production build does not have on the
   # classpath - every value below fell back silently to its Java-level default

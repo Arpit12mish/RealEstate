@@ -204,7 +204,7 @@ class HomeFeedPerformanceIntegrationTest {
             List<ProjectEntity> projects = new ArrayList<>();
             for (int i = 0; i < 8; i++) {
                 BuilderEntity builder = BuilderEntity.builder()
-                    .name("Builder " + i).logoUrl("https://img/builder-" + i + ".png")
+                    .name("Builder " + i).slug("builder-" + i).logoUrl("https://img/builder-" + i + ".png")
                     .city(city).active(true).published(true).deleted(false).priority(i).build();
                 entityManager.persist(builder);
                 builders.add(builder);

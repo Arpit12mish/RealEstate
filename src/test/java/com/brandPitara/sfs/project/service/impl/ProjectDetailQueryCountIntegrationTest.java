@@ -152,6 +152,7 @@ class ProjectDetailQueryCountIntegrationTest {
         projectId = transactions.execute(status -> {
             BuilderEntity builder = BuilderEntity.builder()
                     .name("Incident Test Builder")
+                    .slug("incident-test-builder-" + java.util.UUID.randomUUID())
                     .active(true)
                     .published(true)
                     .deleted(false)

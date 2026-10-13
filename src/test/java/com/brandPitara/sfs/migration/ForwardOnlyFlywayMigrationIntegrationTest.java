@@ -152,7 +152,7 @@ class ForwardOnlyFlywayMigrationIntegrationTest {
                 FROM home_section_config
                 WHERE home_category_id = 0
                 """))
-                .isEqualTo(7);
+                .isEqualTo(8);
 
         assertThat(number("""
                 SELECT count(*)

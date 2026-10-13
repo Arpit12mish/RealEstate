@@ -51,6 +51,19 @@ DASHBOARD_SEED_DATA_ENTRY_EMAIL=
 DASHBOARD_SEED_DATA_ENTRY_PASSWORD=
 DASHBOARD_SEED_DATA_ENTRY_NAME=SFS Data Entry
 
+# ── Marketplace demo content (MarketplaceDemoSeedRunner, marketplace/demo-seed.sql) ──
+# Loads 4 demo stores, decorates the 5 V6 sample stores in New Delhi and adds 4 verified
+# Allied Services workers ONCE, on the first start after deploy; every later start logs
+# "nothing to do". Set to false to skip it entirely.
+SFS_MARKETPLACE_DEMO_SEED_ENABLED=true
+# One number shown on Call/WhatsApp for every demo store and worker (e.g. 8790012345).
+# Blank hides those buttons. It is read only on the run that loads the data.
+SFS_DEMO_CONTACT_PHONE=
+# Four comma-separated Indian mobiles your company controls - the demo workers' login accounts
+# (order: Manish Singh, Rakesh Kumar, Anil Verma, Suresh Pal). Whoever owns a number can sign in
+# as that worker. A worker without a valid, unused number is skipped.
+SFS_DEMO_WORKER_LOGIN_PHONES=
+
 # ── Twilio Verify (OTP) ──
 # Required - TwilioOtpServiceImpl's @PostConstruct calls Twilio.init() eagerly
 # for the prod profile, so a blank accountSid/authToken fails startup
