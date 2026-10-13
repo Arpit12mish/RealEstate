@@ -1,7 +1,6 @@
 package com.brandPitara.sfs.migration;
 
 import org.flywaydb.core.Flyway;
-import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,8 +25,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * a clean database can actually be bootstrapped from this worktree's
  * migration files alone.
  *
- * Running this surfaced a second, INDEPENDENT reproducibility problem (new
- * this phase - see GAP-035 in backend-gaps.md): a from-scratch bootstrap
+ * Running this originally surfaced a second, INDEPENDENT reproducibility problem
+ * (GAP-035, since resolved by the B134 baseline - see the first test): a from-scratch bootstrap
  * does not get anywhere near V42 (the earliest company-related failure). It
  * fails immediately at V6__seed_dummy_business.sql, which inserts `business`
  * rows with a hardcoded `city_id = 1` (the file's own comment: "Make sure
@@ -93,22 +92,13 @@ class CompanyTableMigrationProvenanceTest {
     }
 
     /**
-     * GAP-035 (new this phase): proves the TRUE first failure point of an
-     * unmodified, from-scratch bootstrap of this worktree's migration
-     * history. It is V6, not V42, and it has nothing to do with Company.
-     *
-     * Note on schema_history semantics: on Postgres, Flyway runs each
-     * migration in its own transaction and rolls the whole thing back on
-     * failure - including the schema_history insert for that migration - so
-     * a failed migration leaves no row of its own behind. The last row in
-     * schema_history after a failed run is therefore the LAST SUCCESSFUL
-     * migration (V5 here), not a "failed" row for V6 itself; V6's identity
-     * as the failing migration is established via the thrown exception's
-     * own message instead (Flyway includes the failing script name/version
-     * in it) and via the SQL error content (fk_business_city / city).
+     * GAP-035 is resolved: the forward-only repair (docs/releases/release-5a-m-forward-only-flyway-repair.md)
+     * added the B134 baseline migration, so Flyway bootstraps an empty database from the baseline and
+     * never runs the historical V6 seed that used to fail on its hardcoded city_id. A from-scratch
+     * migration must now succeed, record the baseline, and leave the company table in place.
      */
     @Test
-    void freshBootstrapFromMigrationHistoryAloneActuallyFailsAtV6_anUnrelatedCityBusinessSeedOrderingGap() throws Exception {
+    void freshBootstrapFromMigrationHistoryNowSucceedsThroughTheB134Baseline() throws Exception {
         try (Connection connection = openConnection()) {
             resetToEmptySchema(connection);
         }
@@ -118,36 +108,17 @@ class CompanyTableMigrationProvenanceTest {
                 .locations("classpath:db/migration")
                 .load();
 
-        assertThatThrownBy(flyway::migrate)
-                .isInstanceOf(FlywayException.class)
-                .satisfies(ex -> {
-                    assertThat(String.valueOf(ex.getMessage()))
-                            .as("Flyway's own exception should name the failing migration script")
-                            .contains("V6__seed_dummy_business.sql");
-
-                    Throwable root = ex;
-                    while (root.getCause() != null) root = root.getCause();
-                    assertThat(String.valueOf(root.getMessage()).toLowerCase())
-                            .as("root cause should be the business->city FK violation, not a company-table error")
-                            .contains("fk_business_city")
-                            .contains("city");
-                });
+        assertThat(flyway.migrate().success).isTrue();
 
         try (Connection connection = openConnection()) {
             List<HistoryRow> history = readSchemaHistory(connection);
             assertThat(history).isNotEmpty();
-
-            HistoryRow lastSuccessful = history.get(history.size() - 1);
-            assertThat(lastSuccessful.version())
-                    .as("V5 (seed_missing_categories) should be the last migration recorded as successful - " +
-                        "V6 fails and, on Postgres, leaves no row of its own in schema_history")
-                    .isEqualTo("5");
-            assertThat(lastSuccessful.success()).isTrue();
-
-            assertThat(history).allSatisfy(row ->
-                    assertThat(row.success())
-                            .as("every recorded migration up to V5 should be successful")
-                            .isTrue());
+            assertThat(history.get(0).version())
+                    .as("the first applied migration should be the B134 baseline, not V1-V6")
+                    .isEqualTo("134");
+            assertThat(history).noneMatch(row -> row.version().equals("6"));
+            assertThat(history).allSatisfy(row -> assertThat(row.success()).isTrue());
+            execute(connection, "SELECT 1 FROM company LIMIT 1");
         }
     }
 

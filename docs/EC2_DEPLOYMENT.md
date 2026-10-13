@@ -118,3 +118,34 @@ Expected:
 - app secret length greater than `10`
 
 Keep `META_INSTAGRAM_SYNC_ENABLED=false` until scheduled sync is intentionally enabled. Use the dashboard manual sync action for initial testing.
+
+## Marketplace Demo Content (first deploy with V174/V175)
+
+The backend loads the Marketplace demo stores and Allied Services workers by itself on the
+first start after this deploy (`MarketplaceDemoSeedRunner`); no dashboard step is needed.
+Before copying the jar, add the contact and worker-login numbers to `/etc/sfs-app.env`
+(see `docs/PRODUCTION_ENV_TEMPLATE.md`):
+
+```bash
+sudo nano /etc/sfs-app.env
+```
+
+```bash
+SFS_MARKETPLACE_DEMO_SEED_ENABLED=true
+SFS_DEMO_CONTACT_PHONE=8790012345
+SFS_DEMO_WORKER_LOGIN_PHONES=9XXXXXXXX1,9XXXXXXXX2,9XXXXXXXX3,9XXXXXXXX4
+```
+
+Use real numbers your company controls: the contact number receives customers' calls and
+WhatsApp messages, and each worker-login number can sign in as that demo worker.
+
+After the restart, check the log once:
+
+```bash
+sudo journalctl -u sfs --since "10 min ago" --no-pager | grep -E "now at version|Marketplace demo seed"
+```
+
+Expected: `now at version v175` and `Marketplace demo seed: loaded 13 demo stores/workers (contact number configured)`
+(13 = 4 new stores + 5 V6 sample stores decorated + 4 workers; fewer if some V6 stores are missing
+or were already edited, or a worker number was not set). Later restarts log
+`Marketplace demo seed: nothing to do`.

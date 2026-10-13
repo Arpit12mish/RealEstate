@@ -87,6 +87,18 @@ class ProdProfileConfigTest {
         }
 
         @Test
+        void marketplaceDemoSeedIsOnByDefaultWithNoBakedInPhoneNumbers() throws IOException {
+            var config = loadProdConfig();
+
+            assertThat(config.getProperty("sfs.marketplace.demo-seed.enabled"))
+                    .isEqualTo("${SFS_MARKETPLACE_DEMO_SEED_ENABLED:true}");
+            assertThat(config.getProperty("sfs.marketplace.demo-seed.contact-phone"))
+                    .isEqualTo("${SFS_DEMO_CONTACT_PHONE:}");
+            assertThat(config.getProperty("sfs.marketplace.demo-seed.worker-login-phones"))
+                    .isEqualTo("${SFS_DEMO_WORKER_LOGIN_PHONES:}");
+        }
+
+        @Test
         void elasticsearchHasNoRealSecretDefaultAndSearchStaysDisabledByDefault() throws IOException {
             var config = loadProdConfig();
 
