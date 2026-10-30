@@ -1,5 +1,6 @@
 package com.brandPitara.sfs.marketplace.seed;
 
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -38,5 +39,15 @@ class MarketplaceDemoSeedRunnerTest {
                 .isEqualTo(Arrays.asList(null, null, null, null));
         assertThat(MarketplaceDemoSeedRunner.workerLoginPhones("9876500001,9876500002,9876500003,9876500004,9876500005"))
                 .containsExactly("+919876500001", "+919876500002", "+919876500003", "+919876500004");
+    }
+
+    @Test
+    void imageBaseUrlIsNormalisedAndRejectedWhenNotHttp() {
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase("https://appapi.squarefootstory.com/")).isEqualTo("https://appapi.squarefootstory.com");
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase(" http://10.0.2.2:8084 ")).isEqualTo("http://10.0.2.2:8084");
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase("")).isNull();
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase(null)).isNull();
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase("/api/public/demo-images")).isNull();
+        assertThat(MarketplaceDemoSeedRunner.normalizeImageBase("javascript:alert(1)")).isNull();
     }
 }

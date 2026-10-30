@@ -18,6 +18,11 @@ public record DealerCardResponse(
         OpenStatus openStatus,
         String openStatusText,
         Integer yearsInBusiness,
-        PublicContactResponse contact
+        PublicContactResponse contact,
+        /** Average of approved reviews, one decimal; null until the store has any. */
+        Double averageRating,
+        int reviewCount,
+        /** Short on-card label ("Newly onboarded", "Top rated"); null when none applies. */
+        String badge
 ) {
 }

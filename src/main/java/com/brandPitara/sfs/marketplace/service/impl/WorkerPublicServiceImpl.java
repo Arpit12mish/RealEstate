@@ -4,6 +4,7 @@ import com.brandPitara.sfs.dto.PageResponse;
 import com.brandPitara.sfs.entity.BusinessEntity;
 import com.brandPitara.sfs.exception.NotFoundException;
 import com.brandPitara.sfs.marketplace.dto.NamedItemResponse;
+import com.brandPitara.sfs.marketplace.dto.WorkerCardResponse;
 import com.brandPitara.sfs.marketplace.dto.WorkerDetailResponse;
 import com.brandPitara.sfs.marketplace.dto.WorkerRecommendationResponse;
 import com.brandPitara.sfs.marketplace.entity.BusinessMediaEntity;
@@ -43,6 +44,14 @@ public class WorkerPublicServiceImpl implements WorkerPublicService {
     private final BusinessWorkerLinkRepository workerLinkRepository;
     private final BusinessMediaRepository businessMediaRepository;
     private final WorkerCardAssembler workerCardAssembler;
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<WorkerCardResponse> listWorkers(Long cityId, Long categoryId, int page, int size) {
+        Page<ProviderProfileEntity> result = providerProfileRepository.findPublicWorkers(
+                cityId, categoryId, MarketplacePaging.page(page, size));
+        return MarketplacePaging.response(result, workerCardAssembler.toCards(result.getContent()));
+    }
 
     @Override
     @Transactional(readOnly = true)

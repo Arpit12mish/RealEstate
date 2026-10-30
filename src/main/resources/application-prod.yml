@@ -255,6 +255,9 @@ sfs:
       enabled: ${SFS_MARKETPLACE_DEMO_SEED_ENABLED:true}
       contact-phone: ${SFS_DEMO_CONTACT_PHONE:}
       worker-login-phones: ${SFS_DEMO_WORKER_LOGIN_PHONES:}
+      # Public origin of this API: demo workers/stores without a photo get the bundled Figma photos
+      # at <base>/api/public/demo-images/... (served by DemoImageResourceConfig). Blank skips it.
+      image-base-url: ${SFS_DEMO_IMAGE_BASE_URL:https://appapi.squarefootstory.com}
   # Production-hardening pass: this contract used to exist only in the gitignored
   # base application.yml, which a clean production build does not have on the
   # classpath - every value below fell back silently to its Java-level default

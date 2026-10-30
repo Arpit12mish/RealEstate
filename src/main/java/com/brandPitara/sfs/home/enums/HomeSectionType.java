@@ -37,6 +37,11 @@ public enum HomeSectionType {
   // Marketplace dealer cards (home "Marketplace" carousel); opens dealer details by id.
   MARKETPLACE_DEALERS,
 
+  // Title/subtitle + tab list for the home "Festive picks" block under the hero. Card data for
+  // each tab comes from the other sections / public list APIs; this only names the block and
+  // lets ops switch it off (disable the home_section_config row) after the festive period.
+  FESTIVE_PICKS,
+
   //Builder screen
   BUILDER_HERO,
   BUILDER_STATS,

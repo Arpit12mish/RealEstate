@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.marketplace.seed;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -47,25 +48,34 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
     private final DataSource dataSource;
     private final String contactPhone;
     private final String workerLoginPhones;
+    private final String imageBaseUrl;
 
+    /** Without an image base URL the photo top-up is skipped (no demo photo is ever stored as a relative path). */
+    public MarketplaceDemoSeedRunner(DataSource dataSource, String contactPhone, String workerLoginPhones) {
+        this(dataSource, contactPhone, workerLoginPhones, "");
+    }
+
+    @Autowired
     public MarketplaceDemoSeedRunner(
             DataSource dataSource,
             @Value("${sfs.marketplace.demo-seed.contact-phone:}") String contactPhone,
-            @Value("${sfs.marketplace.demo-seed.worker-login-phones:}") String workerLoginPhones) {
+            @Value("${sfs.marketplace.demo-seed.worker-login-phones:}") String workerLoginPhones,
+            @Value("${sfs.marketplace.demo-seed.image-base-url:}") String imageBaseUrl) {
         this.dataSource = dataSource;
         this.contactPhone = contactPhone;
         this.workerLoginPhones = workerLoginPhones;
+        this.imageBaseUrl = imageBaseUrl;
     }
 
     @Override
     public void run(ApplicationArguments args) {
         try {
             Result result = seed();
-            if (result.inserted() == 0 && result.contactsUpdated() == 0) {
+            if (result.inserted() == 0 && result.contactsUpdated() == 0 && result.photosAdded() == 0) {
                 log.info("Marketplace demo seed: nothing to do (already loaded, or New Delhi reference data missing)");
             } else {
-                log.info("Marketplace demo seed: loaded {} demo stores/workers, added the contact number to {} existing ones (contact number {})",
-                        result.inserted(), result.contactsUpdated(),
+                log.info("Marketplace demo seed: loaded {} demo stores/workers, added the contact number to {} existing ones, added {} demo photos (contact number {})",
+                        result.inserted(), result.contactsUpdated(), result.photosAdded(),
                         result.contactConfigured() ? "configured" : "not set - Call/WhatsApp hidden");
             }
         } catch (Exception e) {
@@ -91,10 +101,11 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
             connection.setAutoCommit(false);
             try {
                 try (Statement st = connection.createStatement()) {
-                    st.execute("CREATE TEMP TABLE demo_cfg (contact_phone text) ON COMMIT DROP");
+                    st.execute("CREATE TEMP TABLE demo_cfg (contact_phone text, image_base text) ON COMMIT DROP");
                 }
-                try (PreparedStatement ps = connection.prepareStatement("INSERT INTO demo_cfg (contact_phone) VALUES (?)")) {
+                try (PreparedStatement ps = connection.prepareStatement("INSERT INTO demo_cfg (contact_phone, image_base) VALUES (?, ?)")) {
                     ps.setString(1, phone);
+                    ps.setString(2, normalizeImageBase(imageBaseUrl));
                     ps.executeUpdate();
                 }
                 try (Statement st = connection.createStatement()) {
@@ -113,14 +124,16 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
                         new EncodedResource(new ClassPathResource(SCRIPT), StandardCharsets.UTF_8));
                 int inserted;
                 int contactsUpdated;
+                int photosAdded;
                 try (Statement st = connection.createStatement();
-                     ResultSet rs = st.executeQuery("SELECT (SELECT count(*) FROM fx), (SELECT n FROM seed_contacts)")) {
+                     ResultSet rs = st.executeQuery("SELECT (SELECT count(*) FROM fx), (SELECT n FROM seed_contacts), (SELECT n FROM seed_photos)")) {
                     rs.next();
                     inserted = rs.getInt(1);
                     contactsUpdated = rs.getInt(2);
+                    photosAdded = rs.getInt(3);
                 }
                 connection.commit();
-                return new Result(inserted, contactsUpdated, phone != null);
+                return new Result(inserted, contactsUpdated, photosAdded, phone != null);
             } catch (SQLException | RuntimeException e) {
                 connection.rollback();
                 throw e;
@@ -161,6 +174,13 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
         return out;
     }
 
-    public record Result(int inserted, int contactsUpdated, boolean contactConfigured) {
+    /** "https://api.example.com/" -> "https://api.example.com"; null when blank or not an http(s) URL. */
+    static String normalizeImageBase(String raw) {
+        if (!StringUtils.hasText(raw)) return null;
+        String trimmed = raw.trim().replaceAll("/+$", "");
+        return trimmed.matches("(?i)^https?://[^\\s]+$") ? trimmed : null;
+    }
+
+    public record Result(int inserted, int contactsUpdated, int photosAdded, boolean contactConfigured) {
     }
 }

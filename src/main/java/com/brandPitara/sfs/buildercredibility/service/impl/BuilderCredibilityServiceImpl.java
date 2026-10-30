@@ -43,6 +43,7 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
     private final ProjectComplianceItemRepository projectComplianceItemRepository;
     private final ProjectConstructionStageRepository projectConstructionStageRepository;
     private final BuilderHighlightItemRepository builderHighlightItemRepository;
+    private final com.brandPitara.sfs.project.repository.ProjectMediaRepository projectMediaRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -239,6 +240,8 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                 .collect(Collectors.groupingBy(s -> s.getProject().getId(), LinkedHashMap::new, Collectors.toList()));
         }
 
+        Map<Long, String> coverByBuilderId = topProjectCoverByBuilder(projectsByBuilderId);
+
         Map<Long, ProjectMeterSnapshotEntity> finalSnapshotMap = snapshotMap;
         Map<Long, List<ProjectComplianceItemEntity>> finalComplianceMap = complianceMap;
         Map<Long, List<ProjectConstructionStageEntity>> finalStageMap = stageMap;
@@ -270,6 +273,7 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                     .builderId(builder.getId())
                     .builderName(builder.getName())
                     .builderLogoUrl(builder.getLogoUrl())
+                    .coverImageUrl(coverByBuilderId.get(builder.getId()))
                     .cityName(builder.getCity() != null ? builder.getCity().getName() : null)
                     .credibilityScore(computed.totalScore)
                     .credibilityLabel(computed.label)
@@ -288,6 +292,38 @@ public class BuilderCredibilityServiceImpl implements BuilderCredibilityService 
                     .build();
             })
             .toList();
+    }
+
+    /**
+     * Cover for a home builder card: the first photo of the builder's highest-priority project that
+     * has one. One batched media query for the whole page; builders without any project photo get
+     * null and the app falls back to the logo.
+     */
+    private Map<Long, String> topProjectCoverByBuilder(Map<Long, List<ProjectEntity>> projectsByBuilderId) {
+        List<Long> projectIds = projectsByBuilderId.values().stream()
+            .flatMap(List::stream)
+            .map(ProjectEntity::getId)
+            .toList();
+        if (projectIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, List<com.brandPitara.sfs.project.entity.ProjectMediaEntity>> mediaByProject =
+            projectMediaRepository.findActiveByProjectIds(projectIds).stream()
+                .collect(Collectors.groupingBy(m -> m.getProject().getId()));
+
+        Map<Long, String> covers = new HashMap<>();
+        projectsByBuilderId.forEach((builderId, projects) -> {
+            for (ProjectEntity project : projects) {
+                String cover = com.brandPitara.sfs.project.mapper.ProjectMediaPicker
+                    .pick(mediaByProject.getOrDefault(project.getId(), List.of()), false)
+                    .coverMediaUrl();
+                if (cover != null && !cover.isBlank()) {
+                    covers.put(builderId, cover);
+                    break;
+                }
+            }
+        });
+        return covers;
     }
 
     private BuilderEntity getPublicBuilder(Long builderId) {

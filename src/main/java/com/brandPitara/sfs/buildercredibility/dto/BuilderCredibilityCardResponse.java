@@ -11,6 +11,8 @@ public class BuilderCredibilityCardResponse {
     private Long builderId;
     private String builderName;
     private String builderLogoUrl;
+    /** Photo of the builder's top project, for the home card; null when no project has one. */
+    private String coverImageUrl;
     private String cityName;
 
     private Integer credibilityScore;

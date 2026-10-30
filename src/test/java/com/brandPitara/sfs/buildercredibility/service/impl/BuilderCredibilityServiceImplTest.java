@@ -70,7 +70,8 @@ class BuilderCredibilityServiceImplTest {
             snapshotRepository,
             complianceRepository,
             stageRepository,
-            highlightRepository
+            highlightRepository,
+            mock(com.brandPitara.sfs.project.repository.ProjectMediaRepository.class)
         );
 
         // Every test's builder has no tracked projects unless a test overrides

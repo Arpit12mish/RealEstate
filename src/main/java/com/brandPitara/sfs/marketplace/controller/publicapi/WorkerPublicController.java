@@ -1,6 +1,7 @@
 package com.brandPitara.sfs.marketplace.controller.publicapi;
 
 import com.brandPitara.sfs.dto.PageResponse;
+import com.brandPitara.sfs.marketplace.dto.WorkerCardResponse;
 import com.brandPitara.sfs.marketplace.dto.WorkerDetailResponse;
 import com.brandPitara.sfs.marketplace.dto.WorkerRecommendationResponse;
 import com.brandPitara.sfs.marketplace.service.WorkerPublicService;
@@ -18,6 +19,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkerPublicController {
 
     private final WorkerPublicService workerPublicService;
+
+    @GetMapping
+    public PageResponse<WorkerCardResponse> list(
+            /** Omit for all cities (the global home feed has no city). */
+            @RequestParam(required = false) Long cityId,
+            @RequestParam(required = false) Long categoryId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return workerPublicService.listWorkers(cityId, categoryId, page, size);
+    }
 
     @GetMapping("/{workerId}")
     public WorkerDetailResponse get(@PathVariable Long workerId) {

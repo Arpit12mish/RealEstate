@@ -45,6 +45,7 @@ public class HomeFeedServiceImpl implements HomeFeedService {
    * docs/home-api-section-order-audit.md for the full rationale.
    */
   private static final Map<String, Integer> HOME_SECTION_ORDER = Map.ofEntries(
+      Map.entry("FESTIVE_PICKS", 5),
       Map.entry("TRENDING_PROPERTIES", 10),
       Map.entry("PROJECT_ANALYTICS", 10),
       Map.entry("NEARBY_LISTINGS", 20),

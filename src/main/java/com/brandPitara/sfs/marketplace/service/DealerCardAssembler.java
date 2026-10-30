@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -32,6 +33,9 @@ import java.util.stream.Collectors;
 public class DealerCardAssembler {
 
     static final int MAX_CHIPS = 4;
+    static final int NEW_LISTING_DAYS = 30;
+    static final double TOP_RATED_MIN_RATING = 4.5;
+    static final int TOP_RATED_MIN_REVIEWS = 10;
 
     private final BusinessMediaRepository mediaRepository;
     private final BusinessOfferingGroupRepository offeringGroupRepository;
@@ -92,7 +96,31 @@ public class DealerCardAssembler {
                 .openStatusText(opening.statusText())
                 .yearsInBusiness(OpeningHoursCalculator.yearsInBusiness(b.getEstablishedYear(), zone, now))
                 .contact(MarketplaceMappers.contact(b.getPrimaryPhone(), b.getWhatsappPhone()))
+                .averageRating(averageRating(b))
+                .reviewCount(reviewCount(b))
+                .badge(badge(b, now))
                 .build();
+    }
+
+    static int reviewCount(BusinessEntity b) {
+        return b.getTotalRatings() == null ? 0 : Math.max(b.getTotalRatings(), 0);
+    }
+
+    static Double averageRating(BusinessEntity b) {
+        if (reviewCount(b) == 0 || b.getAvgRating() == null) return null;
+        return Math.round(b.getAvgRating() * 10.0) / 10.0;
+    }
+
+    /** "Newly onboarded" for listings created in the last 30 days; otherwise "Top rated" for well-reviewed stores. */
+    static String badge(BusinessEntity b, Instant now) {
+        if (b.getCreatedAt() != null && b.getCreatedAt().toInstant().isAfter(now.minus(NEW_LISTING_DAYS, ChronoUnit.DAYS))) {
+            return "Newly onboarded";
+        }
+        Double rating = averageRating(b);
+        if (rating != null && rating >= TOP_RATED_MIN_RATING && reviewCount(b) >= TOP_RATED_MIN_REVIEWS) {
+            return "Top rated";
+        }
+        return null;
     }
 
     /** Explicit weekly rows win; legacy single open/close times apply to every day otherwise. */

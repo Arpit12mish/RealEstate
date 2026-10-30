@@ -36,7 +36,7 @@ class BuilderCredibilityDtoFieldSafetyTest {
     @Test
     void builderCredibilityCardResponseExposesOnlyApprovedPublicFields() {
         assertThat(fieldNames(BuilderCredibilityCardResponse.class)).containsExactlyInAnyOrder(
-            "builderId", "builderName", "builderLogoUrl", "cityName",
+            "builderId", "builderName", "builderLogoUrl", "coverImageUrl", "cityName",
             "credibilityScore", "credibilityLabel",
             "projectsTracked", "onTrackRecord", "promisesMet", "complianceStrength",
             "projectsTrackedCount", "onTrackRecordPercent", "promisesMetPercent", "complianceStrengthPercent",

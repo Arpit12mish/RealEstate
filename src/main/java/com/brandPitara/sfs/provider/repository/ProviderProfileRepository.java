@@ -26,6 +26,35 @@ public interface ProviderProfileRepository extends JpaRepository<ProviderProfile
     """)
     Optional<ProviderProfileEntity> findPublicWorker(@Param("id") Long id);
 
+    /** Public worker list: VERIFIED workers with an active (or no) listing, optionally by city served / trade. */
+    @Query(value = """
+        select p from ProviderProfileEntity p
+        join fetch p.primaryCategory c
+        left join fetch p.business b
+        where p.providerType = com.brandPitara.sfs.provider.enums.ProviderType.WORKER
+          and p.verificationStatus = com.brandPitara.sfs.provider.enums.VerificationStatus.VERIFIED
+          and (b is null or b.active = true)
+          and (:categoryId is null or c.id = :categoryId or c.parent.id = :categoryId)
+          and (:cityId is null or exists (
+                select 1 from ProviderServiceAreaEntity a where a.provider = p and a.city.id = :cityId))
+        order by p.featured desc,
+                 case when p.availabilityStatus = com.brandPitara.sfs.provider.enums.WorkerAvailabilityStatus.AVAILABLE then 0 else 1 end,
+                 p.id asc
+    """, countQuery = """
+        select count(p) from ProviderProfileEntity p
+        left join p.business b
+        where p.providerType = com.brandPitara.sfs.provider.enums.ProviderType.WORKER
+          and p.verificationStatus = com.brandPitara.sfs.provider.enums.VerificationStatus.VERIFIED
+          and (b is null or b.active = true)
+          and (:categoryId is null or p.primaryCategory.id = :categoryId or p.primaryCategory.parent.id = :categoryId)
+          and (:cityId is null or exists (
+                select 1 from ProviderServiceAreaEntity a where a.provider = p and a.city.id = :cityId))
+    """)
+    Page<ProviderProfileEntity> findPublicWorkers(
+            @Param("cityId") Long cityId,
+            @Param("categoryId") Long categoryId,
+            Pageable pageable);
+
     @Query("""
         select p from ProviderProfileEntity p
         join fetch p.primaryCategory

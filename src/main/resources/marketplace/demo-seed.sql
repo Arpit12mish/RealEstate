@@ -381,3 +381,43 @@ WITH upd AS (
     RETURNING 1
 )
 UPDATE seed_contacts SET n = (SELECT count(*) FROM upd);
+
+-- ---------- demo photo top-up (workers and stores that have none) ----------
+-- Home Services cards and worker pages need a photo, and a demo store may have lost all of its own.
+-- Runs on every start, only for demo rows (stores tagged with the fixtures website, and the demo
+-- workers' own listings), only where there is no photo yet, so photos added in the dashboard are
+-- never replaced or duplicated. The photos are the Figma "Spotlight" images bundled with the
+-- backend (src/main/resources/demo-images) and served at /api/public/demo-images/. Skipped when no
+-- image base URL is configured.
+CREATE TEMP TABLE seed_photos ON COMMIT DROP AS SELECT 0 AS n;
+WITH worker_photo AS (
+    INSERT INTO provider_media (provider_id, media_type, url, sort_order, created_at, updated_at)
+    SELECT p.id, 'GALLERY',
+           (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/worker-' ||
+           CASE c.slug WHEN 'painters' THEN 'painters'
+                       WHEN 'electricians' THEN 'electricians'
+                       WHEN 'plumbers' THEN 'plumbers'
+                       WHEN 'carpenters' THEN 'carpenters'
+                       ELSE (ARRAY['painters', 'electricians', 'plumbers', 'carpenters'])[1 + (p.id % 4)::int] END || '.jpg',
+           0, now(), now()
+    FROM provider_profile p
+    JOIN business b ON b.id = p.business_id
+    JOIN category c ON c.id = p.primary_category_id
+    WHERE p.provider_type = 'WORKER'
+      AND b.website = 'https://fixtures.sfs.local/marketplace'
+      AND (SELECT image_base FROM demo_cfg) IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM provider_media m WHERE m.provider_id = p.id AND m.media_type = 'GALLERY')
+    RETURNING 1
+), store_photo AS (
+    INSERT INTO business_media (business_id, usage_type, media_url, alt_text, sort_order)
+    SELECT b.id, 'HERO',
+           (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/store-' || (1 + (b.id % 4)::int) || '.jpg',
+           b.name, 0
+    FROM business b
+    WHERE b.website = 'https://fixtures.sfs.local/marketplace'
+      AND (SELECT image_base FROM demo_cfg) IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM provider_profile wp WHERE wp.business_id = b.id AND wp.provider_type = 'WORKER')
+      AND NOT EXISTS (SELECT 1 FROM business_media m WHERE m.business_id = b.id)
+    RETURNING 1
+)
+UPDATE seed_photos SET n = (SELECT count(*) FROM worker_photo) + (SELECT count(*) FROM store_photo);
