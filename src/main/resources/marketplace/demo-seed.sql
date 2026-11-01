@@ -6,7 +6,7 @@
 --     from SFS_DEMO_CONTACT_PHONE); NULL hides the Call/WhatsApp buttons
 --   * no reviews are seeded - ratings come from real users
 --   * each demo worker needs its own login account; its number comes from demo_worker_phone
---     (SFS_DEMO_WORKER_LOGIN_PHONES, in the order Manish, Rakesh, Anil, Suresh) and must be a
+--     (SFS_DEMO_WORKER_LOGIN_PHONES, in MarketplaceDemoSeedRunner.WORKERS order) and must be a
 --     mobile your company controls - whoever owns it can sign in as that worker. A worker without
 --     a number (or whose number already has an account) is skipped.
 --
@@ -19,7 +19,11 @@
 -- The runner executes this file in ONE transaction, after creating the demo_cfg and
 -- demo_worker_phone temp tables.
 --
--- Photos are openly licensed (Wikimedia Commons / Flickr via Openverse) and hot-linked:
+-- Store photos are bundled with the backend (src/main/resources/demo-images/marketplace) and served
+-- at <image base>/api/public/demo-images/marketplace/<key>.jpg, because the website only shows images
+-- from SFS's own hosts. figma-*.jpg are the Figma "Spotlight" photos (infra/demo-images); the rest
+-- are openly licensed copies (Wikimedia Commons / Flickr via Openverse, resized to 1024px), which
+-- were hot-linked before. Without an image base URL the hot-links are still used. Sources:
 --   paint_colour_wall  CC BY-SA 4.0 | Husskeyy | https://commons.wikimedia.org/wiki/File:Paint_Section_in_a_Builders_Warehouse_Store,_in_Kirstenhof,_Cape_Town.jpg
 --   paint_store        CC0 | Daderot | https://commons.wikimedia.org/wiki/File:Paint_store_-_Arlington,_MA.jpg
 --   paint_shelves      CC BY-SA 2.0 | ShangChieh | https://commons.wikimedia.org/wiki/File:%E9%8A%80%E5%BA%A7_%E9%80%8F%E6%98%8E%E6%B0%B4%E5%BD%A9%E7%B5%B5%E5%85%B7_2016_(29153802122).jpg
@@ -84,6 +88,33 @@ INSERT INTO img (key, url) VALUES
     ('switch_modern', 'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/White_light_switch.jpg/1280px-White_light_switch.jpg'),
     ('cement_shop', 'https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/Vente_de_ciment.jpg/1280px-Vente_de_ciment.jpg');
 
+-- Bundled copies replace the hot-links; img_move also lets the top-up below repoint photos stored
+-- with a hot-link on an earlier start.
+CREATE TEMP TABLE img_move ON COMMIT DROP AS
+SELECT key, url AS hotlink,
+       (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/marketplace/' || replace(key, '_', '-') || '.jpg' AS local_url
+FROM img
+WHERE (SELECT image_base FROM demo_cfg) IS NOT NULL;
+UPDATE img SET url = m.local_url FROM img_move m WHERE m.key = img.key;
+
+-- Figma "Spotlight" photos, bundled only (no hot-link), so only available with an image base URL.
+INSERT INTO img (key, url)
+SELECT f.key, (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/' || f.path
+FROM (VALUES
+    ('fig_paint_aisle', 'store-1.jpg'),
+    ('fig_bath_showroom', 'store-2.jpg'),
+    ('fig_electrical_counter', 'store-3.jpg'),
+    ('fig_hardware_wall', 'store-4.jpg'),
+    ('fig_living_room', 'marketplace/figma-interior-designers-1.jpg'),
+    ('fig_carved_lounge', 'marketplace/figma-interior-designers-2.jpg'),
+    ('fig_bedroom', 'marketplace/figma-interior-designers-3.jpg'),
+    ('fig_paint_samples', 'marketplace/figma-brands-1.jpg'),
+    ('fig_marble_tiles', 'marketplace/figma-brands-2.jpg'),
+    ('fig_pendant_lights', 'marketplace/figma-brands-3.jpg'),
+    ('fig_modular_kitchen', 'marketplace/figma-brands-4.jpg')
+) AS f(key, path)
+WHERE (SELECT image_base FROM demo_cfg) IS NOT NULL;
+
 CREATE TEMP TABLE fx (key text PRIMARY KEY, id bigint NOT NULL) ON COMMIT DROP;
 
 -- ---------- older V6 sample stores to decorate (untouched ones only) ----------
@@ -129,6 +160,35 @@ WITH rows(key, name, cat, locality, landmark, est, prio, descr) AS (VALUES
 )
 INSERT INTO fx (key, id) SELECT r.key, ins.id FROM rows r JOIN ins ON ins.name = r.name;
 
+-- ---------- demo dealers added in a later release ----------
+-- Created on whichever start first sees them missing (by name), so production gets them on the
+-- next deploy without touching the stores loaded earlier.
+WITH rows(key, name, cat, cat_fallback, locality, landmark, est, prio, descr) AS (VALUES
+    ('d_urbannest', 'Urban Nest Furniture Studio', 'luxury-furniture', 'furniture-modular', 'Kirti Nagar', 'Furniture Market, Block C', 2010, 92,
+     'Sofas, beds, dining sets and made-to-measure modular furniture, with a design desk that plans full rooms and delivers across Delhi NCR.'),
+    ('d_lumina', 'Lumina Electricals & Lighting', 'electrical-smart-living', 'electrical', 'Lajpat Rai Market', 'Near Red Fort Metro Gate 3', 2005, 90,
+     'Wires, switches, MCBs, decorative lighting and smart-home devices for electricians, builders and homeowners, in retail and bulk.'),
+    ('d_stonecraft', 'StoneCraft Tiles & Bath Gallery', 'tiles-flooring', NULL, 'Mehrauli-Gurgaon Road', 'Opp. Sultanpur Metro', 2013, 88,
+     'Large-format tiles, Italian marble, wooden flooring and designer bath fittings in a walk-through showroom.'),
+    ('d_aqualine', 'AquaLine Sanitary Hub', 'sanitary-bathroom', 'plumbing-hardware', 'Paharganj', 'DB Gupta Road', 2009, 86,
+     'Sanitaryware, CPVC and PVC pipes, taps, showers and water heaters, with plumbers on call for installation.')
+), resolved AS (
+    SELECT r.*, COALESCE((SELECT id FROM category WHERE slug = r.cat AND active), (SELECT id FROM category WHERE slug = r.cat_fallback)) AS cat_id
+    FROM rows r
+), ins AS (
+    INSERT INTO business (name, city_id, category_id, locality, landmark, primary_phone, whatsapp_phone, established_year,
+                          is_active, description, website, timezone, avg_rating, total_ratings,
+                          sponsored, sponsored_priority, sponsored_start, sponsored_end, created_at, updated_at)
+    SELECT r.name, s.city_id, r.cat_id, r.locality, r.landmark, s.phone, s.phone, r.est, TRUE, r.descr,
+           'https://fixtures.sfs.local/marketplace', 'Asia/Kolkata', 0, 0,
+           TRUE, r.prio, now() - interval '1 day', now() + interval '1 year', now(), now()
+    FROM resolved r CROSS JOIN seed_ref s
+    WHERE s.city_id IS NOT NULL AND r.cat_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM business b WHERE b.name = r.name AND b.city_id = s.city_id)
+    RETURNING id, name
+)
+INSERT INTO fx (key, id) SELECT r.key, ins.id FROM rows r JOIN ins ON ins.name = r.name;
+
 -- ---------- decorate the older sample stores (contact numbers are left as they are) ----------
 UPDATE business b SET
     locality = v.locality,
@@ -160,7 +220,11 @@ FROM (VALUES
     ('d_superfix', 1, 7, '08:00', '21:00'),
     ('d_master_elec', 1, 6, '09:00', '21:00'),
     ('d_tilezone', 2, 7, '10:30', '20:00'),
-    ('d_trimurti', 1, 6, '09:00', '18:30')
+    ('d_trimurti', 1, 6, '09:00', '18:30'),
+    ('d_urbannest', 1, 7, '10:30', '20:30'),
+    ('d_lumina', 1, 6, '10:00', '19:30'),
+    ('d_stonecraft', 2, 7, '10:00', '20:00'),
+    ('d_aqualine', 1, 6, '09:30', '20:00')
 ) AS h(key, from_day, to_day, opens, closes)
 JOIN fx ON fx.key = h.key
 CROSS JOIN LATERAL generate_series(h.from_day, h.to_day) AS d;
@@ -186,7 +250,18 @@ INSERT INTO off_src VALUES
     ('d_master_elec', 'SERVICE', 'Services', 0, ARRAY['House Wiring', 'Fan & Light Fitting', 'Inverter Setup']),
     ('d_tilezone', 'PRODUCT', 'Tiles & Flooring', 0, ARRAY['Vitrified Tiles', 'Ceramic Tiles', 'Wooden Flooring', 'Marble']),
     ('d_tilezone', 'SERVICE', 'Services', 0, ARRAY['Layout Design', 'Home Delivery']),
-    ('d_trimurti', 'PRODUCT', 'Building Materials', 0, ARRAY['Wall Putty', 'Cement', 'White Cement', 'Tile Adhesive']);
+    ('d_trimurti', 'PRODUCT', 'Building Materials', 0, ARRAY['Wall Putty', 'Cement', 'White Cement', 'Tile Adhesive']),
+    ('d_urbannest', 'PRODUCT', 'Furniture', 0, ARRAY['Sofas', 'Beds', 'Dining Sets', 'Wardrobes', 'TV Units']),
+    ('d_urbannest', 'PRODUCT', 'Modular', 1, ARRAY['Modular Kitchens', 'Study Units', 'Shoe Racks']),
+    ('d_urbannest', 'SERVICE', 'Services', 0, ARRAY['Room Planning', 'Custom Sizes', 'Home Delivery', 'Installation']),
+    ('d_lumina', 'PRODUCT', 'Electricals', 0, ARRAY['Wires & Cables', 'Modular Switches', 'MCBs & DBs', 'Fans']),
+    ('d_lumina', 'PRODUCT', 'Lighting', 1, ARRAY['LED Panels', 'Pendant Lights', 'Smart Bulbs', 'Outdoor Lights']),
+    ('d_lumina', 'SERVICE', 'Services', 0, ARRAY['Lighting Design', 'Bulk Orders', 'Electrician on Call']),
+    ('d_stonecraft', 'PRODUCT', 'Tiles & Stone', 0, ARRAY['Large-format Tiles', 'Italian Marble', 'Wooden Flooring', 'Mosaic']),
+    ('d_stonecraft', 'PRODUCT', 'Bath', 1, ARRAY['Wall-hung WCs', 'Basins', 'Rain Showers']),
+    ('d_stonecraft', 'SERVICE', 'Services', 0, ARRAY['3D Layout', 'Site Measurement', 'Home Delivery']),
+    ('d_aqualine', 'PRODUCT', 'Sanitary & Plumbing', 0, ARRAY['Sanitaryware', 'CPVC Pipes', 'Taps & Mixers', 'Water Heaters']),
+    ('d_aqualine', 'SERVICE', 'Services', 0, ARRAY['Installation', 'Plumber on Call', 'Home Delivery']);
 
 WITH g AS (
     INSERT INTO business_offering_group (business_id, offering_type, title, sort_order)
@@ -243,7 +318,26 @@ FROM (VALUES
     ('d_tilezone', 'HERO', 'tile_showroom', 'Tile showroom', 0),
     ('d_tilezone', 'HERO', 'tile_showroom2', 'Tile display racks', 1),
     ('d_tilezone', 'GALLERY', 'tile_showroom2', 'Sample boards', 0),
-    ('d_trimurti', 'HERO', 'cement_shop', 'Cement and putty stock', 0)
+    ('d_trimurti', 'HERO', 'cement_shop', 'Cement and putty stock', 0),
+    ('d_urbannest', 'HERO', 'fig_living_room', 'Living room display', 0),
+    ('d_urbannest', 'HERO', 'fig_bedroom', 'Bedroom display', 1),
+    ('d_urbannest', 'HERO', 'fig_carved_lounge', 'Carved lounge set', 2),
+    ('d_urbannest', 'GALLERY', 'fig_modular_kitchen', 'Modular kitchen', 0),
+    ('d_urbannest', 'GALLERY', 'fig_carved_lounge', 'Lounge seating', 1),
+    ('d_urbannest', 'GALLERY', 'fig_bedroom', 'Bed and side tables', 2),
+    ('d_lumina', 'HERO', 'fig_electrical_counter', 'Store counter', 0),
+    ('d_lumina', 'HERO', 'fig_pendant_lights', 'Pendant lights', 1),
+    ('d_lumina', 'GALLERY', 'led_bulbs', 'LED bulbs', 0),
+    ('d_lumina', 'GALLERY', 'switch_modern', 'Modular switches', 1),
+    ('d_lumina', 'GALLERY', 'switch_board', 'Switch boards', 2),
+    ('d_stonecraft', 'HERO', 'fig_bath_showroom', 'Tile and bath showroom', 0),
+    ('d_stonecraft', 'HERO', 'fig_marble_tiles', 'Marble tiles', 1),
+    ('d_stonecraft', 'GALLERY', 'tile_showroom', 'Tile racks', 0),
+    ('d_stonecraft', 'GALLERY', 'tile_showroom2', 'Sample boards', 1),
+    ('d_aqualine', 'HERO', 'pvc_pipes', 'Pipes in stock', 0),
+    ('d_aqualine', 'HERO', 'fig_bath_showroom', 'Sanitaryware display', 1),
+    ('d_aqualine', 'GALLERY', 'copper_fittings', 'Fittings', 0),
+    ('d_aqualine', 'GALLERY', 'pipe_fittings', 'Pipe fittings', 1)
 ) AS m(key, usage, img_key, alt, ord)
 JOIN fx ON fx.key = m.key
 JOIN img ON img.key = m.img_key;
@@ -267,7 +361,48 @@ INSERT INTO w_src VALUES
     (4, 'w_suresh', 'Suresh Pal', NULL, 'plumbers', 14, 'UNAVAILABLE',
      'Suresh has 14 years of plumbing experience in leak detection, bathroom fittings and water tank installation.',
      ARRAY['Laxmi Nagar', 'Preet Vihar', 'Mayur Vihar'],
-     ARRAY['Leak Repair', 'Tap & Mixer Fitting', 'Drain Cleaning', 'Water Tank Installation']);
+     ARRAY['Leak Repair', 'Tap & Mixer Fitting', 'Drain Cleaning', 'Water Tank Installation']),
+    -- added in a later release; each goes live once its login number is configured
+    (5, 'w_ramesh', 'Ramesh Yadav', NULL, 'painters', 8, 'AVAILABLE',
+     'Ramesh specialises in texture and designer wall finishes, and repaints flats quickly with minimal mess.',
+     ARRAY['Rajouri Garden', 'Janakpuri', 'Tilak Nagar'],
+     ARRAY['Texture Painting', 'Interior Painting', 'Wood Polish', 'Stencil Work']),
+    (6, 'w_imran', 'Imran Qureshi', NULL, 'carpenters', 15, 'AVAILABLE',
+     'Imran is a furniture maker with 15 years of experience in custom beds, wardrobes and solid-wood repairs.',
+     ARRAY['Kirti Nagar', 'Moti Nagar', 'Patel Nagar'],
+     ARRAY['Custom Furniture', 'Wardrobes', 'Furniture Polish', 'Furniture Repair']),
+    (7, 'w_deepak', 'Deepak Sharma', NULL, 'electricians', 7, 'AVAILABLE',
+     'Deepak installs smart switches, CCTV and home automation along with regular wiring and repairs.',
+     ARRAY['Lajpat Nagar', 'Defence Colony', 'Greater Kailash'],
+     ARRAY['Smart Home Setup', 'House Wiring', 'CCTV Installation', 'Fan & Light Installation']),
+    (8, 'w_vikas', 'Vikas Gupta', NULL, 'plumbers', 10, 'BUSY',
+     'Vikas handles bathroom renovations, concealed piping and geyser installation for homes and offices.',
+     ARRAY['Paharganj', 'Karol Bagh', 'Connaught Place'],
+     ARRAY['Bathroom Fitting', 'Concealed Piping', 'Geyser Installation', 'Leak Repair']),
+    (9, 'w_mohan', 'Mohan Lal', NULL, 'masons', 18, 'AVAILABLE',
+     'Mohan is a senior mason with 18 years of experience in brickwork, plastering and tile laying.',
+     ARRAY['Okhla', 'Kalkaji', 'Govindpuri'],
+     ARRAY['Brickwork', 'Plastering', 'Tile Laying', 'Waterproofing']),
+    (10, 'w_sunil', 'Sunil Kumar', NULL, 'masons', 9, 'AVAILABLE',
+     'Sunil takes on renovation and repair masonry: wall breaking, flooring, kitchen platforms and boundary walls.',
+     ARRAY['Laxmi Nagar', 'Shahdara', 'Preet Vihar'],
+     ARRAY['Renovation Work', 'Flooring', 'Kitchen Platforms', 'Plastering']),
+    (11, 'w_arjun', 'Arjun Rawat', NULL, 'painters', 6, 'UNAVAILABLE',
+     'Arjun paints homes and shops and offers waterproof exterior coatings before the monsoon.',
+     ARRAY['Mayur Vihar', 'Patparganj', 'Laxmi Nagar'],
+     ARRAY['Exterior Painting', 'Waterproofing', 'Interior Painting']),
+    (12, 'w_sanjay', 'Sanjay Mishra', NULL, 'carpenters', 11, 'BUSY',
+     'Sanjay builds modular kitchens and TV units and fits doors, windows and false-ceiling frames.',
+     ARRAY['Saket', 'Malviya Nagar', 'Hauz Khas'],
+     ARRAY['Modular Kitchens', 'TV Units', 'Door Fitting', 'Window Repair']),
+    (13, 'w_rajesh', 'Rajesh Chauhan', NULL, 'electricians', 13, 'AVAILABLE',
+     'Rajesh is a licensed electrician for commercial wiring, panel upgrades and inverter or solar connections.',
+     ARRAY['Chandni Chowk', 'Civil Lines', 'Kamla Nagar'],
+     ARRAY['Commercial Wiring', 'MCB & DB Repair', 'Inverter Setup', 'Earthing']),
+    (14, 'w_prakash', 'Prakash Joshi', NULL, 'plumbers', 16, 'AVAILABLE',
+     'Prakash has 16 years of plumbing experience in water tanks, motor pumps and full-house re-piping.',
+     ARRAY['Dwarka', 'Uttam Nagar', 'Janakpuri'],
+     ARRAY['Motor Pump Installation', 'Water Tank Installation', 'Re-piping', 'Drain Cleaning']);
 UPDATE w_src SET login_phone = wp.phone FROM demo_worker_phone wp WHERE wp.ord = w_src.ord;
 DELETE FROM w_src
 WHERE login_phone IS NULL
@@ -316,7 +451,21 @@ FROM (VALUES
     ('w_anil', 'SERVICE_FEE', 450.00, 'PER_JOB', NULL, 0),
     ('w_anil', 'HOURLY_RATE', 300.00, 'PER_HOUR', NULL, 1),
     ('w_suresh', 'VISITING_CHARGE', 200.00, 'PER_VISIT', NULL, 0),
-    ('w_suresh', 'HOURLY_RATE', 300.00, 'PER_HOUR', NULL, 1)
+    ('w_suresh', 'HOURLY_RATE', 300.00, 'PER_HOUR', NULL, 1),
+    ('w_ramesh', 'VISITING_CHARGE', 100.00, 'PER_VISIT', NULL, 0),
+    ('w_ramesh', 'MATERIAL_COST', 22.00, 'PER_SQFT', 'Texture finish', 1),
+    ('w_imran', 'SERVICE_FEE', 500.00, 'PER_JOB', NULL, 0),
+    ('w_imran', 'MATERIAL_COST', 420.00, 'PER_SQFT', 'Solid wood, polished', 1),
+    ('w_deepak', 'VISITING_CHARGE', 199.00, 'PER_VISIT', NULL, 0),
+    ('w_deepak', 'HOURLY_RATE', 350.00, 'PER_HOUR', NULL, 1),
+    ('w_vikas', 'VISITING_CHARGE', 250.00, 'PER_VISIT', NULL, 0),
+    ('w_mohan', 'SERVICE_FEE', 900.00, 'PER_JOB', 'Per day, one mason', 0),
+    ('w_sunil', 'SERVICE_FEE', 800.00, 'PER_JOB', 'Per day, one mason', 0),
+    ('w_arjun', 'VISITING_CHARGE', 120.00, 'PER_VISIT', NULL, 0),
+    ('w_sanjay', 'MATERIAL_COST', 380.00, 'PER_SQFT', 'Laminated ply, fitted', 0),
+    ('w_rajesh', 'SERVICE_FEE', 500.00, 'PER_JOB', NULL, 0),
+    ('w_rajesh', 'HOURLY_RATE', 400.00, 'PER_HOUR', NULL, 1),
+    ('w_prakash', 'VISITING_CHARGE', 200.00, 'PER_VISIT', NULL, 0)
 ) AS r(key, rate_type, amount, unit, note, ord)
 JOIN fx ON fx.key = r.key;
 
@@ -335,7 +484,11 @@ FROM (VALUES
     ('d_superfix', 'SuperFix Plumbing', FALSE),
     ('d_master_elec', 'Delhi Master Electricians', FALSE),
     ('d_tilezone', 'TileZone Studio', FALSE),
-    ('d_trimurti', 'Trimurti Wall Care Products Pvt Ltd', FALSE)
+    ('d_trimurti', 'Trimurti Wall Care Products Pvt Ltd', FALSE),
+    ('d_urbannest', 'Urban Nest Furniture Studio', TRUE),
+    ('d_lumina', 'Lumina Electricals & Lighting', TRUE),
+    ('d_stonecraft', 'StoneCraft Tiles & Bath Gallery', TRUE),
+    ('d_aqualine', 'AquaLine Sanitary Hub', TRUE)
 ) AS k(key, name, demo)
 JOIN business b ON b.name = k.name AND b.city_id = (SELECT city_id FROM seed_ref)
                AND (NOT k.demo OR b.website = 'https://fixtures.sfs.local/marketplace')
@@ -343,7 +496,8 @@ GROUP BY k.key;
 
 CREATE TEMP TABLE wk ON COMMIT DROP AS
 SELECT k.key, p.id
-FROM (VALUES ('w_manish'), ('w_rakesh'), ('w_anil'), ('w_suresh')) AS k(key)
+FROM (VALUES ('w_manish'), ('w_rakesh'), ('w_anil'), ('w_suresh'), ('w_ramesh'), ('w_imran'), ('w_deepak'),
+             ('w_vikas'), ('w_mohan'), ('w_sunil'), ('w_arjun'), ('w_sanjay'), ('w_rajesh'), ('w_prakash')) AS k(key)
 JOIN users u ON u.email = k.key || '@fixtures.sfs.local'
 JOIN provider_profile p ON p.user_id = u.id;
 
@@ -363,7 +517,22 @@ FROM (VALUES
     ('d_propaint', 'w_rakesh', 0, 'NONE', NULL),
     ('d_brightshine', 'w_suresh', 0, 'VERIFIED', 'Our senior plumber for bathroom and re-piping jobs.'),
     ('d_master_elec', 'w_anil', 0, 'VERIFIED', 'Certified electrician we send for all wiring jobs.'),
-    ('d_tilezone', 'w_rakesh', 0, 'NONE', NULL)
+    ('d_tilezone', 'w_rakesh', 0, 'NONE', NULL),
+    ('d_urbannest', 'w_imran', 0, 'VERIFIED', 'Makes and repairs our custom furniture orders.'),
+    ('d_urbannest', 'w_sanjay', 1, 'VERIFIED', 'Installs our modular kitchens and TV units.'),
+    ('d_urbannest', 'w_rakesh', 2, 'NONE', NULL),
+    ('d_lumina', 'w_deepak', 0, 'VERIFIED', 'Our go-to electrician for smart-home and lighting installs.'),
+    ('d_lumina', 'w_rajesh', 1, 'VERIFIED', 'Handles commercial wiring jobs for our bulk customers.'),
+    ('d_lumina', 'w_anil', 2, 'NONE', NULL),
+    ('d_stonecraft', 'w_mohan', 0, 'VERIFIED', 'Lays tiles and marble for our customers; careful, level work.'),
+    ('d_stonecraft', 'w_vikas', 1, 'VERIFIED', 'Fits our bath ranges, including concealed piping.'),
+    ('d_aqualine', 'w_prakash', 0, 'VERIFIED', 'Senior plumber we send for tank and pump installations.'),
+    ('d_aqualine', 'w_vikas', 1, 'NONE', NULL),
+    ('d_trimurti', 'w_sunil', 0, 'VERIFIED', 'Buys putty and cement from us for renovation jobs.'),
+    ('d_main', 'w_ramesh', 3, 'VERIFIED', 'Our customers ask for him for texture finishes.'),
+    ('d_propaint', 'w_arjun', 1, 'NONE', NULL),
+    ('d_master_elec', 'w_rajesh', 1, 'NONE', NULL),
+    ('d_superfix', 'w_prakash', 0, 'NONE', NULL)
 ) AS l(dkey, wkey, ord, status, note)
 JOIN dk d ON d.key = l.dkey
 JOIN wk w ON w.key = l.wkey
@@ -393,12 +562,14 @@ CREATE TEMP TABLE seed_photos ON COMMIT DROP AS SELECT 0 AS n;
 WITH worker_photo AS (
     INSERT INTO provider_media (provider_id, media_type, url, sort_order, created_at, updated_at)
     SELECT p.id, 'GALLERY',
-           (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/worker-' ||
-           CASE c.slug WHEN 'painters' THEN 'painters'
-                       WHEN 'electricians' THEN 'electricians'
-                       WHEN 'plumbers' THEN 'plumbers'
-                       WHEN 'carpenters' THEN 'carpenters'
-                       ELSE (ARRAY['painters', 'electricians', 'plumbers', 'carpenters'])[1 + (p.id % 4)::int] END || '.jpg',
+           (SELECT image_base FROM demo_cfg) || '/api/public/demo-images/' ||
+           CASE c.slug WHEN 'painters' THEN 'worker-painters.jpg'
+                       WHEN 'electricians' THEN 'worker-electricians.jpg'
+                       WHEN 'plumbers' THEN 'worker-plumbers.jpg'
+                       WHEN 'carpenters' THEN 'worker-carpenters.jpg'
+                       -- no mason photo in the Figma set; the cement and building-materials shop is closest
+                       WHEN 'masons' THEN 'marketplace/cement-shop.jpg'
+                       ELSE 'worker-' || (ARRAY['painters', 'electricians', 'plumbers', 'carpenters'])[1 + (p.id % 4)::int] || '.jpg' END,
            0, now(), now()
     FROM provider_profile p
     JOIN business b ON b.id = p.business_id
@@ -421,3 +592,13 @@ WITH worker_photo AS (
     RETURNING 1
 )
 UPDATE seed_photos SET n = (SELECT count(*) FROM worker_photo) + (SELECT count(*) FROM store_photo);
+
+-- Photos stored with a hot-link on an earlier start are repointed to the bundled copy. Only exact
+-- hot-link URLs match, so a photo replaced in the dashboard is never touched.
+WITH moved AS (
+    UPDATE business_media bm SET media_url = m.local_url
+    FROM img_move m
+    WHERE bm.media_url = m.hotlink
+    RETURNING 1
+)
+UPDATE seed_photos SET n = n + (SELECT count(*) FROM moved);

@@ -14,7 +14,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Runs the real Flyway history on an empty PostgreSQL, then the demo seed the way production meets it:
  * first with placeholder numbers (stores only), then with real numbers (workers, connections and the
- * contact number are filled in), then again (nothing changes).
+ * contact number are filled in), then again (nothing changes), then with an image base URL and two
+ * more worker numbers (hot-linked photos are repointed to the bundled copies, the new workers join).
  */
 @Testcontainers(disabledWithoutDocker = true)
 class MarketplaceDemoSeedPostgresIntegrationTest {
@@ -53,10 +54,10 @@ class MarketplaceDemoSeedPostgresIntegrationTest {
         MarketplaceDemoSeedRunner.Result first =
                 new MarketplaceDemoSeedRunner(ds, "879XXXXXXX", "9XXXXXXXXX,9XXXXXXXXX,9XXXXXXXXX,9XXXXXXXXX").seed();
 
-        // 4 dealers (the V6 sample stores are not part of a fresh baseline database), no workers
-        assertThat(first.inserted()).isEqualTo(4);
+        // 4 + 4 later-release dealers (the V6 sample stores are not part of a fresh baseline database), no workers
+        assertThat(first.inserted()).isEqualTo(8);
         assertThat(first.contactConfigured()).isFalse();
-        assertThat(count("SELECT count(*) FROM business WHERE website = ? AND primary_phone IS NULL", TAG)).isEqualTo(4);
+        assertThat(count("SELECT count(*) FROM business WHERE website = ? AND primary_phone IS NULL", TAG)).isEqualTo(8);
         assertThat(count("SELECT count(*) FROM provider_profile")).isZero();
 
         Long main = jdbc.queryForObject("SELECT id FROM business WHERE name = 'Sharma Paints & Hardware'", Long.class);
@@ -70,23 +71,24 @@ class MarketplaceDemoSeedPostgresIntegrationTest {
         // 2) Restart after the real numbers were added.
         MarketplaceDemoSeedRunner.Result second = new MarketplaceDemoSeedRunner(ds, "87900 12345", LOGINS).seed();
 
-        assertThat(second.inserted()).isEqualTo(4);          // the 4 workers
-        assertThat(second.contactsUpdated()).isEqualTo(4);   // the 4 stores created without a number
-        assertThat(count("SELECT count(*) FROM business WHERE website = ?", TAG)).isEqualTo(8);
+        assertThat(second.inserted()).isEqualTo(4);          // the 4 workers that have numbers
+        assertThat(second.contactsUpdated()).isEqualTo(8);   // the 8 stores created without a number
+        assertThat(count("SELECT count(*) FROM business WHERE website = ?", TAG)).isEqualTo(12);
         assertThat(count("""
                 SELECT count(*) FROM business
                 WHERE website = ? AND primary_phone = '+918790012345' AND whatsapp_phone = '+918790012345'
-                """, TAG)).isEqualTo(8);
+                """, TAG)).isEqualTo(12);
         assertThat(count("""
                 SELECT count(*) FROM provider_profile p JOIN users u ON u.id = p.user_id
                 WHERE p.provider_type = 'WORKER' AND p.verification_status = 'VERIFIED'
                   AND u.phone_number IN ('+919876500001', '+919876500002', '+919876500003', '+919876500004')
                 """)).isEqualTo(4);
-        assertThat(count("SELECT count(*) FROM business_worker_link")).isEqualTo(5);
+        assertThat(count("SELECT count(*) FROM business_worker_link")).isEqualTo(7);
         assertThat(count("SELECT count(*) FROM business_worker_link WHERE recommendation_status = 'VERIFIED'")).isEqualTo(3);
         assertThat(count("SELECT count(*) FROM provider_rate")).isEqualTo(7);
         assertThat(count("SELECT count(*) FROM business_review")).isZero();
-        assertThat(count("SELECT count(*) FROM business_media")).isEqualTo(26);
+        // without an image base only the hot-linked photos exist (the Figma ones are bundled-only)
+        assertThat(count("SELECT count(*) FROM business_media")).isEqualTo(34);
 
         // 3) Any later restart changes nothing - and a link removed in the dashboard stays removed.
         jdbc.update("DELETE FROM business_worker_link WHERE recommendation_status = 'NONE'");
@@ -94,9 +96,27 @@ class MarketplaceDemoSeedPostgresIntegrationTest {
 
         assertThat(third.inserted()).isZero();
         assertThat(third.contactsUpdated()).isZero();
-        assertThat(count("SELECT count(*) FROM business WHERE website = ?", TAG)).isEqualTo(8);
-        assertThat(count("SELECT count(*) FROM business_media")).isEqualTo(26);
+        assertThat(count("SELECT count(*) FROM business WHERE website = ?", TAG)).isEqualTo(12);
+        assertThat(count("SELECT count(*) FROM business_media")).isEqualTo(34);
         assertThat(count("SELECT count(*) FROM business_worker_link")).isEqualTo(3);
+
+        // 4) Image base configured and two more worker numbers appended (Ramesh #5, Mohan #9).
+        String logins = LOGINS + ", 9876500005, , , , 9876500009";
+        MarketplaceDemoSeedRunner.Result fourth =
+                new MarketplaceDemoSeedRunner(ds, "87900 12345", logins, "https://api.example.com/").seed();
+
+        assertThat(fourth.inserted()).isEqualTo(2);
+        // 34 hot-links repointed + a photo for each of the 6 workers + one for the store that had none
+        assertThat(fourth.photosAdded()).isEqualTo(41);
+        assertThat(count("SELECT count(*) FROM business_media WHERE media_url NOT LIKE 'https://api.example.com/api/public/demo-images/%'")).isZero();
+        assertThat(count("SELECT count(*) FROM provider_profile")).isEqualTo(6);
+        assertThat(count("SELECT count(*) FROM business_worker_link")).isEqualTo(5);
+
+        // 5) And again: nothing to do.
+        MarketplaceDemoSeedRunner.Result fifth =
+                new MarketplaceDemoSeedRunner(ds, "87900 12345", logins, "https://api.example.com/").seed();
+        assertThat(fifth.inserted()).isZero();
+        assertThat(fifth.photosAdded()).isZero();
     }
 
     private static int count(String sql, Object... args) {

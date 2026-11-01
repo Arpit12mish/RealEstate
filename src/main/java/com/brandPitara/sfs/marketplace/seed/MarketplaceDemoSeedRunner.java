@@ -42,8 +42,17 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
 
     static final String SCRIPT = "marketplace/demo-seed.sql";
 
-    /** Demo workers in the order their login numbers are listed. */
-    static final List<String> WORKERS = List.of("Manish Singh", "Rakesh Kumar", "Anil Verma", "Suresh Pal");
+    /**
+     * Demo workers in the order their login numbers are listed in SFS_DEMO_WORKER_LOGIN_PHONES. The
+     * first four shipped first; the rest were added later and go live once their numbers are appended.
+     */
+    static final List<String> WORKERS = List.of(
+            "Manish Singh", "Rakesh Kumar", "Anil Verma", "Suresh Pal",
+            "Ramesh Yadav", "Imran Qureshi", "Deepak Sharma", "Vikas Gupta", "Mohan Lal",
+            "Sunil Kumar", "Arjun Rawat", "Sanjay Mishra", "Rajesh Chauhan", "Prakash Joshi");
+
+    /** Missing numbers for these are warned about; later workers are optional until their numbers are added. */
+    static final int ORIGINAL_WORKERS = 4;
 
     private final DataSource dataSource;
     private final String contactPhone;
@@ -91,7 +100,7 @@ public class MarketplaceDemoSeedRunner implements ApplicationRunner {
         }
         List<String> loginPhones = workerLoginPhones(workerLoginPhones);
         for (int i = 0; i < WORKERS.size(); i++) {
-            if (loginPhones.get(i) == null) {
+            if (loginPhones.get(i) == null && i < ORIGINAL_WORKERS) {
                 log.warn("Marketplace demo seed: no usable login number for demo worker {} (SFS_DEMO_WORKER_LOGIN_PHONES #{}); skipping that worker",
                         WORKERS.get(i), i + 1);
             }

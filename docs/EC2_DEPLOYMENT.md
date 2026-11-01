@@ -155,3 +155,24 @@ Call/WhatsApp and the workers are skipped. Put the real numbers in `/etc/sfs-app
 (`sudo systemctl restart sfs`): the next start adds the missing workers and their connections and
 puts the contact number on the demo stores, logging e.g.
 `loaded 4 demo stores/workers, added the contact number to 4 existing ones`.
+
+### More demo stores, workers and self-hosted photos (November 2026)
+
+The next start after this deploy also:
+
+- repoints the demo store photos from Wikimedia/Flickr hot-links to copies bundled in the jar
+  (`/api/public/demo-images/marketplace/*`), so they show on the website too. Only photos still
+  at their original hot-link URL change; photos replaced in the dashboard are untouched;
+- adds 4 demo stores (Urban Nest Furniture Studio, Lumina Electricals & Lighting, StoneCraft
+  Tiles & Bath Gallery, AquaLine Sanitary Hub) with hours, products, services and photos;
+- adds up to 10 more demo workers (painters, carpenters, electricians, plumbers and masons) -
+  each only once its login number is appended to `SFS_DEMO_WORKER_LOGIN_PHONES`, in this order
+  after the first four: Ramesh, Imran, Deepak, Vikas, Mohan, Sunil, Arjun, Sanjay, Rajesh, Prakash.
+
+```bash
+SFS_DEMO_WORKER_LOGIN_PHONES=<4 existing numbers>,<Ramesh>,<Imran>,<Deepak>,<Vikas>,<Mohan>,<Sunil>,<Arjun>,<Sanjay>,<Rajesh>,<Prakash>
+```
+
+Expected log: `loaded 14 demo stores/workers, ..., added 26+ demo photos` (4 stores + 10 workers,
+fewer if numbers are missing; the photo count includes the repointed store photos). Numbers can be
+appended later; each restart adds the workers that are still missing.

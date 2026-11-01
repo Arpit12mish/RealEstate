@@ -248,8 +248,9 @@ sfs:
   # Marketplace demo stores/workers (marketplace/demo-seed.sql), loaded once on startup and
   # skipped on every later restart. All demo stores and workers share one contact number;
   # leave it empty to hide their Call/WhatsApp buttons. Each demo worker also needs its own
-  # login account: four comma-separated company-controlled mobiles (Manish, Rakesh, Anil,
-  # Suresh); a worker without one is skipped.
+  # login account: comma-separated company-controlled mobiles in MarketplaceDemoSeedRunner.WORKERS
+  # order (Manish, Rakesh, Anil, Suresh, then Ramesh, Imran, Deepak, Vikas, Mohan, Sunil, Arjun,
+  # Sanjay, Rajesh, Prakash); a worker without one is skipped.
   marketplace:
     demo-seed:
       enabled: ${SFS_MARKETPLACE_DEMO_SEED_ENABLED:true}
